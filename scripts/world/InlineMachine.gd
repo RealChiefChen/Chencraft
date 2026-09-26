@@ -32,6 +32,11 @@ var hole: Vector2 = Vector2(1.0, 0.8)
 var total_processed: int = 0
 var volume_in: float = 0.0
 var volume_out: float = 0.0
+## Which output size the machine is set to (see output_options): the planker
+## can cut one wide plank or several narrower boards, the smelter one bar or
+## several small ones, the crusher coarse or fine lumps, and so on. Volume is
+## the same whichever it is set to; only the size of the pieces changes.
+var output_size: int = 0
 
 const WALL := 0.15
 const LIP_LENGTH := 0.7
@@ -68,7 +73,7 @@ func _apply_level() -> void:
 	var outer := float(def.size.x) * Plot.CELL
 	hole = Vector2(minf(machine_def.tunnel.x * hole_scale, outer - WALL * 2.0 - 0.1),
 		minf(machine_def.tunnel.y * hole_scale, float(def.size.y) * Plot.CELL - 0.9))
-	speed = machine_def.belt_speed * float(stats.get("rate_scale", 1.0))
+	speed = machine_def.belt_speed * float(stats.get("rate_scale", 1.0)) * Balance.num("machines.speed_multiplier", 1.0)
 
 func tier_label() -> String:
 	return String(GameData.upgrade_level(machine_def.id, level).get("label", "T%d" % level))
@@ -388,6 +393,7 @@ func take(item: LooseItem) -> bool:
 	for branch in branches:
 		before += Solid.volume(branch.dims)
 		outs.append_array(work(branch))
+	outs = _cut_to_size(outs)
 	if outs.any(func(o: Dictionary) -> bool: return bool(o.changed)):
 		var after := 0.0
 		for o: Dictionary in outs:
@@ -517,11 +523,13 @@ func work(entry: Dictionary) -> Array[Dictionary]:
 				_change(entry, to, Solid.box(Vector3(t * 1.6, t * 4.0, t)))
 		MachineDef.MODE_CRUSH:
 			# Whatever fits through the mouth is broken up, however small -
-			# into lumps no bigger than max_piece, and at least two. Only
-			# its own lumps go through untouched.
+			# into lumps no bigger than max_piece (less, set finer), and at
+			# least two. Only its own lumps go through untouched.
 			if not bool(dims.get("crushed", false)):
 				var v := Solid.volume(dims)
-				var count := clampi(int(ceil(v / pow(machine_def.max_piece * 0.9, 3.0))), 2, 64)
+				var options := output_options()
+				var fineness := float(options[clampi(output_size, 0, options.size() - 1)][1])
+				var count := clampi(int(ceil(v / pow(machine_def.max_piece * 0.9 * fineness, 3.0))), 2, 128)
 				var lump := Solid.cube(v / float(count))
 				lump["crushed"] = true
 				_change(entry, entry.id, lump)
@@ -529,6 +537,93 @@ func work(entry: Dictionary) -> Array[Dictionary]:
 					var more := entry.duplicate(true)
 					more.ready = float(entry.ready) + 0.05 * float(i)
 					out.append(more)
+	return out
+
+## Set to make smaller pieces: what it made is cut to size.
+func _cut_to_size(outs: Array[Dictionary]) -> Array[Dictionary]:
+	var n := _pieces()
+	if n <= 1:
+		return outs
+	var split: Array[Dictionary] = []
+	for e in outs:
+		if bool(e.changed):
+			split.append_array(_split_output(e, n))
+		else:
+			split.append(e)
+	return split
+
+# --- Output size ---------------------------------------------------------------
+
+## The sizes this machine can make its output in, as [label, pieces] - or,
+## for the crusher, [label, lump size as a share of its biggest].
+func output_options() -> Array:
+	if machine_def == null:
+		return []
+	match machine_def.mode:
+		MachineDef.MODE_PLANK:
+			return [["one wide plank", 1], ["2 boards", 2], ["4 boards", 4]]
+		MachineDef.MODE_SMELT:
+			return [["one bar", 1], ["2 bars", 2], ["4 bars", 4]]
+		MachineDef.MODE_REFINE:
+			return [["whole", 1], ["cut in half", 2], ["cut in quarters", 4]]
+		MachineDef.MODE_CUT:
+			return [["one jewel", 1], ["2 jewels", 2], ["4 jewels", 4]]
+		MachineDef.MODE_CRUSH:
+			return [["coarse lumps", 1.0], ["medium lumps", 0.7], ["fine lumps", 0.5]]
+	return []
+
+func output_label() -> String:
+	var options := output_options()
+	if options.is_empty():
+		return ""
+	return String(options[clampi(output_size, 0, options.size() - 1)][0])
+
+## Steps to the next output size. Returns what it is set to now.
+func cycle_output() -> String:
+	var options := output_options()
+	if options.is_empty():
+		return "%s makes one size" % def.display_name
+	output_size = (output_size + 1) % options.size()
+	return "%s: %s" % [def.display_name, output_label()]
+
+func _pieces() -> int:
+	var options := output_options()
+	if options.is_empty() or machine_def.mode == MachineDef.MODE_CRUSH:
+		return 1
+	return int(options[clampi(output_size, 0, options.size() - 1)][1])
+
+## Cuts a finished entry into `n` equal pieces, the way the machine would:
+## boards side by side across a plank's width, bars and jewels made smaller,
+## a refined bar cut along its length. Volume and finish are kept exactly.
+func _split_output(entry: Dictionary, n: int) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if n <= 1:
+		out.append(entry)
+		return out
+	var dims: Dictionary = entry.dims
+	var each: Dictionary
+	match machine_def.mode:
+		MachineDef.MODE_PLANK:
+			var sz: Vector3 = dims.size
+			each = Solid.box(Vector3(sz.x / float(n), sz.y, sz.z))
+		MachineDef.MODE_SMELT:
+			var t := pow(Solid.volume(dims) / float(n) / 6.4, 1.0 / 3.0)
+			each = Solid.box(Vector3(t * 1.6, t * 4.0, t))
+		MachineDef.MODE_CUT:
+			var r0 := pow(Solid.volume(dims) / float(n) / 1.649, 1.0 / 3.0)
+			each = Solid.cylinder(r0, r0 * 0.5, r0 * 0.9)
+		_:
+			if dims.get("shape", Solid.BOX) == Solid.CYLINDER:
+				each = Solid.cylinder(float(dims.r0), float(dims.r1), float(dims.length) / float(n))
+			else:
+				var s2: Vector3 = dims.size
+				each = Solid.box(Vector3(s2.x, s2.y / float(n), s2.z))
+	Solid.keep_finish(dims, each)
+	for i in n:
+		var piece := entry.duplicate(true)
+		piece.dims = each.duplicate(true)
+		piece.ready = float(entry.ready) + 0.05 * float(i)
+		out.append(piece)
 	return out
 
 func _change(entry: Dictionary, id: StringName, dims: Dictionary) -> void:
@@ -543,19 +638,23 @@ func _along_belt() -> Basis:
 	return Basis(along.cross(up).normalized(), along, up).orthonormalized()
 
 func status_line() -> String:
-	return "%s (%s): %s, %d through  [E] %s" % [def.display_name, tier_label(),
+	var line := "%s (%s): %s, %d through  [E] %s" % [def.display_name, tier_label(),
 		"running" if running else "stopped", total_processed, "stop" if running else "start"]
+	if output_options().size() > 1:
+		line += "\nmaking %s  [R] change" % output_label()
+	return line
 
 func to_dict() -> Dictionary:
 	var held: Array = []
 	for e in queue:
 		held.append({"id": String(e.id), "dims": Solid.to_dict(e.dims), "owned": e.owned,
 			"plot": e.plot, "changed": e.changed})
-	return {"running": running, "total_processed": total_processed, "queue": held}
+	return {"running": running, "total_processed": total_processed, "queue": held, "output": output_size}
 
 func from_dict(d: Dictionary) -> void:
 	running = bool(d.get("running", true))
 	total_processed = int(d.get("total_processed", 0))
+	output_size = int(d.get("output", 0))
 	queue.clear()
 	for e in d.get("queue", []):
 		queue.append({"id": StringName(e.id), "dims": Solid.from_dict(e.dims), "owned": bool(e.get("owned", true)),

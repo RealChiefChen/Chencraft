@@ -107,10 +107,13 @@ func _signature() -> String:
 			for track in GameData.upgrade_tracks:
 				sig += "%d" % PlayerState.level(track)
 			return sig + "u%d%s" % [PlayerState.unlocked_buildings.size(), str(PlayerState.spare)]
+		"Controls":
+			# Rebinding a key redraws the sheet.
+			return "c" + str(Controls.bindings.hash())
 	return TABS[_tab]
 
 func _market_note() -> String:
-	return "Day %d  ·  the market moves once a week, next in %s. Everything is priced by volume. The guide below shows what a cubic metre of each raw material is worth at each step of its processing - most gain, some do not." % [
+	return "Day %d  ·  the market moves once a week, next in %s. Everything is priced by volume. The guide below shows what a cubic metre of each raw material is worth at each step of its processing - most gain, some do not. A material's price moves as one: logs, sanded wood and lumber of it all share the week's rise or fall. Cheap materials swing a lot; the dear ones hardly move." % [
 		Economy.day, UIKit.clock(Economy.seconds_left_this_week())]
 
 func _rebuild() -> void:
@@ -220,7 +223,7 @@ func _market() -> void:
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 26)
 	grid.add_theme_constant_override("v_separation", 6)
-	for h in ["Material", "Price", "Today", ""]:
+	for h in ["Material (all its forms)", "Raw price", "This week", "Swings"]:
 		grid.add_child(UIKit.label(h.to_upper(), "Subheader"))
 	var rows: Array = Economy.market_rows()
 	rows.reverse()
@@ -234,10 +237,9 @@ func _market() -> void:
 		var pct := int(round((m - 1.0) * 100.0))
 		var tint := UITheme.GOOD if pct > 2 else (UITheme.BAD if pct < -2 else UITheme.MUTED)
 		grid.add_child(UIKit.label("%+d%%" % pct, "", 17, tint))
-		var trend := UIKit.bar(clampf((m - 0.6) / 0.8, 0.0, 1.0), tint, 6)
-		trend.custom_minimum_size.x = 120
-		trend.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		grid.add_child(trend)
+		# How far it moves week to week: cheap stuff a lot, dear stuff little.
+		var swing := UIKit.label("up to ±%d%%" % int(round(float(row.get("swing", 0.0)) * 100.0)), "Small")
+		grid.add_child(swing)
 	_body.add_child(grid)
 
 ## Every material's worth along its processing path, per cubic metre of what

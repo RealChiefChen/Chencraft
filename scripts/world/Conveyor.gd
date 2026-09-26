@@ -121,10 +121,13 @@ func _dress(deck_pose: Transform3D, run: float) -> Greeble:
 	var rubber := Color(0.14, 0.14, 0.16)
 	var fast := speed > 4.5
 	var paint := Color(0.35, 0.80, 0.95) if fast else Color(0.96, 0.76, 0.20)
-	g.box(Vector3(width - 0.2, DECK_THICKNESS, run), deck_pose, rubber)
+	# A borderless belt is rubber edge to edge: no steel channel standing
+	# proud down the sides, so pieces slide on and off it and two side by side
+	# read as one wide belt.
+	g.box(Vector3(width - (0.2 if railed else 0.0), DECK_THICKNESS, run), deck_pose, rubber)
 	for side in [-1.0, 1.0]:
-		g.box(Vector3(0.1, DECK_THICKNESS + 0.1, run + 0.05), deck_pose.translated_local(Vector3(side * (width * 0.5 - 0.05), 0.02, 0)), steel)
 		if railed:
+			g.box(Vector3(0.1, DECK_THICKNESS + 0.1, run + 0.05), deck_pose.translated_local(Vector3(side * (width * 0.5 - 0.05), 0.02, 0)), steel)
 			g.box(Vector3(0.08, 0.3, run), deck_pose.translated_local(Vector3(side * (width * 0.5 + 0.04), 0.25, 0)), steel.lightened(0.1))
 			var posts := maxi(2, int(run / 1.5) + 1)
 			for i in posts:

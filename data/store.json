@@ -166,6 +166,14 @@
             {
               "kind": "upgrade",
               "target": "boots"
+            },
+            {
+              "kind": "upgrade",
+              "target": "engine"
+            },
+            {
+              "kind": "upgrade",
+              "target": "tyres"
             }
           ]
         },

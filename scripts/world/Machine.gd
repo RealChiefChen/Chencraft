@@ -451,7 +451,7 @@ func accept_item(item: LooseItem) -> bool:
 		return false
 	if not fits(item.dims):
 		return false
-	var v := item.volume()
+	var v := item.volume() + item.limb_volume()
 	volume_in += v
 	if machine_def.mode == MachineDef.MODE_ASSEMBLE:
 		stock[item.category] = float(stock.get(item.category, 0.0)) + v

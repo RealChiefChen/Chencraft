@@ -123,6 +123,23 @@ func _run_all() -> void:
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"every balance knob is read by the game", test_balance_file)
+	await _test(&"controls can be rebound and saved", test_controls)
+	await _test(&"build mode opens empty-handed, with a menu and a copy key", test_build_menu_and_pick)
+	await _test(&"the build grid is a quarter metre", test_fine_grid)
+	await _test(&"the market moves by material, cheap ones most", test_market_by_material)
+	await _test(&"branches are paid for, stored and milled with their trunk", test_branches_counted)
+	await _test(&"a felled tree comes down without its leaves", test_felled_no_leaves)
+	await _test(&"machines make their output in the size they are set to", test_machine_output_size)
+	await _test(&"trucks change gear, climb and turn tighter", test_gearbox)
+	await _test(&"a loaded log truck climbs a 38-degree slope", test_climb)
+	await _test(&"engine and tyre upgrades are for every vehicle", test_vehicle_upgrades)
+	await _test(&"recovering is rate-limited and not on outriggers", test_recover_limits)
+	await _test(&"a crane picks logs out of the trailer it tows", test_crane_from_trailer)
+	await _test(&"the loader swaps its bucket for a log grapple", test_loader_grapple)
+	await _test(&"the winch hooks what is near the crosshair", test_winch_snap)
+	await _test(&"the carry rack does not block the crosshair", test_rack_not_aimed)
+	await _test(&"the plot is flat and road-free to its corners", test_plot_clear)
+	await _test(&"save slots: several games, and the old save moves in", test_save_slots)
 	await _test(&"per-plot cap is enforced", test_cap)
 	await _test(&"full automated base stays in budget", test_full_base)
 
@@ -2141,7 +2158,7 @@ func test_conveyor_options() -> void:
 	check(ramp_def != null, "there is no belt ramp to build")
 	PlayerState.add_copy(&"conveyor_ramp")
 	check(ramp_def.rise > 0.5, "the belt ramp does not climb")
-	var ramp := plot.place(ramp_def, Vector2i(-4, -4), 0) as Conveyor
+	var ramp := plot.place(ramp_def, Vector2i(-4, -4) * Plot.SUB, 0) as Conveyor
 	check(ramp != null, "the ramp was not placed")
 	await step(4)
 
@@ -2192,7 +2209,7 @@ func test_conveyor_options() -> void:
 		"a belt with less on it costs more")
 
 	# A stopped belt is a still deck: what lands on it stays where it lands.
-	var flat := plot.place(GameData.building(&"conveyor"), Vector2i(4, -4), 0) as Conveyor
+	var flat := plot.place(GameData.building(&"conveyor"), Vector2i(4, -4) * Plot.SUB, 0) as Conveyor
 	await step(4)
 	check(flat.running, "a new belt starts stopped")
 	check(not flat.toggle(), "toggling a running belt did not stop it")
@@ -2454,29 +2471,29 @@ func test_building() -> void:
 	await step(2)
 	Economy.from_dict({"money": 1000, "day": 1})
 	var def := GameData.building(&"sawmill")
-	var node := plot.place(def, Vector2i(0, 0), 0)
+	var node := plot.place(def, Vector2i(0, 0) * Plot.SUB, 0)
 	check(node != null, "could not place a sawmill on an empty plot (money=%d, err=%s, extent=%.1f)" % [
-		Economy.money, plot.placement_error(def, Vector2i(0, 0), 0), plot.half_extent])
+		Economy.money, plot.placement_error(def, Vector2i(0, 0) * Plot.SUB, 0), plot.half_extent])
 	check_eq(Economy.money, 1000 - def.cost, "placement did not charge the cost")
 	check_eq(plot.placed.size(), 1, "plot did not record the building")
-	check(plot.occupied.size() == def.size.x * def.size.z, "wrong number of cells reserved")
+	check(plot.occupied.size() == def.size.x * def.size.z * Plot.SUB * Plot.SUB, "wrong number of cells reserved")
 
 	# Buildings may overlap: a second one goes in the same space, and taking
 	# it away leaves the first where it was.
 	Economy.from_dict({"money": 1000, "day": 1})
-	check_eq(plot.placement_error(def, Vector2i(1, 1), 0), "", "overlapping placement was refused")
-	var overlap := plot.place(def, Vector2i(1, 1), 0)
+	check_eq(plot.placement_error(def, Vector2i(1, 1) * Plot.SUB, 0), "", "overlapping placement was refused")
+	var overlap := plot.place(def, Vector2i(1, 1) * Plot.SUB, 0)
 	check(overlap != null, "overlapping placement was refused")
 	check_eq(plot.index_at_world(overlap.global_position), 1, "the newest building is not the one found in a shared cell")
 	check(plot.remove(overlap), "could not remove the overlapping building")
 	check_eq(plot.placed.size(), 1, "removing the overlap removed the other too")
 	check(plot.index_at_world(node.global_position) == 0, "the first building lost its cells")
 	Economy.from_dict({"money": 1000 - def.cost, "day": 1})
-	var outside := plot.place(def, Vector2i(9999, 9999), 0)
+	var outside := plot.place(def, Vector2i(9999, 9999) * Plot.SUB, 0)
 	check(outside == null, "placement outside the plot was allowed")
 
 	Economy.from_dict({"money": 10, "day": 1})
-	check(plot.place(def, Vector2i(-10, -10), 0) == null, "placed a building without money")
+	check(plot.place(def, Vector2i(-10, -10) * Plot.SUB, 0) == null, "placed a building without money")
 
 	Economy.from_dict({"money": 0, "day": 1})
 	check(plot.remove(node), "could not remove a placed building")
@@ -2502,14 +2519,14 @@ func test_buildings_sit_on_pad() -> void:
 	var pad := plot.global_position.y
 	var sunk: Array[String] = []
 	var checked := 0
-	var cell := Vector2i(-16, -16)
+	var cell := Vector2i(-16, -16) * Plot.SUB
 	for def: BuildingDef in GameData.buildings.values():
 		if not plot.can_place(def, cell, Vector3i.ZERO, false):
-			cell = Vector2i(-16, cell.y + 8)
+			cell = Vector2i(-16 * Plot.SUB, cell.y + 8 * Plot.SUB)
 			if not plot.can_place(def, cell, Vector3i.ZERO, false):
 				continue
 		var node := plot.place(def, cell, Vector3i.ZERO, false)
-		cell.x += def.size.x + 2
+		cell.x += (def.size.x + 2) * Plot.SUB
 		if node == null:
 			continue
 		await step(2)
@@ -2548,46 +2565,49 @@ func _lowest_collider_y(node: Node) -> float:
 func test_schematic() -> void:
 	_setup()
 	Economy.from_dict({"money": 50000, "day": 1})
-	var node := plot.place(GameData.building(&"schematic_slab"), Vector2i(0, 0), 0)
+	var node := plot.place(GameData.building(&"schematic_slab"), Vector2i(0, 0) * Plot.SUB, 0)
 	var plan := node as Schematic
 	check(plan != null, "the slab plan was not placed")
 	await step(4)
 
-	# A 2 x 1 x 2 plan holds four cubic metres and starts as a drawing.
-	check_near(plan.capacity_m3(), 4.0, 0.0001, "the plan wants the wrong volume")
+	# A 2 x 1 x 2 plan is four cubic metres of shape, and takes a tenth of
+	# that (the balance file's share) in material. It starts as a drawing.
+	var cap := 4.0 * Schematic.MATERIAL_SHARE
+	check_near(plan.capacity_m3(), cap, 0.0001, "the plan wants the wrong volume")
+	check_near(Schematic.MATERIAL_SHARE, 0.1, 0.0001, "a plan should take a tenth of its volume")
 	check(not plan.solid, "an empty plan is already solid")
 	check_eq(plan.material, &"", "an empty plan already has a material")
 	check(plan.can_accept(&"lumber_pine"), "an empty plan refused lumber")
 	check(plan.can_accept(&"ingot_iron"), "an empty plan refused metal")
 
 	# The first piece in decides what it is made of.
-	var first := spawn(&"lumber_pine", Vector3(0, 6, 0), Solid.box(Vector3(0.5, 2.0, 0.5)))
-	check_near(first.volume(), 0.5, 0.0001, "test piece is the wrong size")
+	var first := spawn(&"lumber_pine", Vector3(0, 6, 0), Solid.box(Vector3(0.25, cap / 8.0 / 0.0625, 0.25)))
+	check_near(first.volume(), cap / 8.0, 0.0001, "test piece is the wrong size")
 	check(plan.accept_item(first), "the plan refused the first piece")
 	check_eq(plan.material, &"lumber_pine", "the plan did not take its material from the first piece")
-	check_near(plan.filled_m3, 0.5, 0.0001, "the plan filled by the wrong amount")
+	check_near(plan.filled_m3, cap / 8.0, 0.0001, "the plan filled by the wrong amount")
 	check(not plan.solid, "a plan one eighth full turned solid")
 
 	# And from then on it takes nothing else.
 	check(not plan.can_accept(&"lumber_oak"), "a pine plan accepted oak")
-	var wrong := spawn(&"lumber_oak", Vector3(0, 6, 0), Solid.box(Vector3(0.5, 2.0, 0.5)))
+	var wrong := spawn(&"lumber_oak", Vector3(0, 6, 0), Solid.box(Vector3(0.25, 2.0, 0.25)))
 	check(not plan.accept_item(wrong), "a pine plan swallowed oak")
-	check_near(plan.filled_m3, 0.5, 0.0001, "a refused piece still filled the plan")
+	check_near(plan.filled_m3, cap / 8.0, 0.0001, "a refused piece still filled the plan")
 
 	# Fill it the rest of the way, with the last piece deliberately too big.
-	var second := spawn(&"lumber_pine", Vector3(0, 6, 0), Solid.box(Vector3(1.0, 3.0, 1.0)))
+	var second := spawn(&"lumber_pine", Vector3(0, 6, 0), Solid.box(Vector3(0.25, cap * 0.75 / 0.0625, 0.25)))
 	check(plan.accept_item(second), "the plan refused more of its own material")
-	check_near(plan.filled_m3, 3.5, 0.0001, "the plan did not take the whole piece")
+	check_near(plan.filled_m3, cap * 0.875, 0.0001, "the plan did not take the whole piece")
 
-	var oversized := spawn(&"lumber_pine", Vector3(0, 6, 0), Solid.box(Vector3(1.0, 2.0, 1.0)))
+	var oversized := spawn(&"lumber_pine", Vector3(0, 6, 0), Solid.box(Vector3(0.25, cap * 0.5 / 0.0625, 0.25)))
 	var oversized_volume := oversized.volume()
 	check(oversized_volume > plan.remaining_m3(), "the oversized piece is not actually oversized")
 	check(plan.accept_item(oversized), "the plan refused the last piece")
 	await step(4)
 	check(plan.solid, "a full plan did not turn solid")
-	check_near(plan.filled_m3, 4.0, 0.0001, "a full plan holds the wrong volume")
+	check_near(plan.filled_m3, cap, 0.0001, "a full plan holds the wrong volume")
 	# The offcut comes back rather than vanishing into the wall.
-	check_near(loose_volume(&"lumber_pine"), oversized_volume - 0.5, 0.0001,
+	check_near(loose_volume(&"lumber_pine"), oversized_volume - cap / 8.0, 0.0001,
 		"the offcut from the last piece was not returned")
 	check(not plan.can_accept(&"lumber_pine"), "a finished plan still takes material")
 
@@ -2595,8 +2615,8 @@ func test_schematic() -> void:
 	var before := loose_volume(&"lumber_pine")
 	var reclaimed := plan.reclaim()
 	await step(4)
-	check_near(reclaimed, 4.0, 0.0001, "reclaiming returned the wrong volume")
-	check_near(loose_volume(&"lumber_pine") - before, 4.0, 0.0001,
+	check_near(reclaimed, cap, 0.0001, "reclaiming returned the wrong volume")
+	check_near(loose_volume(&"lumber_pine") - before, cap, 0.0001,
 		"the material did not come back out of the plan")
 	done()
 
@@ -2808,8 +2828,8 @@ func test_trader_and_cache() -> void:
 func test_save_summary() -> void:
 	_setup()
 	await step(2)
-	plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0)
-	plot.place(GameData.building(&"storage"), Vector2i(4, -6), 0)
+	plot.place(GameData.building(&"sawmill"), Vector2i(0, 0) * Plot.SUB, 0)
+	plot.place(GameData.building(&"storage"), Vector2i(4, -6) * Plot.SUB, 0)
 	Economy.from_dict({"money": 12345, "day": 6})
 	var path := "user://test_summary.json"
 	check(SaveSystem.save_game(plot, null, path), "saving failed")
@@ -2881,12 +2901,14 @@ func test_prompt_keys() -> void:
 	check_eq(keys[0][1] if not keys.is_empty() else "", "E", "the key should be E")
 	var joined := "".join(parts.map(func(p): return ("[%s]" % p[1]) if p[0] == "key" else p[1]))
 	check_eq(joined, "Till: [E] pay $40 for [2/5] boxes", "parsing should lose no text")
-	# Every key the controls sheet names must draw as a keycap.
+	# Every action the controls sheet names is a real action, and its key
+	# draws as a keycap.
 	for group in KeyGuide.GROUPS:
 		for row in group.rows:
 			for k in row[0]:
-				if k != "/":
-					check(UIKit.is_key_text(String(k)), "controls sheet names '%s', which is not a key" % k)
+				if k is StringName:
+					check(not Controls.info(k).is_empty(), "controls sheet names '%s', which is not an action" % k)
+					check(UIKit.is_key_text(Controls.key(k)), "'%s' is on '%s', which is not a key" % [k, Controls.key(k)])
 	for state in ["foot", "carrying", "dragging", "build", "drive", "crane"]:
 		check(not KeyGuide.hints_for(state).is_empty(), "no hints for %s" % state)
 	done()
@@ -2919,7 +2941,7 @@ func test_tutorial() -> void:
 	check_eq(t.current().get("id"), &"pick", "then pick up the wood")
 	# A building on the plot means the player got there somehow; everything
 	# before it is done, without being asked to go back and do it.
-	plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0)
+	plot.place(GameData.building(&"sawmill"), Vector2i(0, 0) * Plot.SUB, 0)
 	t.evaluate()
 	for id in [&"pick", &"sell", &"store", &"build", &"place"]:
 		check(t.done(id), "placing a building should also tick '%s'" % id)
@@ -2948,10 +2970,10 @@ func test_save_load() -> void:
 	PlayerState.give_tool(&"steel_axe")
 	PlayerState.try_unlock(&"furnace")
 	PlayerState.try_unlock(&"workbench")
-	plot.place(GameData.building(&"workbench"), Vector2i(0, 0), 0)
-	plot.place(GameData.building(&"sawmill"), Vector2i(8, 8), 0)
-	plot.place(GameData.building(&"conveyor"), Vector2i(-6, 0), 1)
-	plot.place(GameData.building(&"storage"), Vector2i(4, -6), 0)
+	plot.place(GameData.building(&"workbench"), Vector2i(0, 0) * Plot.SUB, 0)
+	plot.place(GameData.building(&"sawmill"), Vector2i(8, 8) * Plot.SUB, 0)
+	plot.place(GameData.building(&"conveyor"), Vector2i(-6, 0) * Plot.SUB, 1)
+	plot.place(GameData.building(&"storage"), Vector2i(4, -6) * Plot.SUB, 0)
 	await step(2)
 	var mill: Machine = plot.machines()[0]
 	mill.stock[&"lumber"] = 0.42
@@ -3005,7 +3027,7 @@ func test_expansion() -> void:
 	check(plot.try_expand(), "could not expand with plenty of money")
 	check(plot.half_extent > before_extent, "expansion did not grow the plot")
 	check(manager.per_plot_cap > before_cap, "expansion did not raise the item cap")
-	var far_cell := Vector2i(int(before_extent) + 2, 0)
+	var far_cell := Vector2i(int(before_extent) + 2, 0) * Plot.SUB
 	check(plot.in_bounds(far_cell), "newly gained ground is still out of bounds")
 	done()
 
@@ -3453,14 +3475,14 @@ func test_rig_home() -> void:
 func test_build_edit() -> void:
 	_setup()
 	Economy.from_dict({"money": 100000, "day": 1})
-	var belt := plot.place(GameData.building(&"conveyor"), Vector2i(0, 0), 0) as Conveyor
-	var mill := plot.place(GameData.building(&"sawmill"), Vector2i(-8, -8), 0)
+	var belt := plot.place(GameData.building(&"conveyor"), Vector2i(0, 0) * Plot.SUB, 0) as Conveyor
+	var mill := plot.place(GameData.building(&"sawmill"), Vector2i(-8, -8) * Plot.SUB, 0)
 	check(mill != null, "the mill was not placed")
 	await step(2)
 	var belt_at := belt.global_position
 	var index := plot.index_at_world(belt_at)
 	check(index >= 0, "the belt is not on the occupancy grid")
-	check_eq(plot.edit(index, Vector2i(3, 0), Vector3i.ZERO, Vector3i(1, 1, 4), 0.0), "", "moving the belt failed")
+	check_eq(plot.edit(index, Vector2i(3, 0) * Plot.SUB, Vector3i.ZERO, Vector3i(1, 1, 4), 0.0), "", "moving the belt failed")
 	await step(2)
 	var moved := plot.placed[index].node as Conveyor
 	check(plot.index_at_world(moved.global_position) == index, "the moved belt is not where the grid says")
@@ -3468,7 +3490,7 @@ func test_build_edit() -> void:
 
 	# Belts stretch, and stretching is free.
 	var money := Economy.money
-	check_eq(plot.edit(index, Vector2i(3, 0), Vector3i.ZERO, Vector3i(1, 1, 8), 0.0), "", "stretching the belt failed")
+	check_eq(plot.edit(index, Vector2i(3, 0) * Plot.SUB, Vector3i.ZERO, Vector3i(1, 1, 8), 0.0), "", "stretching the belt failed")
 	await step(2)
 	var long := plot.placed[index].node as Conveyor
 	check_near(long.length, 8.0, 0.001, "the stretched belt is %.1f m" % long.length)
@@ -3476,14 +3498,14 @@ func test_build_edit() -> void:
 	check(Plot.size_limits(GameData.building(&"sawmill")).is_empty(), "a machine can be resized")
 
 	# Turned a quarter, and lifted.
-	check_eq(plot.edit(index, Vector2i(3, 0), Vector3i(0, 1, 0), Vector3i(1, 1, 8), 0.5), "", "turning the belt failed")
+	check_eq(plot.edit(index, Vector2i(3, 0) * Plot.SUB, Vector3i(0, 1, 0), Vector3i(1, 1, 8), 0.5), "", "turning the belt failed")
 	await step(2)
 	var turned: Node3D = plot.placed[index].node
-	check_near(turned.position.y - plot.to_local(plot.cell_to_world(Vector2i(3, 0), Vector3i(1, 1, 8), Vector3i(0, 1, 0))).y,
+	check_near(turned.position.y - plot.to_local(plot.cell_to_world(Vector2i(3, 0) * Plot.SUB, Vector3i(1, 1, 8), Vector3i(0, 1, 0))).y,
 		0.5, 0.001, "the belt was not lifted")
 	# A move off the plot is refused and changes nothing.
 	var before: Dictionary = plot.placed[index].duplicate()
-	var err := plot.edit(index, Vector2i(9999, 9999), Vector3i(0, 1, 0), Vector3i(1, 1, 8), 0.5)
+	var err := plot.edit(index, Vector2i(9999, 9999) * Plot.SUB, Vector3i(0, 1, 0), Vector3i(1, 1, 8), 0.5)
 	check(err != "", "a belt was moved off the plot")
 	check_eq(plot.placed[index].cell, before.cell, "a refused move still moved the belt")
 
@@ -3752,7 +3774,8 @@ func test_bridge_speed() -> void:
 	truck.global_position = Vector3(0, bridge.deck_height(0.5) + truck.spawn_height(), 0)
 	await step(30)
 	check(truck.on_bridge(), "a truck on the deck is not on the bridge")
-	check_near(truck.speed_bonus(), Terrain.ROAD_SPEED_BONUS + 0.10, 0.0001, "the bridge bonus is not the road's plus 10%")
+	check_near(truck.speed_bonus(), Terrain.ROAD_SPEED_BONUS + Balance.num("vehicles.bridge_extra_bonus", 0.10), 0.0001,
+		"the bridge bonus is not the road's plus the balance file's extra")
 	truck.move_to(Transform3D(Basis(), Vector3(0, 0, 30) + Vector3(0, truck.spawn_height(), 0)))
 	await step(5)
 	check(not truck.on_bridge(), "a truck off to the side counts as on the bridge")
@@ -4029,7 +4052,7 @@ func test_vehicle_pad() -> void:
 	plot.vehicle_host = world
 	check(PlayerState.try_buy_vehicle(), "could not buy the hauler")
 	check(PlayerState.owns_vehicle(), "buying the hauler did not register")
-	var node := plot.place(GameData.building(&"vehicle_pad"), Vector2i(2, 2), 0)
+	var node := plot.place(GameData.building(&"vehicle_pad"), Vector2i(2, 2) * Plot.SUB, 0)
 	var pad := node as VehiclePad
 	check(pad != null, "the pad was not placed")
 	await step(4)
@@ -4085,7 +4108,7 @@ func test_vehicle_catalogue() -> void:
 		if x > 12:
 			x = -12
 			row += 11
-		var pad := plot.place(pad_def, Vector2i(x, row), 0) as VehiclePad
+		var pad := plot.place(pad_def, Vector2i(x, row) * Plot.SUB, 0) as VehiclePad
 		x += 5
 		check(pad != null, "could not place the %s" % pad_def.display_name)
 		if pad == null:
@@ -4173,12 +4196,12 @@ func test_building_copies() -> void:
 	Economy.from_dict({"money": 1000, "day": 1})
 	PlayerState.reset()
 	var sander := GameData.building(&"sander")
-	check(plot.placement_error(sander, Vector2i(-8, -8), 0) != "", "a sander was buildable without buying one")
+	check(plot.placement_error(sander, Vector2i(-8, -8) * Plot.SUB, 0) != "", "a sander was buildable without buying one")
 	PlayerState.add_copy(&"sander")
-	var first := plot.place(sander, Vector2i(-8, -8), 0)
+	var first := plot.place(sander, Vector2i(-8, -8) * Plot.SUB, 0)
 	check(first != null, "a bought sander could not be built")
 	check_eq(Economy.money, 1000, "building a bought sander cost money")
-	check(plot.place(sander, Vector2i(0, -8), 0) == null, "one sander bought, two built")
+	check(plot.place(sander, Vector2i(0, -8) * Plot.SUB, 0) == null, "one sander bought, two built")
 	check(plot.remove(first), "the sander would not come down")
 	check_eq(PlayerState.spare_count(&"sander"), 1, "taking the sander down did not give the copy back")
 	check_eq(Economy.money, 1000, "taking a bought sander down paid out money")
@@ -4191,9 +4214,9 @@ func test_building_copies() -> void:
 			check_eq(d.tier, 2, "a T2 crusher box offered a crusher at T%d" % d.tier)
 			t2 = d
 	check(t2 != null, "the T2 crusher is not offered to build")
-	check(plot.placement_error(GameData.building(&"crusher"), Vector2i(4, -8), 0) != "",
+	check(plot.placement_error(GameData.building(&"crusher"), Vector2i(4, -8) * Plot.SUB, 0) != "",
 		"a T2 crusher made a T1 crusher buildable")
-	var crusher := plot.place(t2, Vector2i(4, -8), 0) as InlineMachine
+	var crusher := plot.place(t2, Vector2i(4, -8) * Plot.SUB, 0) as InlineMachine
 	check(crusher != null, "the T2 crusher could not be built")
 	await step(2)
 	if crusher != null:
@@ -4201,7 +4224,7 @@ func test_building_copies() -> void:
 	# Shapes: free, as many as you like.
 	var block := GameData.building(&"schematic_block")
 	for i in 5:
-		check(plot.place(block, Vector2i(-12 + i * 2, 6), 0) != null, "shape %d could not be built" % i)
+		check(plot.place(block, Vector2i(-12 + i * 2, 6) * Plot.SUB, 0) != null, "shape %d could not be built" % i)
 	check_eq(Economy.money, 1000, "shapes cost money")
 	# Saved and loaded, the tier and the spare copies survive.
 	var saved_plot := plot.to_dict()
@@ -4699,17 +4722,17 @@ func test_full_base() -> void:
 	# splitter, storage and a workbench, all running at once.
 	for id in [&"furnace", &"crusher", &"sander", &"refiner", &"workbench"]:
 		PlayerState.try_unlock(id)
-	plot.place(GameData.building(&"sawmill"), Vector2i(-10, -8), 0)
-	plot.place(GameData.building(&"sander"), Vector2i(-7, -8), 0)
-	plot.place(GameData.building(&"crusher"), Vector2i(-2, -8), 0)
-	plot.place(GameData.building(&"furnace"), Vector2i(1, -8), 0)
-	plot.place(GameData.building(&"refiner"), Vector2i(4, -8), 0)
-	plot.place(GameData.building(&"splitter"), Vector2i(0, 2), 0)
-	plot.place(GameData.building(&"storage"), Vector2i(8, 2), 0)
-	plot.place(GameData.building(&"workbench"), Vector2i(8, -8), 0)
-	plot.place(GameData.building(&"conveyor"), Vector2i(-10, 2), 0)
-	plot.place(GameData.building(&"conveyor"), Vector2i(-4, 2), 0)
-	plot.place(GameData.building(&"conveyor"), Vector2i(4, 2), 0)
+	plot.place(GameData.building(&"sawmill"), Vector2i(-10, -8) * Plot.SUB, 0)
+	plot.place(GameData.building(&"sander"), Vector2i(-7, -8) * Plot.SUB, 0)
+	plot.place(GameData.building(&"crusher"), Vector2i(-2, -8) * Plot.SUB, 0)
+	plot.place(GameData.building(&"furnace"), Vector2i(1, -8) * Plot.SUB, 0)
+	plot.place(GameData.building(&"refiner"), Vector2i(4, -8) * Plot.SUB, 0)
+	plot.place(GameData.building(&"splitter"), Vector2i(0, 2) * Plot.SUB, 0)
+	plot.place(GameData.building(&"storage"), Vector2i(8, 2) * Plot.SUB, 0)
+	plot.place(GameData.building(&"workbench"), Vector2i(8, -8) * Plot.SUB, 0)
+	plot.place(GameData.building(&"conveyor"), Vector2i(-10, 2) * Plot.SUB, 0)
+	plot.place(GameData.building(&"conveyor"), Vector2i(-4, 2) * Plot.SUB, 0)
+	plot.place(GameData.building(&"conveyor"), Vector2i(4, 2) * Plot.SUB, 0)
 	check_eq(plot.placed.size(), 11, "test base was not fully built")
 	check_eq(plot.inline_machines().size(), 5, "the tunnel machines were not all placed")
 	await step(10)
@@ -4776,3 +4799,550 @@ func _make_player() -> Player:
 	p.manager = manager
 	p.plot = plot
 	return p
+
+# --- The September list ---------------------------------------------------------
+
+func test_controls() -> void:
+	var original := Controls.to_dict()
+	Controls.reset()
+	check_eq(Controls.key(&"use"), "E", "use should default to E")
+	check_eq(Controls.key(&"pause"), "Esc", "pause should show as Esc")
+	check_eq(Controls.key(&"remove_selected"), "Del", "delete should show as Del")
+	# Rebinding moves the action to the new key, everywhere.
+	Controls.set_binding(&"use", ["R"])
+	var r := InputEventKey.new()
+	r.physical_keycode = KEY_R
+	r.pressed = true
+	var e := InputEventKey.new()
+	e.physical_keycode = KEY_E
+	e.pressed = true
+	check(Controls.pressed(r, &"use"), "R did not do 'use' after rebinding")
+	check(not Controls.pressed(e, &"use"), "E still did 'use' after rebinding it away")
+	check(Controls.pressed(e, &"turn_cw"), "rebinding use should not move the turn key")
+	# Prompts draw the key that does the job now.
+	var parts := UIKit.parse_keys("Till: [E] pay")
+	check_eq(String(parts[1][1]), "R", "a prompt's [E] should show the rebound key")
+	# A mouse button can be bound, and a modifier combination.
+	Controls.set_binding(&"crane", ["Mouse4", "Shift+C"])
+	var mb := InputEventMouseButton.new()
+	mb.button_index = MOUSE_BUTTON_XBUTTON1
+	mb.pressed = true
+	check(Controls.pressed(mb, &"crane"), "a mouse button binding did not work")
+	var sc := InputEventKey.new()
+	sc.physical_keycode = KEY_C
+	sc.shift_pressed = true
+	sc.pressed = true
+	check(Controls.pressed(sc, &"crane"), "a Shift+C binding did not work")
+	check_eq(Controls.label_for_event(sc), "Shift+C", "a pressed combination is not named as it is written")
+	# Round trip through the config file, comments and all.
+	var path := "user://test_config.cfg"
+	var was_path: String = Settings.path
+	Settings.path = path
+	check(Settings.save_to(path), "the config file could not be written")
+	var text := FileAccess.get_file_as_string(path)
+	check(text.contains("[controls]") and text.contains("[settings]"), "the config file lacks a section")
+	check(text.contains("; ") and text.contains("use=\"R\""), "the config file lacks its comments or the rebound key")
+	Controls.reset()
+	Settings.load_from(path)
+	check_eq(Controls.key(&"use"), "R", "a rebound key did not survive the config file")
+	check_eq(Controls.keys_text(&"crane"), "Mouse4 / Shift+C", "two bindings did not survive the config file")
+	# Junk in the file falls back rather than breaking anything.
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("[controls]\nuse=\"NotAKey\"\njump=\"Space, LMB\"\n")
+	f.close()
+	Settings.load_from(path)
+	check_eq(Controls.keys_text(&"use"), "unbound", "a key that does not exist should leave the action unbound")
+	check_eq(Controls.keys_text(&"jump"), "Space / LMB", "a hand-written binding was not read")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	Settings.path = was_path
+	Controls.apply(original)
+	done()
+
+func test_build_menu_and_pick() -> void:
+	_setup()
+	Economy.from_dict({"money": 50000, "day": 1})
+	var cam := Camera3D.new()
+	world.add_child(cam)
+	var body := Node3D.new()
+	world.add_child(body)
+	var bs := BuildSystem.new()
+	bs.setup(plot, cam, body)
+	world.add_child(bs)
+	await step(2)
+	bs.set_active(true)
+	check(bs.active, "build mode did not open")
+	check(bs.current() == null, "build mode opened with something in hand")
+	check(not bs.try_place(), "placed something with an empty hand")
+	var opened: Array = []
+	bs.menu_toggled.connect(func(o: bool): opened.append(o))
+	bs.toggle_menu()
+	check(bs.menu_open and opened == [true], "the build menu did not open")
+	var belt := GameData.building(&"conveyor")
+	bs.choose(belt)
+	bs.set_menu(false)
+	check(bs.current() != null and bs.current().id == &"conveyor", "choosing from the menu did not put it in hand")
+	# Copy: a stretched, turned belt on the plot is picked up exactly.
+	var node := plot.place(belt, Vector2i(0, 0), Vector3i(0, 1, 0))
+	var index := plot.placed.size() - 1
+	check_eq(plot.edit(index, Vector2i(0, 0), Vector3i(0, 1, 0), Vector3i(1, 1, 9), 0.0), "", "stretching the belt failed")
+	await step(2)
+	var rec: Dictionary = plot.placed[index]
+	cam.global_transform = Transform3D(Basis(), (rec.node as Node3D).global_position + Vector3(0, 6, 0.01)).looking_at((rec.node as Node3D).global_position, Vector3.UP)
+	await step(2)
+	var said := bs.pick_block()
+	check(said.begins_with("copied"), "the copy key did not copy the belt: %s" % said)
+	check(bs.current() != null and bs.current().size == Vector3i(1, 1, 9), "the copy is not the stretched belt")
+	check_eq(bs.rot, Vector3i(0, 1, 0), "the copy did not take the belt's turn")
+	# Leaving and coming back is empty-handed again.
+	bs.set_active(false)
+	check(not bs.menu_open, "leaving build mode left the menu open")
+	bs.set_active(true)
+	check(bs.current() == null, "build mode reopened with something in hand")
+	bs.set_active(false)
+	done()
+
+func test_fine_grid() -> void:
+	_setup()
+	Economy.from_dict({"money": 50000, "day": 1})
+	check_near(Plot.SNAP, 0.25, 0.0001, "the grid should be a quarter of a metre")
+	check_eq(Plot.SUB, 4, "four grid steps to the metre")
+	var belt := GameData.building(&"conveyor")
+	var a := plot.place(belt, Vector2i(0, 0), 0)
+	var b := plot.place(belt, Vector2i(1, 0), 0)
+	check(a != null and b != null, "belts a quarter metre apart could not both be placed")
+	if a != null and b != null:
+		check_near(b.position.x - a.position.x, 0.25, 0.001, "one grid step is not a quarter metre")
+	# Every sixteenth of a square is marked taken under a building.
+	check_eq(plot.indices_at_cell(Vector2i(3, 15)).size(), 2, "the two belts do not share the cells they overlap")
+	# An old save counted cells in metres: it comes back where it was.
+	var old := {"tier": 0, "buildings": [{"id": "conveyor", "cell": [2, -3], "rot": [0, 0, 0]}]}
+	plot.from_dict(old)
+	await step(2)
+	check_eq(plot.placed[0].cell, Vector2i(8, -12), "an old save's cell was not moved to the fine grid")
+	var saved := plot.to_dict()
+	check_near(float(saved.get("grid", 0.0)), 0.25, 0.0001, "a save does not say what grid it is on")
+	plot.from_dict(saved)
+	await step(2)
+	check_eq(plot.placed[0].cell, Vector2i(8, -12), "a new save's cell moved on reload")
+	done()
+
+func test_market_by_material() -> void:
+	Economy.from_dict({"money": 0, "day": 1})
+	for d in [1, 8, 15, 22, 29]:
+		Economy.from_dict({"money": 0, "day": d})
+		check_near(Economy.price_multiplier(&"wood_mahogany"), Economy.price_multiplier(&"lumber_mahogany"), 0.0001,
+			"mahogany logs and lumber moved differently")
+		check_near(Economy.price_multiplier(&"ore_iron"), Economy.price_multiplier(&"ingot_iron"), 0.0001,
+			"iron ore and bars moved differently")
+	check_eq(Economy.market_key(&"lumber_pine"), &"pine", "lumber is not priced as its material")
+	# Cheap swings, dear barely moves.
+	var cheap := Economy.volatility(&"pine")
+	var dear := Economy.volatility(&"diamond")
+	check(cheap > dear * 3.0, "pine (%.2f) should swing far more than diamond (%.2f)" % [cheap, dear])
+	var spread_cheap := 0.0
+	var spread_dear := 0.0
+	for w in 20:
+		Economy.from_dict({"money": 0, "day": 1 + w * Economy.WEEK})
+		spread_cheap = maxf(spread_cheap, absf(Economy.price_multiplier(&"wood_pine") - 1.0))
+		spread_dear = maxf(spread_dear, absf(Economy.price_multiplier(&"gem_diamond") - 1.0))
+	check(spread_cheap > spread_dear * 2.0, "over twenty weeks pine moved %.2f and diamond %.2f" % [spread_cheap, spread_dear])
+	# One row per material on the board.
+	var names: Array = []
+	for row in Economy.market_rows():
+		check(not names.has(row.id), "the market board lists %s twice" % row.id)
+		names.append(row.id)
+	check(names.has(&"mahogany") and not names.has(&"lumber_mahogany"), "the board is not by material")
+	Economy.from_dict({"money": 0, "day": 1})
+	done()
+
+func _branchy_trunk() -> LooseItem:
+	var trunk := spawn(&"wood_pine", Vector3(0, 1, 0), Solid.cylinder(0.2, 0.15, 3.0))
+	trunk.add_limb(Vector3(0, 0.5, 0), Vector3(1, 0.5, 0), 0.06, 1.2)
+	trunk.add_limb(Vector3(0, 1.0, 0), Vector3(-1, 0.4, 0), 0.05, 1.0)
+	trunk.owned = true
+	return trunk
+
+func test_branches_counted() -> void:
+	_setup()
+	Economy.from_dict({"money": 0, "day": 1})
+	var trunk := _branchy_trunk()
+	var bare := Economy.price_of(&"wood_pine", trunk.dims)
+	var branch_pay := Economy.price_of(&"wood_pine", trunk.limb_dims(0)) + Economy.price_of(&"wood_pine", trunk.limb_dims(1))
+	var yard := SellYard.new()
+	yard.setup(manager, null)
+	world.add_child(yard)
+	await step(2)
+	yard.sell_all([trunk])
+	check_eq(Economy.money, bare + branch_pay, "a trunk's branches were not paid for")
+	var bin := StorageBin.new()
+	bin.setup(manager, GameData.building(&"storage"), 0)
+	world.add_child(bin)
+	await step(2)
+	var second := _branchy_trunk()
+	var total := second.volume() + second.limb_volume()
+	check(bin.accept_item(second), "the bin refused a trunk with branches")
+	var stored := 0.0
+	for c in bin.contents:
+		stored += Solid.volume(c.dims)
+	check_near(stored, total, 0.0001, "the bin lost a trunk's branches")
+	done()
+
+func test_felled_no_leaves() -> void:
+	_setup()
+	var tree := _make_tree(7.0, 0.34, 0.6, 5)
+	tree.foliage_style = &"ball"
+	world.add_child(tree)
+	await step(2)
+	tree.fell(Vector3(0, 0, 5))
+	await step(4)
+	var trunk: LooseItem = manager.free_items()[0]
+	check(trunk.limbs.size() > 0, "the felled trunk has no branches")
+	var spheres := 0
+	for n in trunk.get_children():
+		if n is MeshInstance3D and ((n as MeshInstance3D).mesh is SphereMesh):
+			spheres += 1
+	check_eq(spheres, 0, "the felled trunk still has its leaves")
+	done()
+
+func test_machine_output_size() -> void:
+	_setup()
+	Economy.from_dict({"money": 90000, "day": 1})
+	for pair in [[&"sawmill", &"wood_pine", 2], [&"furnace", &"ore_iron", 4], [&"gem_cutter", &"gem_quartz", 2]]:
+		var def := GameData.building(pair[0])
+		var m := plot.place(def, Vector2i(0, 0), 0, false) as InlineMachine
+		await step(2)
+		check(m.output_options().size() >= 3, "the %s has no output sizes" % pair[0])
+		var n: int = pair[2]
+		while m._pieces() != n:
+			m.cycle_output()
+		var dims := Solid.cylinder(0.2, 0.2, 2.0) if pair[1] == &"wood_pine" else Solid.cube(0.3)
+		if pair[1] == &"wood_pine":
+			dims = Solid.with_finish(dims, &"sanded")
+		var outs := m._cut_to_size(m.work({"id": pair[1], "dims": dims, "owned": true, "plot": 0, "changed": false, "ready": 0.0}))
+		check_eq(outs.size(), n, "the %s set to %d pieces made %d" % [pair[0], n, outs.size()])
+		var single := m.work({"id": pair[1], "dims": dims, "owned": true, "plot": 0, "changed": false, "ready": 0.0})
+		var one := Solid.volume(single[0].dims)
+		var sum := 0.0
+		for o in outs:
+			sum += Solid.volume(o.dims)
+		check_near(sum, one, 0.0001, "cutting the %s's output to size lost volume" % pair[0])
+		check_eq(m.to_dict().get("output", -1), m.output_size, "the output size is not saved")
+		plot.remove(m)
+	# The crusher goes finer.
+	var crusher := plot.place(GameData.building(&"crusher"), Vector2i(0, 0), 0, false) as InlineMachine
+	await step(2)
+	var coarse := crusher.work({"id": &"ore_iron", "dims": Solid.cube(0.5), "owned": true, "plot": 0, "changed": false, "ready": 0.0}).size()
+	crusher.cycle_output()
+	crusher.cycle_output()
+	var fine := crusher.work({"id": &"ore_iron", "dims": Solid.cube(0.5), "owned": true, "plot": 0, "changed": false, "ready": 0.0}).size()
+	check(fine > coarse, "fine crushing made no more lumps (%d vs %d)" % [fine, coarse])
+	done()
+
+func test_gearbox() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"log_truck")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	await step(60)
+	check(truck.gears.size() >= 3, "a truck has no gears")
+	check(truck.rear_steer > 0.0, "the log truck's rear axle does not steer")
+	check(truck.max_steer_angle >= 0.65, "the log truck still turns like a barge (%.2f)" % truck.max_steer_angle)
+	# Automatic: it pulls away in first and changes up as it goes.
+	truck.autopilot = true
+	truck.input_throttle = 1.0
+	await step(20)
+	check_eq(truck.gear, 0, "the automatic did not pull away in first")
+	var top_gear := 0
+	for k in 100:
+		await step(1)
+		top_gear = maxi(top_gear, truck.gear)
+	check(top_gear >= 2, "the automatic did not change up (gear %d at %.1f m/s)" % [top_gear + 1, truck.linear_velocity.length()])
+	truck.input_throttle = 0.0
+	truck.input_brake = true
+	await step(60)
+	# Manual: only the player changes gear.
+	Settings.set_value(&"manual_gearbox", true, false)
+	check(truck.manual_gearbox(), "the manual gearbox setting did not take")
+	var held_gear := truck.gear
+	await step(60)
+	check_eq(truck.gear, held_gear, "the manual gearbox changed gear by itself")
+	truck.shift_gear(-10)
+	check_eq(truck.gear, 0, "shifting down did not stop at first")
+	truck.shift_gear(1)
+	check_eq(truck.gear, 1, "shifting up did not go up one")
+	Settings.set_value(&"manual_gearbox", false, false)
+	var loader := Hauler.new()
+	loader.setup(manager, 0, &"loader")
+	world.add_child(loader)
+	await step(2)
+	check(not loader.manual_gearbox(), "the loader should always be automatic")
+	done()
+
+func test_vehicle_upgrades() -> void:
+	_setup(false)
+	PlayerState.reset()
+	for track in [&"engine", &"tyres"]:
+		check(GameData.upgrade_tracks.has(track), "there is no %s upgrade" % track)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"pickup")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	await step(10)
+	var grip0 := (truck.wheel_bodies[0].physics_material_override as PhysicsMaterial).friction
+	var engine0 := truck.engine_scale()
+	Economy.from_dict({"money": 100000, "day": 1})
+	check(PlayerState.try_upgrade(&"engine"), "could not buy the engine upgrade")
+	check(PlayerState.try_upgrade(&"tyres"), "could not buy the tyre upgrade")
+	check(truck.engine_scale() > engine0, "the engine upgrade did nothing")
+	var grip1 := (truck.wheel_bodies[0].physics_material_override as PhysicsMaterial).friction
+	check(grip1 > grip0, "new tyres did not grip better (%.2f -> %.2f)" % [grip0, grip1])
+	var buggy := Hauler.new()
+	buggy.setup(manager, 0, &"buggy")
+	world.add_child(buggy)
+	await step(2)
+	check(buggy.rig != null and is_equal_approx(buggy.rig.winch_power_kg, 1000.0), "the dune buggy has no 1 t winch")
+	check(buggy.rig != null and not buggy.rig.has_crane(), "the dune buggy should not have a crane")
+	# Both are on the store's shelf.
+	var sold: Array = []
+	for p in GameData.store_products():
+		if String(p.get("kind", "")) == "upgrade":
+			sold.append(StringName(p.target))
+	check(sold.has(&"engine") and sold.has(&"tyres"), "the store does not sell the vehicle upgrades")
+	done()
+
+func test_recover_limits() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"hauler")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	await step(30)
+	check_eq(truck.try_recover(), "", "recovering was refused")
+	check(truck.try_recover() != "", "recovering twice at once was allowed")
+	await step(70)
+	check_eq(truck.try_recover(), "", "recovering a second later was refused")
+	await step(70)
+	truck.rig.set_outriggers(true)
+	check(truck.try_recover() != "", "recovering was allowed on the outriggers")
+	truck.rig.set_outriggers(false)
+	done()
+
+func test_crane_from_trailer() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"log_truck")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	var trailer := Hauler.new()
+	trailer.setup(manager, 0, &"log_trailer")
+	world.add_child(trailer)
+	await step(2)
+	var behind := truck.hitch_point() + Vector3(0, 0, 0.6) - trailer.tongue_offset
+	trailer.global_position = Vector3(behind.x, trailer.spawn_height(), behind.z)
+	await step(90)
+	check_eq(truck.hitch(trailer), "", "the trailer would not hitch")
+	await step(30)
+	check(trailer.load_item(&"wood_pine", Solid.cylinder(0.2, 0.18, 2.0)), "the trailer would not take a log")
+	var log: LooseItem = trailer.cargo_list()[0]
+	# Someone in the cab: the trailer's settled load is fixed in place.
+	var driver := Node3D.new()
+	world.add_child(driver)
+	truck.driver = driver
+	await step(90)
+	check(trailer.is_fixed(log), "a driven trailer did not fix its load")
+	# Working the crane lets the trailer's load go, so it can be picked out.
+	truck.rig.set_operating(true)
+	await step(10)
+	check(not trailer.is_fixed(log) and log.state == LooseItem.State.FREE, "the trailer kept its load fixed under the crane")
+	var rig := truck.rig
+	var frame := truck.global_transform
+	rig.target = rig.clamp_target(frame.affine_inverse() * log.global_position)
+	for i in 900:
+		await step(1)
+		if rig.jaw_world().distance_to(log.global_position) < 0.3:
+			break
+	check(rig.jaw_world().distance_to(log.global_position) < 0.7, "the crane could not reach into the trailer (%.1f m off)" % rig.jaw_world().distance_to(log.global_position))
+	check_eq(rig.latch(), "", "the grapple would not close on the log in the trailer")
+	check(rig.holding(), "the crane did not take the log out of the trailer")
+	truck.driver = null
+	done()
+
+func test_loader_grapple() -> void:
+	_setup(false)
+	var v := Hauler.new()
+	v.setup(manager, 0, &"loader")
+	world.add_child(v)
+	v.global_position = Vector3(0, v.spawn_height(), 0)
+	await step(60)
+	var l := v.loader
+	check_eq(l.attachment, &"bucket", "the loader should start with its bucket")
+	var said := l.swap_attachment()
+	check_eq(l.attachment, &"grapple", "the grapple did not go on: %s" % said)
+	var tines := 0
+	for c in l.bucket.get_children():
+		if c is CollisionShape3D:
+			tines += 1
+	check(tines >= 5, "the grapple has no tines to lift on")
+	# A load in it stops the swap.
+	l.lift = l.lift_min
+	l.tilt = 0.0
+	await step(30)
+	var tip := l.bucket.global_transform * Vector3(0, 0.3, -l.depth * 0.6)
+	var log := spawn(&"wood_pine", tip + Vector3(0, 0.3, 0), Solid.cylinder(0.15, 0.15, 2.4))
+	log.global_transform = Transform3D(LooseItem.lying_basis(PI * 0.5), log.global_position)
+	await step(40)
+	if not l.held().is_empty():
+		check(l.swap_attachment().begins_with("empty"), "swapped with a log on the tines")
+		check_eq(l.attachment, &"grapple", "the grapple came off with a load on it")
+	manager.despawn(log)
+	await step(10)
+	var saved := v.to_dict()
+	check_eq(String(saved.loader[3]), "grapple", "the attachment is not saved")
+	l.swap_attachment()
+	check_eq(l.attachment, &"bucket", "the bucket did not go back on")
+	v.from_dict(saved)
+	await step(5)
+	check_eq(l.attachment, &"grapple", "loading did not put the grapple back on")
+	done()
+
+func test_winch_snap() -> void:
+	_setup(false)
+	var player := Player.new()
+	var cam := Camera3D.new()
+	cam.name = "Camera3D"
+	player.add_child(cam)
+	world.add_child(player)
+	player.global_position = Vector3(0, 0.1, 0)
+	await step(2)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"pickup")
+	world.add_child(truck)
+	truck.global_position = Vector3(4, truck.spawn_height(), 0)
+	await step(30)
+	var log := spawn(&"wood_pine", Vector3(0, 0.3, -9), Solid.cylinder(0.2, 0.2, 2.0))
+	await step(30)
+	# Aimed at the ground a metre to one side of the log.
+	cam.global_transform = Transform3D(Basis(), Vector3(0, 1.7, 0)).looking_at(Vector3(1.0, 0, -9.0), Vector3.UP)
+	var hit := player.winch_target(truck.rig)
+	check(not hit.is_empty() and hit.collider == log, "the winch did not find the log near the crosshair")
+	check_eq(player.hook_winch(truck.rig).begins_with("winch hooked"), true, "the winch did not hook the log")
+	check(truck.rig.anchor_body == log, "the winch hooked something else")
+	player.queue_free()
+	done()
+
+func test_rack_not_aimed() -> void:
+	_setup(false)
+	var player := Player.new()
+	var cam := Camera3D.new()
+	cam.name = "Camera3D"
+	player.add_child(cam)
+	world.add_child(player)
+	player.manager = manager
+	player.global_position = Vector3(0, 0.1, 0)
+	await step(2)
+	cam.position = Vector3(0, 1.65, 0)
+	var billet := spawn(&"wood_pine", Vector3(0, 1, -1.5), Solid.cylinder(0.08, 0.08, 0.6))
+	await step(2)
+	check(player.pick_up(billet), "could not pick up a billet")
+	await step(2)
+	var behind := spawn(&"ore_iron", Vector3(0, 0.3, -3.0), Solid.cube(0.3))
+	await step(10)
+	cam.look_at(behind.global_position, Vector3.UP)
+	var hit := player.aim_hit()
+	check(hit.is_empty() or hit.collider != billet, "the crosshair stopped on what is on the rack")
+	player.queue_free()
+	done()
+
+func test_plot_clear() -> void:
+	_setup(false)
+	var land := Terrain.new()
+	land.half_extent = 300.0
+	land.noise_seed = 20260921
+	land.roads = [[Vector3(-250, 0, 0), Vector3(0, 0, 0), Vector3(250, 0, 40)]]
+	land.reserve_clear_square(Vector3(0, 0.45, 0), 50.0, 0.45, 10.0)
+	world.add_child(land)
+	await step(2)
+	var worst := -INF
+	var roads := 0
+	for x in range(-50, 51, 5):
+		for z in range(-50, 51, 5):
+			worst = maxf(worst, land.height_at(float(x), float(z)))
+			if land.is_road(float(x), float(z)):
+				roads += 1
+	check(worst <= 0.46, "the land comes up to %.2f m inside the plot's square" % worst)
+	check_eq(roads, 0, "a road runs across the plot's square")
+	check(land.is_road(-150.0, 0.0) or land.is_road(-150.0, 6.0), "the road outside the plot is gone too")
+	var surface := RoadSurface.new()
+	surface.setup(land)
+	world.add_child(surface)
+	await step(2)
+	var space := world.get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(Vector3(0, 50, 0), Vector3(0, -50, 0), Layers.WORLD)
+	q.exclude = []
+	var hit := space.intersect_ray(q)
+	check(hit.is_empty() or (hit.position as Vector3).y < 0.5, "road surface laid across the plot")
+	done()
+
+func test_save_slots() -> void:
+	var was_slot := SaveSystem.slot
+	var was_chosen := SaveSystem.slot_chosen
+	check_eq(SaveSystem.SLOTS, 6, "there should be six save slots")
+	check(SaveSystem.slot_path(3).ends_with("slot_3.json"), "slot paths are wrong")
+	_setup()
+	var a := SaveSystem.slot_path(5)
+	var b := SaveSystem.slot_path(6)
+	for p in [a, b]:
+		SaveSystem.delete_save(p)
+	Economy.from_dict({"money": 111, "day": 3})
+	check(SaveSystem.save_game(plot, null, a), "could not save to slot 5")
+	Economy.from_dict({"money": 222, "day": 9})
+	check(SaveSystem.save_game(plot, null, b), "could not save to slot 6")
+	var listed := SaveSystem.slots()
+	check_eq(listed.size(), 6, "slots() should list every slot")
+	check_eq(int(listed[4].info.day), 3, "slot 5 does not hold its own game")
+	check_eq(int(listed[5].info.money), 222, "slot 6 does not hold its own game")
+	SaveSystem.slot = 5
+	check(SaveSystem.load_game(plot, null, ""), "could not load the current slot")
+	check_eq(Economy.money, 111, "loading the current slot read the wrong game")
+	SaveSystem.delete_save(b)
+	check(SaveSystem.summary(b).is_empty(), "a deleted slot still has a game in it")
+	SaveSystem.delete_save(a)
+	check(not Version.number().is_empty() and Version.line().contains("released"), "there is no version to show")
+	SaveSystem.slot = was_slot
+	SaveSystem.slot_chosen = was_chosen
+	Economy.from_dict({"money": 100000, "day": 1})
+	done()
+
+func test_climb() -> void:
+	_setup(false)
+	var ramp := StaticBody3D.new()
+	ramp.collision_layer = Layers.WORLD
+	var pm := PhysicsMaterial.new()
+	pm.friction = 0.9
+	ramp.physics_material_override = pm
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	var length := 60.0
+	box.size = Vector3(14, 1, length)
+	cs.shape = box
+	var a := deg_to_rad(38.0)
+	cs.transform = Transform3D(Basis(Vector3.RIGHT, a), Vector3(0, sin(a) * length * 0.5 - 0.5 * cos(a), -8.0 - cos(a) * length * 0.5))
+	ramp.add_child(cs)
+	world.add_child(ramp)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"log_truck")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 6)
+	await step(60)
+	for i in 4:
+		truck.load_item(&"wood_oak", Solid.cylinder(0.3, 0.28, 3.0))
+	await step(60)
+	truck.autopilot = true
+	truck.input_throttle = 1.0
+	var best := 0.0
+	for i in 600:
+		await step(1)
+		best = maxf(best, truck.global_position.y)
+	check(best > 15.0, "a loaded log truck only got %.1f m up a 38-degree slope" % best)
+	done()

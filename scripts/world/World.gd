@@ -269,13 +269,15 @@ func _ready() -> void:
 	add_child(hud)
 
 	var loaded := false
+	SaveSystem.choose_start_slot()
 	if SaveSystem.has_save():
-		loaded = SaveSystem.load_game(plot, player, SaveSystem.SAVE_PATH, manager,
+		loaded = SaveSystem.load_game(plot, player, "", manager,
 			_spawn_vehicle_for_load, quests)
 		if loaded:
 			_unstick_player()
 			# Trucks on their pads may come a frame later.
 			_unstick_player.call_deferred()
+	loaded_game = loaded
 	if not loaded:
 		# A starting float, so the first sawmill is a few tree-loads away
 		# rather than an hour of hauling.
@@ -424,6 +426,9 @@ func _build_terrain() -> void:
 	# Everything that has to stand on the level, and all of it above the water
 	# line so a levelled site is never under the sheet.
 	terrain.reserve_site(Vector3(0, PLOT_GROUND, 0), 56.0)
+	# The plot at its biggest, and a margin: flat under the pad all the way to
+	# its corners, and no road across it.
+	terrain.reserve_clear_square(Vector3(0, PLOT_GROUND, 0), 50.0, PLOT_GROUND, 10.0)
 	terrain.reserve_site(Vector3(DEPOT_POSITION.x, 0.6, DEPOT_POSITION.z), 16.0)
 	terrain.reserve_site(Vector3(STORE_POSITION.x, 0.6, STORE_POSITION.z), 20.0)
 	terrain.reserve_site(Vector3(QUARRY_CENTRE.x, 0.5, QUARRY_CENTRE.z), 34.0)
@@ -687,10 +692,136 @@ func _build_forest() -> void:
 		field.refill_seconds = 6.0
 		field.churn_seconds = 30.0
 		field.wake_distance = 360.0
-		field.setup([kind], _build_tree, _from_pool(pool), _rng.randi())
+		# Each species grows in groves of its own, with a few strays between.
+		var sampler := _from_pool(pool) if kind.has("site") else _grove_sampler(kind, pool, _groves(pool, String(kind.name)))
+		field.setup([kind], _build_tree, sampler, _rng.randi())
 		add_child(field)
 		field.prefill()
 		tree_fields.append(field)
+	_build_starter_forest(species)
+
+## How big a grove is, and what share of a species' trees stand in one rather
+## than scattered on their own.
+static var GROVE_RADIUS: float = Balance.num("world.grove_radius", 42.0)
+static var GROVE_SHARE: float = Balance.num("world.grove_share", 0.88)
+## Roughly one grove for this many of a species' vetted spots.
+const GROVE_SPOTS := 36
+
+## Where a species' groves stand: spots picked from its own country, kept
+## apart from each other. The same seed gives the same woods.
+func _groves(pool: PackedVector3Array, species_name: String) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if pool.is_empty():
+		return out
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("groves:" + species_name)
+	var want := clampi(pool.size() / GROVE_SPOTS, 1, 48)
+	var apart := GROVE_RADIUS * 2.6
+	for attempt in want * 12:
+		if out.size() >= want:
+			break
+		var p := pool[rng.randi() % pool.size()]
+		var ok := true
+		for q in out:
+			if Vector2(p.x - q.x, p.z - q.z).length() < apart:
+				ok = false
+				break
+		if ok:
+			out.append(p)
+	return out
+
+## Draws a spot for a tree: most of the time somewhere in one of its groves,
+## denser toward the middle; now and then a stray anywhere in its country. A
+## spot that lands somewhere the species cannot stand falls back to a vetted one.
+func _grove_sampler(kind: Dictionary, pool: PackedVector3Array, groves: PackedVector3Array) -> Callable:
+	var scatter := _from_pool(pool)
+	var biomes: Array = kind.biomes
+	var wet := float(kind.get("wet", 0.0))
+	return func(rng: RandomNumberGenerator) -> Vector3:
+		if groves.is_empty() or rng.randf() > GROVE_SHARE:
+			return scatter.call(rng)
+		var centre := groves[rng.randi() % groves.size()]
+		for attempt in 6:
+			var a := rng.randf() * TAU
+			var r := GROVE_RADIUS * pow(rng.randf(), 0.7)
+			var x := centre.x + cos(a) * r
+			var z := centre.z + sin(a) * r
+			if _tree_can_stand(x, z, biomes, wet):
+				return terrain.place(Vector3(x, 0.0, z))
+		return scatter.call(rng)
+
+func _tree_can_stand(x: float, z: float, biomes: Array, wet: float) -> bool:
+	if not biomes.has(int(terrain.biome_at(x, z))):
+		return false
+	if terrain.water_depth(x, z) > wet or terrain.is_road(x, z) or terrain.in_cave_zone(x, z) \
+			or terrain.is_blocked(x, z) or terrain._in_build_site(x, z) or terrain.in_clear_zone(x, z, 8.0):
+		return false
+	# Not on a crag.
+	var h := terrain.height_at(x, z)
+	return absf(terrain.height_at(x + 2.0, z) - h) < 2.2 and absf(terrain.height_at(x, z + 2.0) - h) < 2.2
+
+## A wood of cheap, easy trees a short walk from the plot, so the first tree
+## is not a trek: pine, birch and a few oaks in the nearest patch of woodland.
+const STARTER_NEAR := 75.0
+const STARTER_FAR := 190.0
+const STARTER_RADIUS := 30.0
+var starter_forest: Vector3 = Vector3.INF
+
+func _build_starter_forest(species: Array) -> void:
+	var kinds: Array = []
+	for kind in species:
+		if kind.name in ["Pine", "Birch", "Oak"]:
+			kinds.append(kind)
+	if kinds.is_empty():
+		return
+	var land := terrain.points_in_biomes([Terrain.Biome.WOODLAND, Terrain.Biome.TAIGA], 2)
+	var near := PackedVector3Array()
+	for p in land:
+		var d := Vector2(p.x, p.z).length()
+		if d >= STARTER_NEAR and d <= STARTER_FAR:
+			near.append(p)
+	if near.is_empty():
+		return
+	# The densest patch: the spot with the most good ground round it, the
+	# nearer home the better.
+	var best := near[0]
+	var best_score := -INF
+	for p in near:
+		var n := 0
+		for q in near:
+			if Vector2(p.x - q.x, p.z - q.z).length() <= STARTER_RADIUS:
+				n += 1
+		var score := float(n) - Vector2(p.x, p.z).length() * 0.02
+		if score > best_score:
+			best_score = score
+			best = p
+	starter_forest = best
+	var biomes := [Terrain.Biome.WOODLAND, Terrain.Biome.TAIGA]
+	var patch := PackedVector3Array()
+	for q in near:
+		if Vector2(best.x - q.x, best.z - q.z).length() <= STARTER_RADIUS:
+			patch.append(q)
+	var scatter := _from_pool(patch)
+	var sampler := func(rng: RandomNumberGenerator) -> Vector3:
+		for attempt in 8:
+			var a := rng.randf() * TAU
+			var r := STARTER_RADIUS * sqrt(rng.randf())
+			var x := best.x + cos(a) * r
+			var z := best.z + sin(a) * r
+			if _tree_can_stand(x, z, biomes, 0.0):
+				return terrain.place(Vector3(x, 0.0, z))
+		return scatter.call(rng)
+	var field := ResourceField.new()
+	field.name = "Forest_Starter"
+	field.quota = int(Balance.num("world.starter_forest_trees", 28.0))
+	field.min_spacing = 4.0
+	field.refill_seconds = 20.0
+	field.churn_seconds = 0.0
+	field.wake_distance = 360.0
+	field.setup(kinds, _build_tree, sampler, 4242)
+	add_child(field)
+	field.prefill()
+	tree_fields.append(field)
 
 ## Keeps the spots between `near` and `far` metres from home: the better the
 ## material, the further out it is.
@@ -1036,7 +1167,9 @@ func _build_depot() -> void:
 	depot.extents = Vector3(18.0, 4.0, 18.0)
 	depot.position = terrain.place(DEPOT_POSITION)
 	add_child(depot)
-	Nameplate.landmark(depot, "SELL YARD", 5.5)
+	# The buildings have their own signs now; floating names are optional.
+	if Settings.flag(&"show_labels"):
+		Nameplate.landmark(depot, "SELL YARD", 5.5)
 
 	var sign_mesh := MeshInstance3D.new()
 	var bm := BoxMesh.new()
@@ -1060,14 +1193,18 @@ func _build_store() -> void:
 		# Door toward home.
 		summit_store.rotation.y = atan2(-at.x, -at.z)
 		add_child(summit_store)
-		Nameplate.landmark(summit_store, "SUMMIT OUTFITTERS", 6.5)
+		# The buildings have their own signs now; floating names are optional.
+		if Settings.flag(&"show_labels"):
+			Nameplate.landmark(summit_store, "SUMMIT OUTFITTERS", 6.5)
 	store = Store.new()
 	store.name = "Store"
 	store.setup(manager, plot, 0)
 	store.position = terrain.place(STORE_POSITION)
 	store.rotation.y = PI
 	add_child(store)
-	Nameplate.landmark(store, "STORE", 6.0)
+	# The buildings have their own signs now; floating names are optional.
+	if Settings.flag(&"show_labels"):
+		Nameplate.landmark(store, "STORE", 6.0)
 
 func _make_player() -> Player:
 	var p := Player.new()
@@ -1217,6 +1354,8 @@ func compass_markers() -> Array[Dictionary]:
 		{"name": "Summit Outfitters", "color": Color(0.7, 0.62, 1.0), "where": func():
 			return summit_store.global_position if summit_store != null else null},
 		{"name": "Quarry", "color": Color(0.80, 0.70, 0.62), "where": func(): return QUARRY_CENTRE},
+		{"name": "Home Woods", "color": Color(0.45, 0.80, 0.40), "where": func():
+			return starter_forest if starter_forest != Vector3.INF else null},
 		{"name": "Demo Lines", "color": Color(0.95, 0.55, 0.9), "where": func():
 			return showcase.global_position if showcase != null else null},
 	]
@@ -1272,6 +1411,10 @@ func _build_menus() -> void:
 		pause_menu.close()
 		show_main_menu())
 	pause_menu.quit_requested.connect(quit_game)
+	pause_menu.load_slot_requested.connect(load_slot)
+	pause_menu.save_slot_requested.connect(func(n: int):
+		if save_to_slot(n):
+			hud.toast("Saved to slot %d" % n, UITheme.GOOD))
 	add_child(pause_menu)
 
 	var menu_wanted := show_menu and get_tree().current_scene == self and not MainMenu.skip_once
@@ -1281,6 +1424,8 @@ func _build_menus() -> void:
 		main_menu.continue_requested.connect(resume_play)
 		main_menu.new_game_requested.connect(start_new_game)
 		main_menu.quit_requested.connect(quit_game)
+		main_menu.load_slot_requested.connect(_menu_load_slot)
+		main_menu.new_slot_requested.connect(start_new_game_in)
 		add_child(main_menu)
 		show_main_menu()
 	else:
@@ -1292,6 +1437,8 @@ func show_main_menu() -> void:
 		main_menu.continue_requested.connect(resume_play)
 		main_menu.new_game_requested.connect(start_new_game)
 		main_menu.quit_requested.connect(quit_game)
+		main_menu.load_slot_requested.connect(_menu_load_slot)
+		main_menu.new_slot_requested.connect(start_new_game_in)
 		add_child(main_menu)
 	hud.visible = false
 	get_tree().paused = true
@@ -1312,8 +1459,11 @@ func resume_play() -> void:
 	get_tree().paused = false
 	player.capture_mouse(not hud.journal_open())
 
+## Whether this world came out of a save (rather than being a new game).
+var loaded_game: bool = false
+
 func quick_save() -> bool:
-	var ok := SaveSystem.save_game(plot, player, SaveSystem.SAVE_PATH, manager, _padless_vehicle(), quests)
+	var ok := SaveSystem.save_game(plot, player, "", manager, _padless_vehicle(), quests)
 	if ok:
 		hud.flash_saved()
 	else:
@@ -1325,7 +1475,7 @@ func quick_load() -> void:
 	# the save.
 	if player.driving():
 		_toggle_vehicle()
-	if SaveSystem.load_game(plot, player, SaveSystem.SAVE_PATH, manager,
+	if SaveSystem.load_game(plot, player, "", manager,
 			_spawn_vehicle_for_load, quests):
 		_unstick_player()
 		_unstick_player.call_deferred()
@@ -1336,11 +1486,46 @@ func quick_load() -> void:
 ## A fresh world, not this one scrubbed: the progress autoloads are reset and
 ## the scene is built again from nothing.
 func start_new_game() -> void:
-	if not SaveSystem.has_save() and not playing:
+	if not SaveSystem.has_save() and not playing and not loaded_game:
 		# Nothing to throw away - the world behind the menu is already new.
 		resume_play()
 		return
 	SaveSystem.delete_save()
+	_rebuild_world()
+
+## A new game in save slot `n` (what was in it is replaced).
+func start_new_game_in(n: int) -> void:
+	if playing and SaveSystem.slot != n:
+		quick_save()
+	SaveSystem.slot = n
+	SaveSystem.slot_chosen = true
+	start_new_game()
+
+## From the title screen: the slot already loaded behind it just carries on.
+func _menu_load_slot(n: int) -> void:
+	if n == SaveSystem.slot and loaded_game:
+		resume_play()
+	else:
+		load_slot(n)
+
+## Plays the game saved in slot `n`: the current one is saved first, then the
+## world is built again and that slot read into it.
+func load_slot(n: int) -> void:
+	if playing:
+		quick_save()
+	SaveSystem.slot = n
+	SaveSystem.slot_chosen = true
+	_rebuild_world()
+
+## Saves the game being played into slot `n`, which it then plays in.
+func save_to_slot(n: int) -> bool:
+	SaveSystem.slot = n
+	SaveSystem.slot_chosen = true
+	return quick_save()
+
+## The scene built again from nothing, with the progress autoloads reset; the
+## slot in play is read in if it has a save.
+func _rebuild_world() -> void:
 	PlayerState.reset()
 	Economy.from_dict({})
 	MainMenu.skip_once = true
@@ -1353,14 +1538,14 @@ func start_new_game() -> void:
 
 func quit_game() -> void:
 	if playing:
-		SaveSystem.save_game(plot, player, SaveSystem.SAVE_PATH, manager, _padless_vehicle(), quests)
+		SaveSystem.save_game(plot, player, "", manager, _padless_vehicle(), quests)
 	get_tree().quit()
 
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_CLOSE_REQUEST:
 			if playing and hud != null:
-				SaveSystem.save_game(plot, player, SaveSystem.SAVE_PATH, manager, _padless_vehicle(), quests)
+				SaveSystem.save_game(plot, player, "", manager, _padless_vehicle(), quests)
 		NOTIFICATION_APPLICATION_FOCUS_OUT:
 			# Alt-tab pauses, rather than leaving the truck rolling.
 			if playing and pause_menu != null and not get_tree().paused \
@@ -1474,25 +1659,22 @@ func _process(delta: float) -> void:
 	_update_underground(delta)
 	_check_discovery(delta)
 
-## Aiming a winch: seated in a truck with one, or standing by one, the ring
-## shows where the hook would catch and whether the line reaches.
+## Aiming a winch: seated in a truck with one, the ring shows where the hook
+## would catch and whether the line reaches. On foot there is no ring (the
+## winch still hooks what you aim at from beside the truck).
 func _update_winch_reticle() -> void:
 	if winch_reticle == null or player == null:
 		return
 	var r: VehicleRig = null
 	var truck: Hauler = null
-	if player.driving():
+	if player.driving() and playing:
 		truck = player.vehicle as Hauler
 		if truck != null and truck.rig != null and not truck.rig.operating:
-			r = truck.rig
-	elif playing and not (build_system != null and build_system.active):
-		truck = vehicle_at_hand(10.0)
-		if truck != null and truck.rig != null and _distance_to(truck) <= 10.0:
 			r = truck.rig
 	if r == null or r.anchored:
 		winch_reticle.hide_reticle()
 		return
-	var hit := player.aim_hit_far(r.reach + 6.0)
+	var hit := player.winch_target(r)
 	# Pointed at the truck itself there is nothing to show.
 	if not hit.is_empty():
 		var n := hit.collider as Node
@@ -1609,79 +1791,76 @@ func _physics_process(delta: float) -> void:
 		_autosave_timer = AUTOSAVE_SECONDS
 		quick_save()
 
-func _unhandled_key_input(event: InputEvent) -> void:
-	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo or hud.journal_open():
+func _unhandled_input(event: InputEvent) -> void:
+	var press := (event is InputEventKey or event is InputEventMouseButton) \
+		and event.is_pressed() and not event.is_echo()
+	if not press or hud.journal_open() or player == null:
 		return
 	# In build mode Z, X and C turn the ghost; they must not also empty the truck.
 	var building := build_system != null and build_system.active
-	match key.keycode:
-		KEY_F5:
-			if quick_save():
-				hud.toast("Saved", UITheme.GOOD)
-		KEY_F9:
-			quick_load()
-		KEY_F8:
-			pause_game()
-			pause_menu.ask("Start a new game?",
-				"Your saved game will be replaced. Settings are kept.", "Start over",
-				start_new_game)
-		KEY_V:
-			if not building:
+	if Controls.pressed(event, &"quick_save"):
+		if quick_save():
+			hud.toast("Saved", UITheme.GOOD)
+	elif Controls.pressed(event, &"quick_load"):
+		quick_load()
+	elif Controls.pressed(event, &"new_game"):
+		pause_game()
+		pause_menu.ask("Start a new game?",
+			"This save slot will be replaced. Settings are kept.", "Start over",
+			start_new_game)
+	elif building:
+		return
+	elif Controls.pressed(event, &"hitch"):
+		hud.log_message(_toggle_hitch())
+	elif Controls.pressed(event, &"enter_vehicle"):
+		# In and out: seated, it gets out (unless it is working the crane's
+		# grapple); on foot, it gets into the vehicle looked at or stood by.
+		if player.driving():
+			var r := player.rig()
+			if r == null or not r.operating:
 				_toggle_vehicle()
-		KEY_T:
-			if not building:
-				hud.log_message(_toggle_hitch())
-		KEY_F:
-			# In and out: seated, F gets out (unless it is working the crane's
-			# grapple); on foot, it gets into the vehicle looked at or stood by.
-			if building:
-				pass
-			elif player.driving():
-				var r := player.rig()
-				if r == null or not r.operating:
-					_toggle_vehicle()
+		else:
+			var v := _vehicle_looked_at()
+			if v == null or v.is_trailer:
+				v = vehicle_at_hand(3.0)
+				if v != null and _distance_to(v) > 3.0:
+					v = null
+			if v != null:
+				drive(v)
+	elif Controls.pressed(event, &"unload"):
+		var v := vehicle_at_hand(8.0)
+		if v != null:
+			if not v.has_bed():
+				hud.log_message("the %s has nothing to unload" % v.display_name.to_lower())
 			else:
-				var v := _vehicle_looked_at()
-				if v == null or v.is_trailer:
-					v = vehicle_at_hand(3.0)
-					if v != null and _distance_to(v) > 3.0:
-						v = null
-				if v != null:
-					drive(v)
-		KEY_X:
-			var v := vehicle_at_hand(8.0)
-			if v != null and not building:
-				if not v.has_bed():
-					hud.log_message("the %s has nothing to unload" % v.display_name.to_lower())
-				else:
-					var n := v.unload()
-					var how := "tub up" if v.bed_kind == &"tub" else "tailgate down"
-					hud.log_message("%s: tipping out %d piece(s)" % [how, n] if n > 0 else "the bed is empty")
-		KEY_Z:
-			var v := vehicle_at_hand(8.0)
-			if v != null and not building and v.unload_one():
-				hud.log_message("dropping one off the back (%d left)" % (v.cargo_count() - 1))
-		KEY_Y:
-			# The winch from outside the truck: stand by it, aim, hook on.
-			if not player.driving() and not building:
-				var wv := vehicle_at_hand(10.0)
-				if wv == null or wv.rig == null or _distance_to(wv) > 10.0:
-					hud.log_message("stand by a truck with a winch to use it")
-				else:
-					hud.log_message(player.hook_winch(wv.rig))
-		KEY_O:
-			if not player.driving() and not building:
-				var ov := vehicle_at_hand(10.0)
-				if ov == null or ov.rig == null or _distance_to(ov) > 10.0:
-					hud.log_message("stand by a truck with outriggers to put them out")
-				else:
-					hud.log_message(player.toggle_outriggers(ov.rig))
-		KEY_C:
-			var v := vehicle_at_hand(8.0)
-			if v != null and not building:
-				v.recover()
+				var n := v.unload()
+				var how := "tub up" if v.bed_kind == &"tub" else "tailgate down"
+				hud.log_message("%s: tipping out %d piece(s)" % [how, n] if n > 0 else "the bed is empty")
+	elif Controls.pressed(event, &"unload_one"):
+		var v := vehicle_at_hand(8.0)
+		if v != null and v.unload_one():
+			hud.log_message("dropping one off the back (%d left)" % (v.cargo_count() - 1))
+	elif Controls.pressed(event, &"winch_hook") and not player.driving():
+		# The winch from outside the truck: stand by it, aim, hook on.
+		var wv := vehicle_at_hand(10.0)
+		if wv == null or wv.rig == null or _distance_to(wv) > 10.0:
+			hud.log_message("stand by a truck with a winch to use it")
+		else:
+			hud.log_message(player.hook_winch(wv.rig))
+	elif Controls.pressed(event, &"outriggers") and not player.driving():
+		var ov := vehicle_at_hand(10.0)
+		if ov == null or ov.rig == null or _distance_to(ov) > 10.0:
+			hud.log_message("stand by a truck with outriggers to put them out")
+		else:
+			hud.log_message(player.toggle_outriggers(ov.rig))
+	elif Controls.pressed(event, &"recover"):
+		var v := vehicle_at_hand(8.0)
+		if v != null:
+			var said := v.try_recover()
+			if said == "":
 				hud.toast("%s recovered" % v.display_name, UITheme.ACCENT)
+			else:
+				hud.log_message(said)
 
 ## A save made in the driver's seat (before saves knew better) puts the
 ## player inside the truck: out by the driver's door instead, before the

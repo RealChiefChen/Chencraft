@@ -8,6 +8,8 @@ extends CanvasLayer
 signal continue_requested
 signal new_game_requested
 signal quit_requested
+signal load_slot_requested(slot: int)
+signal new_slot_requested(slot: int)
 
 ## Set before a reload that should drop straight into play (New Game from the
 ## menu), and cleared as soon as the fresh world has read it.
@@ -28,6 +30,7 @@ var _page_host: CenterContainer
 var _page: Control
 var _dialog: Control
 var _continue: Button
+var _load_button: Button
 var _save_line: Label
 
 func _init() -> void:
@@ -79,13 +82,14 @@ func _ready() -> void:
 	_continue = _menu_button("Continue", func(): continue_requested.emit())
 	_save_line = UIKit.label("", "Muted", 15)
 	_buttons.add_child(_save_line)
+	_load_button = _menu_button("Load Game", func(): _open_page("Load a game", _slots(SavePanel.Mode.LOAD)))
 	_menu_button("New Game", _on_new_game)
 	_menu_button("Settings", func(): _open_page("Settings", SettingsPanel.new()))
 	_menu_button("Controls", func(): _open_page("Controls", KeyGuide.sheet()))
 	_menu_button("Quit", func(): quit_requested.emit())
 
-	var footer := UIKit.label("Fonts: Rubik & Lilita One (SIL OFL)   ·   Godot %s" % \
-		Engine.get_version_info().string, "Small")
+	var footer := UIKit.label("%s   ·   Fonts: Rubik & Lilita One (SIL OFL)   ·   Godot %s" % [
+		Version.line(), Engine.get_version_info().string], "Small")
 	footer.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	footer.offset_left = 96
 	footer.offset_top = -44
@@ -111,9 +115,10 @@ func refresh() -> void:
 	var has_save := not info.is_empty()
 	_continue.visible = has_save
 	_save_line.visible = has_save
+	_load_button.visible = SaveSystem.any_save()
 	if has_save:
 		var when := UIKit.ago(String(info.saved_at))
-		_save_line.text = "Day %d   ·   %s   ·   %d building%s%s" % [
+		_save_line.text = "Slot %d   ·   Day %d   ·   %s   ·   %d building%s%s" % [SaveSystem.slot,
 			int(info.day), UIKit.money(int(info.money)), int(info.buildings),
 			"" if int(info.buildings) == 1 else "s",
 			("   ·   saved " + when) if when != "" else ""]
@@ -139,12 +144,16 @@ func _focus_first() -> void:
 			return
 
 func _on_new_game() -> void:
-	if SaveSystem.has_save():
-		_dialog = UIKit.confirm(_root, "Start a new game?",
-			"Your saved game will be replaced. Settings are kept.",
-			"Start over", func(): new_game_requested.emit())
-	else:
+	if not SaveSystem.any_save():
 		new_game_requested.emit()
+		return
+	_open_page("New game", _slots(SavePanel.Mode.NEW))
+
+func _slots(mode: SavePanel.Mode) -> Control:
+	var panel := SavePanel.new(mode, _root)
+	panel.load_requested.connect(func(n: int): load_slot_requested.emit(n))
+	panel.new_requested.connect(func(n: int): new_slot_requested.emit(n))
+	return panel
 
 func _open_page(title: String, content: Control) -> void:
 	_close_page()

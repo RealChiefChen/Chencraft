@@ -45,6 +45,12 @@ static func dress(v: Hauler) -> void:
 	var gear: Variant = v.spec.get("rig", null)
 	if gear is Dictionary and bool(gear.get("mast", false)):
 		_mast(v, g, Hauler._vec(gear.get("head", [0, 3, -1])))
+	if gear is Dictionary and v.style == &"buggy":
+		# A light winch on the nose: a drum across a bumper bar, and a fairlead.
+		var h := Hauler._vec(gear.get("head", [0, 0, -1.7]))
+		g.block(Vector3(v.body_size.x * 0.7, 0.12, 0.14), h + Vector3(0, -0.1, 0.12), STEEL)
+		g.prism(8, 0.11, 0.11, 0.42, Transform3D(Basis(Vector3.FORWARD, PI * 0.5), h + Vector3(0, 0.04, 0.12)), DARK)
+		g.block(Vector3(0.16, 0.08, 0.06), h + Vector3(0, 0.02, -0.02), STEEL)
 	v.add_child(g.instance("Body"))
 	_wheels(v)
 

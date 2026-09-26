@@ -111,22 +111,59 @@ func _noise(day_index: int, key: String) -> float:
 	h = h ^ (h >> 16)
 	return float(h % 20001 - 10000) / 10000.0
 
+## The market moves by material, not by item: mahogany logs, sanded mahogany
+## and mahogany lumber all rise and fall together, so a good week for
+## mahogany is a good week whatever state you sell it in. Anything that is not
+## a material (crates, toolkits) moves on its own.
+func market_key(item_id: StringName) -> StringName:
+	var mat: Variant = GameData.material_of.get(item_id, null)
+	return StringName(mat) if mat != null else item_id
+
+## What a market key is worth per cubic metre as found - the yardstick for how
+## much its price swings.
+func base_value(key: StringName) -> float:
+	var m: Dictionary = GameData.materials.get(key, {})
+	if not m.is_empty():
+		return float(m.get("raw", 0.0))
+	var def: ItemDef = GameData.item(key)
+	if def == null:
+		return 100.0
+	return float(def.fixed_value) if def.fixed_value > 0 else def.value_per_m3
+
+## How far a market key's price swings week to week: cheap stuff is all over
+## the place, the dear materials hardly move. Log-scaled between the two ends
+## set in balance.json.
+static var VOL_CHEAP: float = Balance.num("economy.volatility_cheap", 0.6)
+static var VOL_DEAR: float = Balance.num("economy.volatility_dear", 0.06)
+static var CHEAP_VALUE: float = Balance.num("economy.cheap_value", 25.0)
+static var DEAR_VALUE: float = Balance.num("economy.dear_value", 8000.0)
+## Every sale price times this.
+static var PRICE_SCALE: float = Balance.num("economy.price_multiplier", 1.0)
+
+func volatility(key: StringName) -> float:
+	var v := maxf(1.0, base_value(key))
+	var t := clampf(log(v / CHEAP_VALUE) / log(DEAR_VALUE / CHEAP_VALUE), 0.0, 1.0)
+	return lerpf(VOL_CHEAP, VOL_DEAR, t)
+
 func _rebuild_prices() -> void:
 	_price_cache.clear()
 	var category_trend: Dictionary = {}
 	for def: ItemDef in GameData.items.values():
+		var key := market_key(def.id)
+		if _price_cache.has(key):
+			continue
 		var cat := def.category
 		if not category_trend.has(cat):
-			category_trend[cat] = _noise(week(), "cat:" + String(cat)) * _trend_strength
-		var mult: float = 1.0 + def.volatility * _noise(week(), String(def.id)) + float(category_trend[cat])
-		mult = clampf(mult, 0.35, 2.4)
-		_price_cache[def.id] = mult
+			category_trend[cat] = _noise(week(), "cat:" + String(cat))
+		var swing := volatility(key)
+		var mult: float = 1.0 + swing * (0.8 * _noise(week(), String(key)) + _trend_strength * float(category_trend[cat]))
+		_price_cache[key] = clampf(mult, 0.35, 2.4)
 	_cached_day = day
 
 func price_multiplier(item_id: StringName) -> float:
 	if _cached_day != day:
 		_rebuild_prices()
-	return float(_price_cache.get(item_id, 1.0))
+	return float(_price_cache.get(market_key(item_id), 1.0))
 
 ## Price of one piece at today's rate. Variable items (wood, lumber, billets)
 ## are priced by volume, so milling a trunk into boards is worth exactly what
@@ -136,7 +173,7 @@ func price_of(item_id: StringName, dims: Dictionary = {}) -> int:
 	if def == null:
 		return 0
 	var d := dims if not dims.is_empty() else def.default_dims()
-	return maxi(1, int(round(def.base_value_of(d) * price_multiplier(item_id))))
+	return maxi(1, int(round(def.base_value_of(d) * price_multiplier(item_id) * PRICE_SCALE)))
 
 ## Rate per cubic metre, for the market board.
 func rate_of(item_id: StringName) -> float:
@@ -144,8 +181,8 @@ func rate_of(item_id: StringName) -> float:
 	if def == null:
 		return 0.0
 	if def.fixed_value > 0:
-		return float(def.fixed_value) * price_multiplier(item_id)
-	return def.value_per_m3 * price_multiplier(item_id)
+		return float(def.fixed_value) * price_multiplier(item_id) * PRICE_SCALE
+	return def.value_per_m3 * price_multiplier(item_id) * PRICE_SCALE
 
 func sell(item_id: StringName, dims: Dictionary = {}) -> int:
 	var value := price_of(item_id, dims)
@@ -154,19 +191,31 @@ func sell(item_id: StringName, dims: Dictionary = {}) -> int:
 	item_sold.emit(item_id, value)
 	return value
 
-## Sorted market board rows: [{id, name, rate, unit, multiplier}]
+## Sorted market board rows, one per material (every form of it moves
+## together) and one per thing that is not a material:
+## [{id, name, rate, unit, typical, multiplier, swing}]. `rate` is the raw
+## form's price today.
 func market_rows() -> Array:
 	var rows: Array = []
+	var seen: Dictionary = {}
 	for def: ItemDef in GameData.items.values():
 		if not def.sellable:
 			continue            # store boxes: nobody buys those back
+		var key := market_key(def.id)
+		if seen.has(key):
+			continue
+		seen[key] = true
+		var m: Dictionary = GameData.materials.get(key, {})
+		var raw_id: StringName = StringName(m.raw_item) if not m.is_empty() else def.id
+		var raw_def := GameData.item(raw_id)
 		rows.append({
-			"id": def.id,
-			"name": def.display_name,
-			"rate": rate_of(def.id),
-			"unit": "each" if def.fixed_value > 0 else "m3",
-			"typical": price_of(def.id),
-			"multiplier": price_multiplier(def.id),
+			"id": key,
+			"name": String(key).capitalize() if not m.is_empty() else def.display_name,
+			"rate": rate_of(raw_id),
+			"unit": "each" if raw_def != null and raw_def.fixed_value > 0 else "m3",
+			"typical": price_of(raw_id),
+			"multiplier": price_multiplier(raw_id),
+			"swing": volatility(key),
 		})
 	rows.sort_custom(func(a, b): return a.rate < b.rate)
 	return rows

@@ -51,9 +51,13 @@ func _ready() -> void:
 	_build()
 	set_physics_process(true)
 
+## How much material a shape takes, as a share of its own volume: a wall is
+## framed and faced, not cast solid, so it takes a tenth of its bulk.
+static var MATERIAL_SHARE: float = Balance.num("build.material_share", 0.1)
+
 ## How much material this shape takes to finish.
 func capacity_m3() -> float:
-	return _size.x * _size.y * _size.z
+	return _size.x * _size.y * _size.z * MATERIAL_SHARE
 
 func remaining_m3() -> float:
 	return maxf(0.0, capacity_m3() - filled_m3)

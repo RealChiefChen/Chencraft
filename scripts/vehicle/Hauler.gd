@@ -92,8 +92,31 @@ var wheel_offsets: Array = [
 	Vector3(-1.1, -0.35, -1.7), Vector3(1.1, -0.35, -1.7),
 	Vector3(-1.1, -0.35, 1.7), Vector3(1.1, -0.35, 1.7),
 ]
-## The front axle's Z: those wheels steer.
+## The front axle's Z: those wheels steer. And the rearmost axle's, which on
+## the long tandem trucks steers a little the other way to tighten the turn.
 var _front_z: float = -1.7
+var _rear_z: float = 1.7
+var rear_steer: float = 0.0
+
+# --- Gearbox ------------------------------------------------------------------
+
+## Each gear's top speed as a share of the vehicle's. Low gears trade speed for
+## pull: the torque at the wheels goes up as the gear comes down, which is what
+## gets a loaded truck up a hill. Automatic unless the player turns on the
+## manual gearbox (Settings > Controls), which only trucks have.
+var gears: Array[float] = [0.3, 0.52, 0.76, 1.0]
+var gear: int = 0
+static var GEAR_TORQUE_EXP: float = Balance.num("vehicles.gear_torque_exponent", 0.85)
+## Whole-fleet knobs, and what the engine and tyre upgrades add on top.
+static var ENGINE_MULT: float = Balance.num("vehicles.engine_multiplier", 1.0)
+static var TOP_SPEED_MULT: float = Balance.num("vehicles.top_speed_multiplier", 1.0)
+static var GRIP_MULT: float = Balance.num("vehicles.grip_multiplier", 1.0)
+static var STEER_MULT: float = Balance.num("vehicles.steer_multiplier", 1.0)
+## How much steering eases off with speed (per m/s).
+static var STEER_SOFTEN: float = Balance.num("vehicles.steer_soften", 0.05)
+## Recovering (setting it back on its wheels) is allowed this often.
+static var RECOVER_COOLDOWN: float = Balance.num("vehicles.recover_cooldown", 1.0)
+var _last_recover_frame: int = -100000
 
 ## Pieces lying in the bed right now, refreshed by the bed poll.
 var _load: Array[LooseItem] = []
@@ -169,6 +192,7 @@ func _apply_spec() -> void:
 		var v := _vec(w)
 		wheel_offsets.append(v)
 		_front_z = minf(_front_z, v.z)
+		_rear_z = maxf(_rear_z, v.z) if wheel_offsets.size() > 1 else v.z
 	var bed: Dictionary = spec.get("bed", {})
 	bed_kind = StringName(bed.get("kind", "none"))
 	bed_floor = body_size.y * 0.5
@@ -184,9 +208,18 @@ func _apply_spec() -> void:
 	is_trailer = bool(spec.get("trailer", false))
 	hitch_offset = _vec(spec.get("hitch", [0, 0, 0]))
 	tongue_offset = _vec(spec.get("tongue", [0, 0, 0]))
+	rear_steer = float(spec.get("rear_steer", 0.0))
+	var box: Variant = spec.get("gears", null)
+	if box is Array and not (box as Array).is_empty():
+		gears.clear()
+		for g in box:
+			gears.append(float(g))
+	elif style == &"quad" or style == &"buggy":
+		gears = [0.45, 1.0]
 	if is_trailer:
 		# No axle steers; nothing drives.
 		_front_z = -INF
+		rear_steer = 0.0
 
 static func _vec(a: Variant) -> Vector3:
 	var arr: Array = a
@@ -194,6 +227,60 @@ static func _vec(a: Variant) -> Vector3:
 
 func has_bed() -> bool:
 	return bed_kind != &"none" and cargo_capacity_m3 > 0.0
+
+## Trucks can be driven with a manual gearbox; quads, buggies, the loader and
+## trailers are always automatic.
+func manual_gearbox() -> bool:
+	return Settings.flag(&"manual_gearbox") and style == &"truck" and loader == null and not is_trailer
+
+## Up or down a gear (manual). Returns what the gauge should say.
+func shift_gear(step: int) -> String:
+	gear = clampi(gear + step, 0, gears.size() - 1)
+	return "gear %d of %d" % [gear + 1, gears.size()]
+
+func gear_label() -> String:
+	return "%s%d" % ["M" if manual_gearbox() else "A", gear + 1]
+
+## Automatic: the lowest gear that still reaches the speed it is doing, with a
+## margin so it does not hunt between two. Up a hill it drops a gear when it
+## slows down, which is when it needs the pull.
+func _auto_gear(speed: float, top: float) -> void:
+	var v := absf(speed)
+	if gear < gears.size() - 1 and v > gears[gear] * top * 0.9:
+		gear += 1
+	elif gear > 0 and v < gears[gear - 1] * top * 0.7:
+		gear -= 1
+
+## The engine and tyre upgrades, bought once for every vehicle.
+func engine_scale() -> float:
+	return ENGINE_MULT * PlayerState.stat(&"engine", "engine", 1.0)
+
+func speed_scale() -> float:
+	return TOP_SPEED_MULT * PlayerState.stat(&"engine", "top_speed", 1.0)
+
+func grip_scale() -> float:
+	return GRIP_MULT * PlayerState.stat(&"tyres", "grip", 1.0)
+
+## Tyres bought since the wheels went on: new rubber on every wheel.
+func _refresh_grip() -> void:
+	for body in wheel_bodies:
+		var pm := body.physics_material_override as PhysicsMaterial
+		if pm != null:
+			pm.friction = tyre_grip * grip_scale()
+
+## Recover, unless it was done less than a second ago or the truck is down on
+## its outriggers. Returns "" or why not.
+func try_recover() -> String:
+	if planted or (rig != null and rig.planted()):
+		return "not while it is on its outriggers - bring them up first [O]"
+	# Counted in physics steps, so it is game time: a paused game does not
+	# run the clock down.
+	var now := Engine.get_physics_frames()
+	if float(now - _last_recover_frame) < RECOVER_COOLDOWN * float(Engine.physics_ticks_per_second):
+		return "recovering - wait a moment"
+	_last_recover_frame = now
+	recover()
+	return ""
 
 func _ready() -> void:
 	add_to_group(&"vehicles")
@@ -213,6 +300,9 @@ func _ready() -> void:
 	# The wheels go on once the truck is where it is going: a pad puts it in
 	# place just after adding it.
 	_build_wheels.call_deferred()
+	PlayerState.upgraded.connect(func(track: StringName, _l: int):
+		if track == &"tyres":
+			_refresh_grip())
 
 func _build() -> void:
 	var chassis := CollisionShape3D.new()
@@ -279,8 +369,8 @@ func _build() -> void:
 	if gear is Dictionary:
 		rig = VehicleRig.new()
 		rig.name = "Rig"
-		rig.winch_power_kg = float(gear.get("winch", 4000))
-		rig.crane_power_kg = float(gear.get("crane", 0))
+		rig.winch_power_kg = float(gear.get("winch", 4000)) * Balance.num("vehicles.winch_multiplier", 1.0)
+		rig.crane_power_kg = float(gear.get("crane", 0)) * Balance.num("crane.power_multiplier", 1.0)
 		rig.reach = float(gear.get("reach", 14))
 		rig.head_offset = _vec(gear.get("head", [0, 1.1, -1.2]))
 		rig.setup(self)
@@ -589,8 +679,13 @@ func _carry_load() -> void:
 			continue
 		apply_force(-g * item.mass, item.global_position - global_position)
 
+## A crane at work - this truck's, or the one towing it - wants the load loose,
+## so it can be picked out of the bed.
 func _crane_busy() -> bool:
-	return rig != null and (rig.operating or rig.folding)
+	if rig != null and (rig.operating or rig.folding):
+		return true
+	return towed_by != null and is_instance_valid(towed_by) and towed_by.rig != null \
+		and (towed_by.rig.operating or towed_by.rig.folding)
 
 ## Whatever is being walked out of the back right now.
 func _tipping_items() -> Array:
@@ -1003,7 +1098,7 @@ func _build_wheels() -> void:
 	var stiffness := share / SAG * 2.4
 	var damping := 2.0 * 0.55 * sqrt(stiffness * mass / float(n))
 	var grip := PhysicsMaterial.new()
-	grip.friction = tyre_grip
+	grip.friction = tyre_grip * grip_scale()
 	grip.rough = true
 	for i in wheel_offsets.size():
 		var o: Vector3 = wheel_offsets[i]
@@ -1094,18 +1189,37 @@ func _drive_wheels() -> void:
 	var forward := -global_transform.basis.z
 	var speed := linear_velocity.dot(forward)
 	# Steering softens with speed, so the truck is not twitchy at 20 m/s.
-	var steer: float = input_steer * max_steer_angle / (1.0 + absf(speed) * 0.07)
+	var steer: float = input_steer * max_steer_angle * STEER_MULT / (1.0 + absf(speed) * STEER_SOFTEN)
 	var bonus: float = 1.0 + speed_bonus()
 	var throttle: float = 0.0 if (standing or flooded()) else input_throttle
 	var n := float(wheel_bodies.size())
 	var target := 0.0
 	var torque := 0.0
+	var full := max_speed * speed_scale() * bonus
+	var manual := manual_gearbox()
+	if not manual:
+		# It shifts for the speed being asked for, not flat-out's.
+		_auto_gear(speed, full * clampf(absf(throttle), 0.3, 1.0))
+	# Pull goes up as the gear comes down; the gear's own top speed caps it.
+	var ratio: float = gears[clampi(gear, 0, gears.size() - 1)] if not gears.is_empty() else 1.0
+	var pull: float = pow(1.0 / maxf(0.05, ratio), GEAR_TORQUE_EXP)
+	if not manual:
+		# The automatic only brings the low gears' extra pull to bear going
+		# uphill, where it is needed; on the flat it pulls away as it always
+		# did, so a loose load is not snatched off the back.
+		var uphill := forward.y * signf(throttle if absf(throttle) > 0.05 else 1.0)
+		# (Past a few degrees: pulling away squats the tail and lifts the
+		# nose a little, which is not a hill.)
+		pull = lerpf(1.0, pull, clampf((uphill - 0.08) / 0.22, 0.0, 1.0))
 	if standing or input_brake:
 		torque = _brake_torque()
 	elif absf(throttle) > 0.05:
-		var top: float = max_speed * bonus if throttle > 0.0 else max_speed * 0.5
+		# Reverse is a low gear of its own.
+		var top: float = full * ratio if throttle > 0.0 else max_speed * 0.5
+		if throttle < 0.0 and manual:
+			pull = pow(1.0 / maxf(0.05, gears[0] if not gears.is_empty() else 1.0), GEAR_TORQUE_EXP)
 		target = throttle * top / wheel_radius
-		torque = engine_force_max * bonus * wheel_radius / n
+		torque = engine_force_max * engine_scale() * pull * bonus * wheel_radius / n
 	else:
 		# Coasting: only the drag of the drivetrain.
 		torque = mass * 9.8 / n * wheel_radius * rolling_resistance
@@ -1118,6 +1232,9 @@ func _drive_wheels() -> void:
 		if _is_front(i):
 			j.set("angular_limit_y/upper_angle", -steer)
 			j.set("angular_limit_y/lower_angle", -steer)
+		elif rear_steer > 0.0 and absf((wheel_offsets[i] as Vector3).z - _rear_z) < 0.1:
+			j.set("angular_limit_y/upper_angle", steer * rear_steer)
+			j.set("angular_limit_y/lower_angle", steer * rear_steer)
 		var at := wheel_bodies[i].global_position
 		var q := PhysicsRayQueryParameters3D.create(at, at + Vector3.DOWN * (wheel_radius + 0.25),
 			Layers.WORLD | Layers.MACHINE, [get_rid(), wheel_bodies[i].get_rid()])
@@ -1151,7 +1268,7 @@ func _still() -> bool:
 	return not unloading()
 
 func _clamp_motion() -> void:
-	var ceiling := max_speed * 1.4 * (1.0 + Terrain.BRIDGE_SPEED_BONUS)
+	var ceiling := max_speed * speed_scale() * 1.4 * (1.0 + Terrain.BRIDGE_SPEED_BONUS)
 	if linear_velocity.length() > ceiling:
 		linear_velocity = linear_velocity.normalized() * ceiling
 	if angular_velocity.length() > 3.5:
@@ -1200,7 +1317,7 @@ func to_dict() -> Dictionary:
 	return {"vehicle": String(vehicle_id),
 		"position": [global_position.x, global_position.y, global_position.z],
 		"yaw": global_rotation.y, "cargo": entries,
-		"loader": [loader.lift, loader.tilt, loader.locked] if loader != null else []}
+		"loader": [loader.lift, loader.tilt, loader.locked, String(loader.attachment)] if loader != null else []}
 
 func from_dict(d: Dictionary) -> void:
 	var p: Array = d.get("position", [0, 2, 0])
@@ -1232,6 +1349,8 @@ func from_dict(d: Dictionary) -> void:
 		if manager != null:
 			for item in clamped:
 				manager.despawn(item)
+		if arms.size() >= 4:
+			loader.set_attachment(StringName(arms[3]))
 	if manager != null:
 		for item in _load:
 			manager.despawn(item)

@@ -1,5 +1,5 @@
 {
-  "_note": "Every vehicle is the same raycast-suspension body, sized and dressed from this table. Positions are metres in the vehicle's own frame: -Z is the nose, the body box is centred on the origin, and wheel offsets sit at the chassis underside. `bed.kind` is sides (walls, headboard, tailgate), stakes (posts, no tailgate), tub (a steel tub that tips to unload), rack (a low rail frame) or none.",
+  "_note": "Every vehicle is the same raycast-suspension body, sized and dressed from this table. Positions are metres in the vehicle's own frame: -Z is the nose, the body box is centred on the origin, and wheel offsets sit at the chassis underside. `bed.kind` is sides (walls, headboard, tailgate), stakes (posts, no tailgate), tub (a steel tub that tips to unload), rack (a low rail frame) or none. `rear_steer` turns the rearmost axle the other way by that share of the front's angle, which tightens a long truck's turn. `gears` (optional) is each gear's top speed as a share of max_speed; lower gears pull harder.",
   "vehicles": [
     {
       "id": "quad",
@@ -33,7 +33,7 @@
       "engine": 13000,
       "max_speed": 27,
       "grip": 1.75,
-      "steer": 0.55,
+      "steer": 0.66,
       "body": [2.1, 0.55, 4.4],
       "wheels": [[-0.9, -0.275, -1.45], [0.9, -0.275, -1.45], [-0.9, -0.275, 1.35], [0.9, -0.275, 1.35]],
       "wheel_radius": 0.38,
@@ -52,7 +52,7 @@
     {
       "id": "buggy",
       "display_name": "Dune Buggy",
-      "blurb": "Long-travel suspension and a roll cage. Carries nothing, goes anywhere.",
+      "blurb": "Long-travel suspension, a roll cage and a light 1 t winch on the nose. Carries nothing, goes anywhere.",
       "style": "buggy",
       "mass": 520,
       "engine": 12500,
@@ -70,7 +70,7 @@
       "paint": [0.28, 0.62, 0.30],
       "capacity": 0,
       "bed": {"kind": "none"},
-      "rig": null
+      "rig": {"winch": 1000, "crane": 0, "reach": 12, "head": [0, 0.05, -1.75]}
     },
     {
       "id": "hauler",
@@ -81,7 +81,7 @@
       "engine": 16000,
       "max_speed": 22,
       "grip": 1.7,
-      "steer": 0.55,
+      "steer": 0.68,
       "body": [2.6, 0.7, 5.0],
       "wheels": [[-1.1, -0.35, -1.7], [1.1, -0.35, -1.7], [-1.1, -0.35, 1.7], [1.1, -0.35, 1.7]],
       "wheel_radius": 0.45,
@@ -106,7 +106,8 @@
       "engine": 30000,
       "max_speed": 19,
       "grip": 1.7,
-      "steer": 0.5,
+      "steer": 0.68,
+      "rear_steer": 0.4,
       "body": [2.6, 0.75, 8.4],
       "wheels": [[-1.12, -0.375, -3.2], [1.12, -0.375, -3.2], [-1.12, -0.375, 2.2], [1.12, -0.375, 2.2], [-1.12, -0.375, 3.3], [1.12, -0.375, 3.3]],
       "wheel_radius": 0.5,
@@ -131,7 +132,8 @@
       "engine": 32000,
       "max_speed": 18,
       "grip": 1.7,
-      "steer": 0.5,
+      "steer": 0.66,
+      "rear_steer": 0.35,
       "body": [2.8, 0.8, 6.4],
       "wheels": [[-1.2, -0.4, -2.3], [1.2, -0.4, -2.3], [-1.2, -0.4, 1.4], [1.2, -0.4, 1.4], [-1.2, -0.4, 2.6], [1.2, -0.4, 2.6]],
       "wheel_radius": 0.55,
@@ -156,7 +158,7 @@
       "engine": 42000,
       "max_speed": 12,
       "grip": 1.9,
-      "steer": 0.6,
+      "steer": 0.66,
       "body": [2.3, 1.0, 3.6],
       "wheels": [[-1.15, -0.5, -1.05], [1.15, -0.5, -1.05], [-1.15, -0.5, 1.15], [1.15, -0.5, 1.15]],
       "wheel_radius": 0.7,
@@ -181,7 +183,8 @@
       "engine": 32000,
       "max_speed": 18,
       "grip": 1.7,
-      "steer": 0.5,
+      "steer": 0.66,
+      "rear_steer": 0.35,
       "body": [2.7, 0.75, 7.0],
       "wheels": [[-1.15, -0.375, -2.6], [1.15, -0.375, -2.6], [-1.15, -0.375, 1.7], [1.15, -0.375, 1.7], [-1.15, -0.375, 2.75], [1.15, -0.375, 2.75]],
       "wheel_radius": 0.52,

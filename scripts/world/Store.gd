@@ -383,6 +383,18 @@ func _build() -> void:
 	_slab(Vector3(0.3, WALL_HEIGHT, extents.z), Vector3(half_x, WALL_HEIGHT * 0.5, 0), pal.brick, true)
 	var door := 6.0
 	var side_w := (extents.x - door) * 0.5
+	# A shallow ramp up to the floor across the whole doorway, so there is no
+	# lip to stub a toe on or catch a dragged box: you walk (or drag) straight in.
+	# It starts a little under the ground outside, so wherever the land is a
+	# touch low there is still no edge to catch.
+	var run := 2.2
+	var rise := 0.3
+	var slope := atan2(rise, run)
+	var thick := 0.3
+	var ramp_len := sqrt(run * run + rise * rise)
+	var ramp_basis := Basis(Vector3.RIGHT, slope)
+	var ramp_at := Vector3(0, 0.2 - rise * 0.5, half_z + run * 0.5) - ramp_basis.y * thick * 0.5
+	_slab_at(Vector3(door + 0.4, thick, ramp_len), Transform3D(ramp_basis, ramp_at), pal.floor.darkened(0.08))
 	for side in [-1.0, 1.0]:
 		_slab(Vector3(side_w, WALL_HEIGHT, 0.3), Vector3(side * (half_x - side_w * 0.5), WALL_HEIGHT * 0.5, half_z), pal.wall, true)
 	_slab(Vector3(extents.x, 0.3, extents.z), Vector3(0, WALL_HEIGHT + 0.15, 0), pal.trim, true)

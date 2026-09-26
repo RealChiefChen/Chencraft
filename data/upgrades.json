@@ -78,6 +78,70 @@
       ]
     },
     {
+      "id": "engine",
+      "display_name": "Engine",
+      "levels": [
+        {
+          "level": 1,
+          "cost": 0,
+          "label": "Stock Engine",
+          "engine": 1.0,
+          "top_speed": 1.0
+        },
+        {
+          "level": 2,
+          "cost": 1500,
+          "label": "Tuned Engine",
+          "engine": 1.2,
+          "top_speed": 1.05
+        },
+        {
+          "level": 3,
+          "cost": 5000,
+          "label": "Turbo Diesel",
+          "engine": 1.45,
+          "top_speed": 1.1
+        },
+        {
+          "level": 4,
+          "cost": 14000,
+          "label": "Big Block",
+          "engine": 1.8,
+          "top_speed": 1.16
+        }
+      ]
+    },
+    {
+      "id": "tyres",
+      "display_name": "Tyres",
+      "levels": [
+        {
+          "level": 1,
+          "cost": 0,
+          "label": "Road Tyres",
+          "grip": 1.0
+        },
+        {
+          "level": 2,
+          "cost": 1200,
+          "label": "All-Terrain Tyres",
+          "grip": 1.12
+        },
+        {
+          "level": 3,
+          "cost": 4000,
+          "label": "Mud Terrain Tyres",
+          "grip": 1.25
+        },
+        {
+          "level": 4,
+          "cost": 11000,
+          "label": "Lugged Tyres and Chains",
+          "grip": 1.4
+        }
+      ]
+    },
+    {
       "id": "sawmill",
       "display_name": "Planker",
       "levels": [

@@ -35,7 +35,7 @@ signal crane_released(item: LooseItem)
 ## Line on the winch drum; the crane's reach is scaled from it.
 @export var reach: float = 14.0
 ## How fast the winch takes up line, in m/s.
-@export var winch_speed: float = 1.8
+@export var winch_speed: float = Balance.num("vehicles.winch_speed", 1.8)
 ## Where the crane's turntable sits (or, with no crane, the winch fairlead),
 ## in the vehicle's frame.
 @export var head_offset: Vector3 = Vector3(0, 1.1, -1.2)
@@ -46,11 +46,15 @@ const SHORTEST_LINE := 1.2
 
 ## How fast the log goes where it is steered, and gets there.
 static var MOVE_SPEED: float = Balance.num("crane.move_speed", 2.4)          ## m/s
-const MOVE_ACCEL := 5.0           ## m/s^2
+static var MOVE_ACCEL: float = Balance.num("crane.move_accel", 8.0)           ## m/s^2
 const TURN_SPEED := 1.1           ## rad/s
 const TURN_ACCEL := 4.0
-## Held right mouse: the fine-control speed for setting a log down.
-const FINE := 0.25
+## Held right mouse: the fine-control speed for setting a log down. Without
+## it the crane's joints run this much faster than a hydraulic's pace, so a
+## log goes where it is steered briskly and fine control is for the last bit.
+static var FINE: float = Balance.num("crane.fine_factor", 0.25)
+static var COARSE_JOINTS: float = Balance.num("crane.joint_speed", 2.2)
+var _fine: bool = false
 ## The crane's envelope, from its turntable. The slew arc is either side of
 ## straight back over the bed: it does not swing through the cab.
 const REACH_MIN := 1.6
@@ -79,6 +83,8 @@ const LOAD_REACH := 0.65
 const LOAD_SPEED := 0.5
 ## The folded, travelling pose.
 const REST := {"slew": 0.0, "luff": 0.08, "ext": 0.0, "line": 1.2, "rot": 0.0}
+## The longest single sweep of a carried log, in metres.
+const SWEEP_STEP := 0.035
 ## What the log may not pass through while it is being moved.
 const SWEEP_MASK := Layers.WORLD | Layers.VEHICLE | Layers.MACHINE | Layers.TREE | Layers.KERB
 
@@ -363,6 +369,7 @@ func home() -> void:
 func drive(move: Vector3, turn: float, fine: bool, delta: float) -> void:
 	if not operating:
 		return
+	_fine = fine
 	var scale := (FINE if fine else 1.0) * _load_factor(LOAD_SPEED)
 	_target_vel = _target_vel.move_toward(move.limit_length(1.0) * MOVE_SPEED * scale, MOVE_ACCEL * delta)
 	_yaw_vel = move_toward(_yaw_vel, clampf(turn, -1.0, 1.0) * TURN_SPEED * scale, TURN_ACCEL * delta)
@@ -498,7 +505,8 @@ func _step_joints(goals: Dictionary, delta: float, speed_scale: float) -> void:
 		var err := angle_difference(cur, goal) if k == "rot" else goal - cur
 		var top: float = JOINT_SPEED[k] * speed_scale
 		var want := clampf(err * 5.0, -top, top)
-		_joint_vel[k] = move_toward(float(_joint_vel[k]), want, float(JOINT_ACCEL[k]) * delta)
+		# A faster crane brakes harder too, or it would overshoot its mark.
+		_joint_vel[k] = move_toward(float(_joint_vel[k]), want, float(JOINT_ACCEL[k]) * maxf(1.0, speed_scale) * delta)
 		cur += float(_joint_vel[k]) * delta
 		joints[k] = wrapf(cur, -PI, PI) if k == "rot" else cur
 
@@ -707,7 +715,15 @@ func _carry(delta: float) -> void:
 		var along := (frame.basis.inverse() * held.global_transform.basis.y)
 		target_yaw = atan2(along.x, along.z)
 	var motion: Vector3 = frame * Vector3(pose.jaw) - from
-	var moved := _sweep(held, motion)
+	# Swept a few centimetres at a time: a brisk crane moves the log further
+	# in a frame than one sweep can safely judge against what it is lying on.
+	var moved := Vector3.ZERO
+	var steps := clampi(int(ceil(motion.length() / SWEEP_STEP)), 1, 8)
+	for k in steps:
+		var part := motion / float(steps)
+		var got := _sweep(held, part)
+		held.global_position += got
+		moved += got
 	held.global_position = from + moved
 	_held_vel = moved / maxf(delta, 0.0001)
 	if (motion - moved).length() > 0.03:
@@ -798,7 +814,8 @@ func _work_crane(delta: float) -> void:
 	else:
 		claw_state = &""
 	var goals: Dictionary = solve(target, target_yaw) if operating else _rest_goals()
-	_step_joints(goals, delta, _load_factor(LOAD_SPEED))
+	var pace := (FINE * COARSE_JOINTS if _fine else COARSE_JOINTS) if operating else COARSE_JOINTS
+	_step_joints(goals, delta, _load_factor(LOAD_SPEED) * maxf(pace, 0.35))
 	if folding and _settled(_rest_goals(), 0.05):
 		folding = false
 		_apply_plant()
@@ -845,15 +862,17 @@ func status_line() -> String:
 	if operating:
 		var load := "%s, %.0f / %.0f kg" % [held.display_name(), held.mass, crane_power_kg] if held != null \
 			else "grapple open, %.0f kg crane" % crane_power_kg
-		bits.append("crane: %s%s  [W/S] away/toward [A/D] left/right [Shift/Ctrl] up/down [Q/E] turn [F] %s [RMB] fine [N] reset [R] done" % [
-			load, " - AT ITS LIMIT" if at_limit else "", "let go" if held != null else ("stop" if claw_state == &"down" else "drop the claw")])
+		bits.append("crane: %s%s" % [load, " - AT ITS LIMIT" if at_limit else ""])
+		bits.append("[W/S] away/toward  [A/D] left/right  [Shift/Ctrl] up/down  [Q/E] turn")
+		bits.append("[F] %s  [RMB] fine  [N] reset  [R] done" % [
+			"let go" if held != null else ("stop" if claw_state == &"down" else "drop the claw")])
 	elif folding:
 		bits.append("crane folding away")
 	if anchored:
 		if anchor_rock != null:
 			bits.append("winch on %s in the ground: needs %.0f kg of pull" % [
 				GameData.item_name(anchor_rock.ore_item), anchor_rock.pull_required()])
-		bits.append("winch: %.0f m of line, pulling %.0f / %.0f kg%s  [K] reel in [L] let out [Y] unhook" % [
+		bits.append("winch: %.0f m of line, pulling %.0f / %.0f kg%s\n[K] reel in  [L] let out  [Y] unhook" % [
 			line_length, winch_load_kg(), winch_power_kg, " - STALLED" if winch_stalled() else ""])
 	if not bits.is_empty():
 		return "\n".join(bits)

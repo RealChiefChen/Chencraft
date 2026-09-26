@@ -1,8 +1,9 @@
 {
-  "_note": "Balance knobs. Change a number, restart the game. Anything left out uses the value the game was tuned with. Prices, item values, machine speeds and vehicle stats live in their own tables (prices.json, items.json, buildings.json, vehicles.json, upgrades.json).",
+  "_note": "Balance knobs: speeds, prices, strengths and the rest of the game's feel in one place. Change a number, restart the game. Anything left out uses the value the game was tuned with. Per-item values, machine rates and vehicle stats live in their own tables (items.json, buildings.json, vehicles.json, upgrades.json); the multipliers here scale all of them at once. Your own settings and keys are not here - they are in your personal config file (Settings > Game > Open folder).",
 
   "player": {
-    "_about": "Moving and handling. reach: how far you can use things (m). drag_strength_kg: how hard your hand pulls a dragged piece. drag_turn_rate: Shift+WASDQE turn speed (rad/s). throw_impulse: how hard RMB throws. swim_speed_factor: speed in deep water as a share of walking.",
+    "_about": "Moving and handling. walk_multiplier scales walking and sprinting on top of the boots. reach: how far you can use things (m). drag_strength_kg: how hard your hand pulls a dragged piece. drag_turn_rate: Shift+WASDQE turn speed (rad/s). throw_impulse: how hard RMB throws. swim_speed_factor: speed in deep water as a share of walking.",
+    "walk_multiplier": 1.0,
     "jump_velocity": 6.5,
     "reach": 4.5,
     "carry_max_speed": 14.0,
@@ -23,17 +24,30 @@
   },
 
   "vehicles": {
-    "_about": "road_speed_bonus: extra top speed on roads (0.18 = +18%). bridge_extra_bonus: added on top of the road bonus on bridges. hold_speed / hold_after: a vehicle nobody is driving is held still once slower than this (m/s) for this long (s).",
+    "_about": "engine_multiplier / top_speed_multiplier / grip_multiplier / steer_multiplier scale every vehicle (the Engine and Tyres upgrades go on top). gear_torque_exponent: how much harder the low gears pull (0 = no difference; the automatic only uses it uphill). steer_soften: how much steering eases off per m/s of speed. road_speed_bonus: extra top speed on roads (0.18 = +18%). bridge_extra_bonus: added on top of the road bonus on bridges. winch_multiplier scales every winch's pull; winch_speed is how fast they reel (m/s). recover_cooldown: seconds between recoveries. hold_speed / hold_after: a vehicle nobody is driving is held still once slower than this (m/s) for this long (s).",
+    "engine_multiplier": 1.0,
+    "top_speed_multiplier": 1.0,
+    "grip_multiplier": 1.0,
+    "steer_multiplier": 1.0,
+    "steer_soften": 0.05,
+    "gear_torque_exponent": 0.85,
     "road_speed_bonus": 0.10,
     "bridge_extra_bonus": 0.25,
+    "winch_multiplier": 1.0,
+    "winch_speed": 1.8,
+    "recover_cooldown": 1.0,
     "hold_speed": 1.2,
     "hold_after": 0.3
   },
 
   "crane": {
-    "_about": "move_speed: how fast the log target moves (m/s). claw_speed: how fast the claw drops and climbs (m/s).",
-    "move_speed": 4  ,
-    "claw_speed": 4
+    "_about": "move_speed: how fast the log target moves (m/s) and move_accel how fast it gets there (m/s2). joint_speed: how much faster than a hydraulic's pace the crane's joints run when you are not holding fine control. fine_factor: the speed with fine control held, as a share of full. claw_speed: how fast the claw drops and climbs (m/s). power_multiplier scales every crane's lifting rating.",
+    "move_speed": 5.5,
+    "move_accel": 8.0,
+    "joint_speed": 2.2,
+    "fine_factor": 0.25,
+    "claw_speed": 4,
+    "power_multiplier": 1.0
   },
 
   "loader": {
@@ -42,13 +56,32 @@
     "tilt_speed": 0.9
   },
 
+  "machines": {
+    "_about": "speed_multiplier scales every tunnel machine's belt speed, so how fast a piece goes through.",
+    "speed_multiplier": 1.0
+  },
+
+  "build": {
+    "_about": "grid_snap: the build grid, in metres (0.25 = sixteen squares to the metre-square; buildings are still sized in whole metres). material_share: how much material a plan (block, slab, wall, pillar) takes, as a share of its volume.",
+    "grid_snap": 0.25,
+    "material_share": 0.1
+  },
+
   "economy": {
-    "_about": "week_days: days in a market week (prices change weekly). Day length is day_length_seconds in prices.json.",
-    "week_days": 7
+    "_about": "price_multiplier scales every sale price. Prices move once a market week (week_days days; day length is day_length_seconds in prices.json), by material: every form of a material shares its week's move. How far a material swings runs from volatility_cheap (for things worth cheap_value $/m3 or less) down to volatility_dear (dear_value $/m3 or more), on a log scale between.",
+    "price_multiplier": 1.0,
+    "week_days": 7,
+    "volatility_cheap": 0.6,
+    "volatility_dear": 0.06,
+    "cheap_value": 25,
+    "dear_value": 8000
   },
 
   "world": {
-    "_about": "vehicle_clearance: no tree or rock appears within this many metres of a vehicle. kill_plane_y: loose pieces below this height are put back on the surface (keep it under the deepest cave, about -90).",
+    "_about": "Trees grow in groves of their own kind: grove_radius (m) is how big a grove is, grove_share how many of a kind stand in one rather than as strays. starter_forest_trees: the wood a short walk from the plot. vehicle_clearance: no tree or rock appears within this many metres of a vehicle. kill_plane_y: loose pieces below this height are put back on the surface (keep it under the deepest cave, about -90).",
+    "grove_radius": 42.0,
+    "grove_share": 0.88,
+    "starter_forest_trees": 28,
     "vehicle_clearance": 7.0,
     "kill_plane_y": -170.0
   }

@@ -42,8 +42,15 @@ No asset files: everything you see is built in code from primitives.
 
 Controls are on the title screen's Controls page and in the in-game journal
 (**F1**). The essentials: **WASD** to move, **left mouse** on something with an
-empty hand to drag it, **1-9** for your tools, **E** to use things and get into
-vehicles, **B** for build mode, **Tab** for the journal.
+empty hand to drag it, **1-9** for your tools, **E** to use things, **F** to
+get into vehicles, **B** for build mode (then **E** for the build menu),
+**Tab** for the journal. Every key can be rebound in Settings > Controls.
+
+Your settings and key bindings are kept in one commented, hand-editable
+config file, `config.cfg` in the game's user folder (on Windows
+`%APPDATA%\Godot\app_userdata\Pinecraft\`; Settings has a button that opens
+it). Saves are in the `saves` folder next to it - six slots. The balance
+constants (speeds, prices, strengths) are in `data/balance.json`.
 
 ## For developers
 

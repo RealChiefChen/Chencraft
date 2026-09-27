@@ -8,8 +8,8 @@ extends Node3D
 ## and a causeway - bar one, which only a tunnel under the sea reaches.
 const MAP_HALF := 2400.0
 const DEPOT_POSITION := Vector3(0, 0, 70)
-const STORE_POSITION := Vector3(-52, 0, 62)
-const QUARRY_CENTRE := Vector3(-150, 0, -40)
+const STORE_POSITION := Vector3(185, 0, 52)
+const QUARRY_CENTRE := Vector3(-10, 0, -430)
 ## Where the demo lines stand when they are switched on (Settings > Debug).
 const SHOWCASE_POSITION := Vector3(28, 0, 188)
 const SHOWCASE_GROUND := 2.0
@@ -400,6 +400,23 @@ func _build_environment() -> void:
 	env_node.environment = env
 	add_child(env_node)
 
+## The ring road round home: an ellipse about the plot and the yard.
+const RING_CENTRE := Vector2(0, 15)
+const RING_RADII := Vector2(88, 105)
+const RING_POINTS := 72
+
+static func ring_point(angle: float) -> Vector3:
+	return Vector3(RING_CENTRE.x + RING_RADII.x * cos(angle), 0, RING_CENTRE.y + RING_RADII.y * sin(angle))
+
+## Waypoints for a road leaving the ring at `angle`: straight out, square to
+## the ring, before it is routed on to `onward`.
+static func _arterial(angle: float, onward: Array) -> Array:
+	var at := ring_point(angle)
+	var normal := Vector2(cos(angle) / RING_RADII.x, sin(angle) / RING_RADII.y).normalized()
+	var out: Array = [at, at + Vector3(normal.x, 0, normal.y) * 60.0]
+	out.append_array(onward)
+	return out
+
 ## Spec: a large, simple, polygonal map with several biomes, rivers to ford or
 ## bridge, and roads that are quicker to drive. The build sites are levelled out
 ## of it first, so a factory floor is never on a slope.
@@ -421,24 +438,30 @@ func _build_terrain() -> void:
 				Vector3(-55, 0, -155), Vector3(-250, 0, -240), Vector3(-600, 0, -350),
 				Vector3(-1000, 0, -420), Vector3(-1350, 0, -450)]},
 	]
-	# Roads. The two short ones round home are laid; the rest are given as
-	# waypoints and routed over the land, so they wind round hills, switch
-	# back up the mountains, and take water where the crossing is short.
+	# Roads. Round home a ring road, with the drive up from the plot and the
+	# yard meeting it square on; the rest leave the ring square on too, as
+	# waypoints routed over the land, so they wind round hills, switch back
+	# up the mountains, and take water where the crossing is short.
+	var ring: Array = []
+	for i in RING_POINTS + 1:
+		ring.append(ring_point(TAU * float(i % RING_POINTS) / float(RING_POINTS)))
 	terrain.roads = [
-		[Vector3(0, 0, 0), Vector3(0, 0, 30), DEPOT_POSITION,
-			Vector3(-20, 0, 66), STORE_POSITION],
-		[Vector3(0, 0, 0), Vector3(-40, 0, -14), Vector3(-90, 0, -28), QUARRY_CENTRE],
-		{"bridge": true, "route": [Vector3(40, 0, -20), Vector3(260, 0, 40), Vector3(1000, 0, 180),
-			Vector3(1850, 0, 120)]},
-		{"bridge": true, "route": [Vector3(-40, 0, -14), Vector3(-120, 0, -500), Vector3(-60, 0, -1150),
-			Vector3(0, 0, -1850)]},
-		{"bridge": true, "route": [QUARRY_CENTRE, Vector3(-500, 0, 60), Vector3(-1150, 0, 160),
-			Vector3(-1850, 0, 220)]},
-		{"ford": true, "style": "gravel", "route": [Vector3(30, 0, 80), Vector3(500, 0, 520),
-			Vector3(1150, 0, 1150)]},
+		ring,
+		[Vector3(0, 0, 0), Vector3(0, 0, 30), DEPOT_POSITION, ring_point(PI * 0.5)],
+		# East, past the store, to the far coast.
+		{"bridge": true, "route": _arterial(0.0, [Vector3(260, 0, 15), Vector3(1000, 0, 180),
+			Vector3(1850, 0, 120)])},
+		# North, past the quarry, up into the high country.
+		{"bridge": true, "route": _arterial(-PI * 0.5, [Vector3(0, 0, -240), Vector3(-90, 0, -440),
+			Vector3(-60, 0, -1150), Vector3(0, 0, -1850)])},
+		# West.
+		{"bridge": true, "route": _arterial(PI, [Vector3(-500, 0, 60), Vector3(-1150, 0, 160),
+			Vector3(-1850, 0, 220)])},
+		# South-east, a gravel track with fords.
+		{"ford": true, "style": "gravel", "route": _arterial(PI * 0.25, [Vector3(500, 0, 520),
+			Vector3(1150, 0, 1150)])},
 		# Into the desert, and up into the Spine Mountains.
-		{"bridge": true, "route": [Vector3(-20, 0, 66), Vector3(-640, 0, 680)]},
-		{"bridge": true, "route": [Vector3(260, 0, 40), Vector3(560, 0, -380)]},
+		{"bridge": true, "route": _arterial(PI * 0.6, [Vector3(-150, 0, 330), Vector3(-640, 0, 680)])},
 	]
 	for isle in ISLANDS:
 		terrain.islands.append(isle)

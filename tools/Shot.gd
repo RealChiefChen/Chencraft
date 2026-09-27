@@ -434,6 +434,25 @@ func shot_ground() -> void:
 	await look(c + Vector3(50, 8, 55), c)
 	await snap("ground")
 
+func shot_junction() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var j := World.ring_point(0.0)
+	await look(Vector3(j.x + 40, world.terrain.height_at(j.x + 40, j.z - 30) + 9, j.z - 30), Vector3(j.x, world.terrain.height_at(j.x, j.z), j.z))
+	await snap("junction")
+
+func shot_eagle() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var site: Vector3 = world.terrain.found_sites["Eagle's Rest"]
+	var from := site + Vector3(-70, 25, 60)
+	await look(from, site)
+	await snap("eagle")
+
+func shot_storeroad() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var s := World.STORE_POSITION
+	await look(Vector3(s.x - 60, world.terrain.height_at(s.x - 60, s.z - 60) + 18, s.z - 60), Vector3(s.x, world.terrain.height_at(s.x, s.z), s.z))
+	await snap("storeroad")
+
 func shot_machinecfg() -> void:
 	var m := world.plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0, false) as InlineMachine
 	await get_tree().process_frame

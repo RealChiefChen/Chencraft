@@ -53,7 +53,7 @@ func _run_all() -> void:
 	await _test(&"stones are polished in the gem polisher and faceted in the gem cutter", test_gem_line)
 	await _test(&"islands, bridges and carved places", test_islands)
 	await _test(&"big consolidated biome regions with real relief", test_regions)
-	await _test(&"roads are routed round hills and switch back up mountains", test_road_routing)
+	await _test(&"roads are routed over the land, graded, with no tight bends", test_road_routing)
 	await _test(&"cave networks: joined up, below sea level, with open mouths", test_cave_network)
 	await _test(&"belted lines of machines keep flowing without jamming", test_machine_lines)
 	await _test(&"a tunnel mouth is a real opening", test_tunnel_mouth)
@@ -1486,8 +1486,18 @@ func test_road_routing() -> void:
 	var path: Array = land.roads[0].get("path", [])
 	check(path.size() > 20, "the road was not routed")
 	var span := land._path_length(path)
-	var straight := Vector2(a.x - b.x, a.z - b.z).length()
-	check(span > straight * 1.08, "the road runs straight (%.0f m for %.0f m)" % [span, straight])
+	# No bend tighter than a truck takes: turning radius over each 8 m.
+	var tightest := INF
+	var s := 8.0
+	while s + 8.0 <= span - 8.0:
+		var p0 := land._point_along(path, s - 8.0)
+		var p1 := land._point_along(path, s)
+		var p2 := land._point_along(path, s + 8.0)
+		var turn := absf(Vector2(p1.x - p0.x, p1.z - p0.z).angle_to(Vector2(p2.x - p1.x, p2.z - p1.z)))
+		if turn > 0.001:
+			tightest = minf(tightest, 8.0 / turn)
+		s += 4.0
+	check(tightest >= Terrain.ROAD_MIN_RADIUS * 0.8, "a bend of %.0f m radius" % tightest)
 	# Graded no steeper than the limit, over any 30 m of it.
 	var worst := 0.0
 	var along := 0.0

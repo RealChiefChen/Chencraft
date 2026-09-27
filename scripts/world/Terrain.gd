@@ -34,7 +34,7 @@ static var ROAD_SPEED_BONUS: float = Balance.num("vehicles.road_speed_bonus", 0.
 ## Bridges are faster still: the road's bonus and this much more.
 static var BRIDGE_SPEED_BONUS: float = ROAD_SPEED_BONUS + Balance.num("vehicles.bridge_extra_bonus", 0.10)
 ## The steepest a road is graded, as rise over run.
-const MAX_GRADE := 0.1
+const MAX_GRADE := 0.12
 ## How far under the road's level the land under the carriageway is laid.
 const ROAD_SINK := 0.2
 
@@ -75,7 +75,7 @@ var road_paths: Array[Dictionary] = []
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 19
+const GENERATOR_VERSION := 20
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -906,7 +906,9 @@ func _grade_roads(list: Array) -> void:
 			floor_h = WATER_LEVEL + 0.8
 		elif ford:
 			floor_h = WATER_LEVEL - 0.45
-		var profile := _road_profile(path, span, floor_h)
+		var hold := float(road.get("hold_end", 0.0)) if road is Dictionary else 0.0
+		var end_level := float(road.get("end_level", NAN)) if road is Dictionary else NAN
+		var profile := _road_profile(path, span, floor_h, hold, end_level)
 		if profile.is_empty():
 			continue
 		var reach := ROAD_HALF_WIDTH + ROAD_SHOULDER
@@ -1000,24 +1002,63 @@ func _spur_roads() -> Array:
 		if not found_sites.has(name):
 			continue
 		var site: Vector3 = found_sites[name]
-		var best := Vector3.ZERO
-		var best_d := INF
-		for road in roads:
-			var path: Array = road.get("path", []) if road is Dictionary else road
-			var span := _path_length(path)
-			var along := 0.0
-			while along <= span:
-				var p := _point_along(path, along)
-				var d := Vector2(p.x - site.x, p.z - site.z).length()
-				if d < best_d:
-					best_d = d
-					best = p
-				along += 12.0
-		if best_d == INF or best_d > 900.0:
+		var near := _nearest_road_point(site)
+		if near.is_empty() or float(near.d) > 900.0:
 			continue
-		var path := _smooth_path(_route(Vector3(site.x, 0, site.z), best, false))
-		out.append({"path": path, "bridge": true, "style": "dirt"})
+		# Where it meets the road is where the way there first comes down to
+		# it - not the nearest point as the crow flies, which may be round the
+		# far side of a mountain from the way a road would actually go.
+		var way := _route(Vector3(site.x, 0, site.z), near.at, false)
+		for q in way:
+			var close := _nearest_road_point(q)
+			if not close.is_empty() and float(close.d) < 70.0:
+				near = close
+				break
+		var best: Vector3 = near.at
+		var best_tangent: Vector3 = near.tangent
+		# It leaves the road square on, a real junction, and bends round to
+		# the site from there: driven outward from the junction, so the
+		# square end is the one at the road.
+		var normal := Vector3(-best_tangent.z, 0.0, best_tangent.x)
+		if normal.dot(Vector3(site.x - best.x, 0.0, site.z - best.z)) < 0.0:
+			normal = -normal
+		var lead := best + normal * 40.0
+		var routed: Array = [best]
+		for p in _route(lead, Vector3(site.x, 0, site.z), false):
+			routed.append(p)
+		var path := _drive_path(_smooth_path(routed), normal)
+		# The last few metres into the site end dead on it.
+		if Vector2(path[path.size() - 1].x - site.x, path[path.size() - 1].z - site.z).length() > 0.5:
+			path.append(Vector3(site.x, 0, site.z))
+		# Flat across the site's own level at its end, so levelling the site
+		# afterwards leaves the road where it was.
+		var radius := 10.0
+		for bs in build_sites:
+			if Vector2((bs.centre as Vector3).x - site.x, (bs.centre as Vector3).z - site.z).length() < 1.0:
+				radius = float(bs.radius)
+		out.append({"path": path, "bridge": true, "style": "dirt", "hold_end": radius * 1.45, "end_level": site.y})
 		road_paths.append({"path": path, "style": "dirt", "bridge": true})
+	return out
+
+## The nearest point on a road to `point` - not on a bridge, not in a road's
+## last few metres - with the road's direction there: {at, tangent, d}.
+func _nearest_road_point(point: Vector3) -> Dictionary:
+	var out: Dictionary = {}
+	var best_d := INF
+	for road in roads:
+		var path: Array = road.get("path", []) if road is Dictionary else road
+		var span := _path_length(path)
+		var along := 30.0
+		while along <= span - 30.0:
+			var p := _point_along(path, along)
+			var d := Vector2(p.x - point.x, p.z - point.z).length()
+			if d < best_d and height_at(p.x, p.z) > WATER_LEVEL + 0.3:
+				best_d = d
+				var ahead := _point_along(path, along + 6.0)
+				var behind := _point_along(path, along - 6.0)
+				out = {"at": p, "d": d,
+					"tangent": Vector3(ahead.x - behind.x, 0.0, ahead.z - behind.z).normalized()}
+			along += 12.0
 	return out
 
 # --- Routing -----------------------------------------------------------------
@@ -1040,10 +1081,80 @@ func _route_roads() -> void:
 				var leg := _route(points[i], points[i + 1], bool(road.get("ford", false)))
 				for k in range(1, leg.size()):
 					path.append(leg[k])
-			road["path"] = _smooth_path(path)
+			# Driven, not just joined up: the first waypoint pair gives the
+			# heading it sets off on (square off whatever it leaves), and no
+			# bend is tighter than a truck takes at speed.
+			var first: Vector3 = points[1] - points[0]
+			road["path"] = _drive_path(_smooth_path(path), Vector3(first.x, 0.0, first.z).normalized())
 		var p: Array = road.get("path", []) if road is Dictionary else road
 		road_paths.append({"path": p, "style": String(road.get("style", "asphalt")) if road is Dictionary else "asphalt",
 			"bridge": road is Dictionary and bool(road.get("bridge", false))})
+
+## Tightest bend a road is laid with, metres of radius.
+const ROAD_MIN_RADIUS := 24.0
+## How far ahead the driver looks down the planned line.
+const ROAD_LOOKAHEAD := 50.0
+
+## The planned line as a vehicle would drive it: setting off along `heading`,
+## steering toward a point a little way down the line, never turning tighter
+## than ROAD_MIN_RADIUS. Where the plan zig-zags or kinks, the road swings
+## round in a proper curve instead; it ends on the plan's last point.
+func _drive_path(plan: Array, heading: Vector3) -> Array:
+	if plan.size() < 3:
+		return plan
+	# Zig-zags ironed out of the plan first: a switchback is a climb the
+	# grading can make in a cutting, where a car following it would loop.
+	for pass_index in 40:
+		var eased := plan.duplicate()
+		for i in range(1, plan.size() - 1):
+			eased[i] = (plan[i - 1] + plan[i] * 2.0 + plan[i + 1]) * 0.25
+		plan = eased
+	var span := _path_length(plan)
+	var step := 2.0
+	var pos: Vector3 = plan[0]
+	var dir := Vector2(heading.x, heading.z)
+	if dir.length() < 0.01:
+		var b: Vector3 = plan[1]
+		dir = Vector2(b.x - pos.x, b.z - pos.z)
+	dir = dir.normalized()
+	var progress := 0.0
+	var out: Array = [Vector3(pos.x, 0.0, pos.z)]
+	var travelled := 0.0
+	var max_turn := step / ROAD_MIN_RADIUS
+	var end: Vector3 = plan[plan.size() - 1]
+	while travelled < span * 3.0 + 200.0:
+		# How far down the plan we are: the nearest point a little either side
+		# of where we were, never going back.
+		var best := progress
+		var best_d := INF
+		var s := progress
+		while s <= minf(span, progress + 30.0):
+			var q := _point_along(plan, s)
+			var d := Vector2(q.x - pos.x, q.z - pos.z).length_squared()
+			if d < best_d:
+				best_d = d
+				best = s
+			s += 1.0
+		progress = best
+		var to_end := Vector2(end.x - pos.x, end.z - pos.z).length()
+		if progress >= span - 1.0 or to_end < 10.0:
+			break
+		var target := _point_along(plan, minf(span, progress + ROAD_LOOKAHEAD))
+		var want := Vector2(target.x - pos.x, target.z - pos.z)
+		if want.length() > 0.01:
+			var turn := clampf(dir.angle_to(want.normalized()), -max_turn, max_turn)
+			dir = dir.rotated(turn)
+		pos += Vector3(dir.x, 0.0, dir.y) * step
+		travelled += step
+		out.append(Vector3(pos.x, 0.0, pos.z))
+	out.append(end)
+	# Back to one point every few metres.
+	var total := _path_length(out)
+	var even: Array = []
+	var n := maxi(2, int(total / 8.0))
+	for i in n + 1:
+		even.append(_point_along(out, total * float(i) / float(n)))
+	return even
 
 ## A* over a coarse grid in the box round the two ends. Edges steeper than the
 ## grade limit are left out altogether, so the search has to find a way that
@@ -1138,27 +1249,99 @@ func _smooth_path(path: Array) -> Array:
 		out.append(_point_along(pts, span * float(i) / float(n)))
 	return out
 
-## Heights along a road's centre-line, taken off the land it crosses and then
-## smoothed twice, which is the difference between a grade and a switchback.
-func _road_profile(path: Array, span: float, floor_h: float = -INF) -> PackedFloat32Array:
+## Heights along a road's centre-line: taken off the land, then averaged over
+## a long stretch either way so the road rides over bumps and hollows instead
+## of following each one; held no steeper than a truck climbs, cutting through
+## rises and banking up over dips alike; and at each end brought to the level
+## of whatever it meets - the road it joins, the site it ends at - so a
+## junction is level and not a step.
+const PROFILE_REACH := 20.0
+const PROFILE_EASE := 45.0
+
+func _road_profile(path: Array, span: float, floor_h: float = -INF, hold_end: float = 0.0,
+		end_level: float = NAN) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	var steps := maxi(2, int(ceil(span / CELL)))
+	var ds := span / float(steps)
 	for i in steps + 1:
 		var point := _point_along(path, span * float(i) / float(steps))
 		out.append(maxf(floor_h, height_at(point.x, point.z)))
+	var w := maxi(1, int(round(PROFILE_REACH / ds)))
+	for pass_index in 3:
+		var sums := PackedFloat64Array()
+		sums.resize(out.size() + 1)
+		sums[0] = 0.0
+		for i in out.size():
+			sums[i + 1] = sums[i] + out[i]
+		var smoothed := out.duplicate()
+		for i in out.size():
+			var lo := maxi(0, i - w)
+			var hi := mini(out.size() - 1, i + w)
+			# Symmetric near the ends, so they are not dragged toward the middle.
+			var r := mini(i - lo, hi - i)
+			smoothed[i] = float(sums[i + r + 1] - sums[i - r]) / float(2 * r + 1)
+		out = smoothed
+	for i in out.size():
+		out[i] = maxf(out[i], floor_h)
+	var n := out.size() - 1
+	var start_h := _road_level_near(path[0], path)
+	if is_nan(start_h):
+		start_h = maxf(floor_h, height_at((path[0] as Vector3).x, (path[0] as Vector3).z))
+	var end_h := end_level
+	if is_nan(end_h):
+		end_h = _road_level_near(path[path.size() - 1], path)
+	if is_nan(end_h):
+		var e: Vector3 = path[path.size() - 1]
+		end_h = maxf(floor_h, height_at(e.x, e.z))
+	# Eased onto the end levels rather than stepped.
+	var fixed := PackedByteArray()
+	fixed.resize(out.size())
+	var d0 := start_h - out[0]
+	var d1 := end_h - out[n]
+	for i in out.size():
+		var along := float(i) * ds
+		var from_end := span - along
+		out[i] += d0 * smoothstep(PROFILE_EASE, 0.0, along)
+		if from_end <= hold_end:
+			out[i] = end_h
+			fixed[i] = 1
+		else:
+			out[i] += d1 * smoothstep(PROFILE_EASE, 0.0, from_end - hold_end)
+	out[0] = start_h
+	out[n] = end_h
+	fixed[0] = 1
+	fixed[n] = 1
+	# No steeper than a truck can climb, either way - or, where the two
+	# ends are further apart in height than that allows (a road up a peak),
+	# one steady climb the whole way rather than a wall at the end.
+	var need := absf(end_h - start_h) / maxf(1.0, span - hold_end) * 1.15
+	var rise := maxf(MAX_GRADE, need) * ds
+	for pass_index in 2:
+		for i in range(1, out.size()):
+			if fixed[i] == 0:
+				out[i] = clampf(out[i], out[i - 1] - rise, out[i - 1] + rise)
+		for i in range(out.size() - 2, -1, -1):
+			if fixed[i] == 0:
+				out[i] = clampf(out[i], out[i + 1] - rise, out[i + 1] + rise)
+	# And the corners the limit left rounded off.
 	for pass_index in 2:
 		var smoothed := out.duplicate()
 		for i in range(1, out.size() - 1):
-			smoothed[i] = (out[i - 1] + out[i] * 2.0 + out[i + 1]) * 0.25
+			if fixed[i] == 0:
+				smoothed[i] = (out[i - 1] + out[i] * 2.0 + out[i + 1]) * 0.25
 		out = smoothed
-	# No steeper than a truck can climb: where the land is, the road goes
-	# through it in a cutting instead of up the face.
-	var rise := MAX_GRADE * span / float(steps)
-	for i in range(1, out.size()):
-		out[i] = minf(out[i], out[i - 1] + rise)
-	for i in range(out.size() - 2, -1, -1):
-		out[i] = minf(out[i], out[i + 1] + rise)
 	return out
+
+## The level of an already-graded road under `point` (another road than
+## `own`), or NAN when there is none there.
+func _road_level_near(point: Vector3, own: Array) -> float:
+	for entry in road_paths:
+		if entry.path == own or not entry.has("profile"):
+			continue
+		var hit := _distance_to_path(point, entry.path)
+		if hit.x <= ROAD_HALF_WIDTH:
+			return _profile_height(entry.profile, hit.y, float(entry.span))
+	return NAN
 
 func _profile_height(profile: PackedFloat32Array, along: float, span: float) -> float:
 	if profile.is_empty():
@@ -1838,7 +2021,32 @@ func map_image(px_per_cell: int = 2) -> Image:
 			img.set_pixel(ix, iz, color)
 	if px_per_cell > 1:
 		img.resize(_cells * px_per_cell, _cells * px_per_cell, Image.INTERPOLATE_NEAREST)
+	_draw_roads(img)
 	return img
+
+## The roads on the map, drawn over the land at their own width.
+func _draw_roads(img: Image) -> void:
+	var scale := float(img.get_width()) / (half_extent * 2.0)
+	var r := maxi(1, int(round(4.0 * scale)))
+	for road in road_paths:
+		var dirt := String(road.get("style", "")) == "dirt"
+		var color := Color(0.80, 0.66, 0.48) if dirt else Color(0.86, 0.85, 0.80)
+		var path: Array = road.path
+		var span := _path_length(path)
+		var along := 0.0
+		while along <= span:
+			var p := _point_along(path, along)
+			var cx := int((p.x + half_extent) * scale)
+			var cz := int((p.z + half_extent) * scale)
+			for dz in range(-r, r + 1):
+				for dx in range(-r, r + 1):
+					if dx * dx + dz * dz > r * r:
+						continue
+					var x := cx + dx
+					var z := cz + dz
+					if x >= 0 and z >= 0 and x < img.get_width() and z < img.get_height():
+						img.set_pixel(x, z, color)
+			along += maxf(1.0, 1.0 / scale)
 
 ## A cell's colour on the map: its ground, or rock where it is steep.
 func _map_color(ix: int, iz: int, height: float) -> Color:

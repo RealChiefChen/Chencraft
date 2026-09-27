@@ -150,6 +150,12 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 						pad.paint = Color(float(c[0]), float(c[1]), float(c[2]), float(c[3]))
 					if ev.has("attachment"):
 						pad.attachment = StringName(String(ev.attachment))
+					if ev.has("fit"):
+						var f: Array = ev.fit
+						pad.fit(StringName(String(f[0])), int(f[1]))
+					if ev.has("on"):
+						var o: Array = ev.on
+						pad.set_part_on(StringName(String(o[0])), bool(o[1]))
 		"mcfg":
 			var entry: Variant = _nodes.get(int(ev.get("id", -1)), null)
 			if entry != null and String(entry[1]) == "b":
@@ -556,5 +562,5 @@ func _view_of(p: Player) -> Dictionary:
 	var veh := -1
 	if p.driving() and is_instance_valid(p.vehicle):
 		veh = int(_ids.get(_key_of(p.vehicle, "v"), -1))
-	return {"t": "view", "prompt": p.last_prompt, "slot": p.selected_slot, "veh": veh,
+	return {"t": "view", "prompt": p.last_prompt, "slot": p.selected_slot, "veh": veh, "pas": p.passenger,
 		"carry": [p.carried_count(), p.carried_volume()], "drag": p.dragged != null}

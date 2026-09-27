@@ -159,7 +159,7 @@ func _run_all() -> void:
 	await _test(&"machines make their output in the size they are set to", test_machine_output_size)
 	await _test(&"trucks change gear, climb and turn tighter", test_gearbox)
 	await _test(&"a loaded log truck climbs a 38-degree slope", test_climb)
-	await _test(&"transmission and tyre upgrades are for every vehicle", test_vehicle_upgrades)
+	await _test(&"vehicle parts are bought, fitted to one vehicle at its pad, and switched on and off", test_vehicle_upgrades)
 	await _test(&"overdrive gears are more top speed", test_overdrive_speed)
 	await _test(&"recovering is rate-limited and not on outriggers", test_recover_limits)
 	await _test(&"a crane picks logs out of the trailer it tows", test_crane_from_trailer)
@@ -6104,8 +6104,6 @@ func test_overdrive_speed() -> void:
 		_setup(false)
 		PlayerState.reset()
 		Economy.from_dict({"money": 1000000, "day": 1})
-		for k in lvl - 1:
-			PlayerState.try_upgrade(&"transmission")
 		for c in world.get_children():
 			if c.name == "Ground":
 				c.free()
@@ -6118,6 +6116,7 @@ func test_overdrive_speed() -> void:
 		world.add_child(floor_body)
 		var truck := Hauler.new()
 		truck.setup(manager, 0, &"pickup")
+		truck.part_levels = {&"transmission": lvl}
 		world.add_child(truck)
 		truck.global_position = Vector3(0, 1.5, 0)
 		truck.rotation.y = -PI * 0.5
@@ -6135,44 +6134,81 @@ func test_overdrive_speed() -> void:
 	done()
 
 func test_vehicle_upgrades() -> void:
-	_setup(false)
+	_setup()
 	PlayerState.reset()
+	plot.vehicle_host = world
 	for track in [&"transmission", &"tyres"]:
 		check(GameData.upgrade_tracks.has(track), "there is no %s upgrade" % track)
 	check(not GameData.upgrade_tracks.has(&"engine"), "engines are still upgraded")
-	var truck := Hauler.new()
-	truck.setup(manager, 0, &"pickup")
-	world.add_child(truck)
-	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	# Parts are bought boxed and go into the inventory; nothing changes yet.
+	PlayerState.add_part(&"transmission", 2)
+	PlayerState.add_part(&"tyres", 2)
+	PlayerState.add_copy(&"pad_pickup")
+	PlayerState.add_copy(&"pad_pickup")
+	var pad := plot.place(GameData.building(&"pad_pickup"), Vector2i(-12, -12) * Plot.SUB, 0) as VehiclePad
+	var other_pad := plot.place(GameData.building(&"pad_pickup"), Vector2i(0, -12) * Plot.SUB, 0) as VehiclePad
+	check(pad != null and other_pad != null, "the pads were not placed")
+	if pad == null or other_pad == null:
+		done()
+		return
+	var truck := pad.spawn() as Hauler
+	var other := other_pad.spawn() as Hauler
 	await step(10)
 	var grip0 := (truck.wheel_bodies[0].physics_material_override as PhysicsMaterial).friction
 	var gears0 := truck.gear_ratios().size()
 	var top0 := truck.top_ratio()
-	Economy.from_dict({"money": 100000, "day": 1})
-	check(PlayerState.try_upgrade(&"transmission"), "could not buy the transmission upgrade")
-	check(PlayerState.try_upgrade(&"tyres"), "could not buy the tyre upgrade")
+	# Fitted at the pad: that one vehicle gets it, out of the inventory.
+	check_eq(pad.fit(&"transmission", 2), "", "could not fit the gearbox")
+	check_eq(pad.fit(&"tyres", 2), "", "could not fit the tyres")
+	check_eq(PlayerState.part_count(&"transmission", 2), 0, "fitting the gearbox did not use it up")
+	check(pad.fit(&"transmission", 3) != "", "a gearbox not owned was fitted")
 	check_eq(truck.gear_ratios().size(), gears0 + 1, "the new gearbox has no extra gear")
 	check(truck.top_ratio() > top0, "the new gearbox is no faster at the top")
-	# The new top gear pulls less than the old one did.
 	check(pow(1.0 / truck.top_ratio(), Hauler.GEAR_TORQUE_EXP) < pow(1.0 / top0, Hauler.GEAR_TORQUE_EXP),
 		"the overdrive pulls as hard as the old top gear")
 	var grip1 := (truck.wheel_bodies[0].physics_material_override as PhysicsMaterial).friction
 	check(grip1 > grip0, "new tyres did not grip better (%.2f -> %.2f)" % [grip0, grip1])
+	check_eq(other.gear_ratios().size(), gears0, "a part fitted to one pickup went on the other too")
+	# Switched off in the customisation, it runs as stock; on again, not.
+	pad.set_part_on(&"transmission", false)
+	check_eq(truck.gear_ratios().size(), gears0, "a switched-off gearbox still has its extra gear")
+	pad.set_part_on(&"transmission", true)
+	check_eq(truck.gear_ratios().size(), gears0 + 1, "switched back on, the gearbox is not there")
+	# A new vehicle off the pad comes with them; taken off, a part goes back.
+	var again := pad.spawn() as Hauler
+	await step(4)
+	check_eq(again.gear_ratios().size(), gears0 + 1, "the respawned pickup lost its gearbox")
+	check_eq(pad.fit(&"transmission", 1), "", "could not go back to stock")
+	check_eq(PlayerState.part_count(&"transmission", 2), 1, "the gearbox taken off did not go back into the parts")
+	# Saved: parts and what is fitted.
+	pad.fit(&"transmission", 2)
+	var saved_pad := pad.to_dict()
+	var saved_state := PlayerState.to_dict()
+	PlayerState.reset()
+	PlayerState.from_dict(saved_state)
+	check_eq(PlayerState.part_count(&"tyres", 2), 0, "the save gave back a fitted part")
+	var fresh := VehiclePad.new()
+	fresh.fitted = {}
+	fresh.from_dict({"fitted": saved_pad.fitted, "off": saved_pad.off})
+	check_eq(fresh.fitted_level(&"transmission"), 2, "the pad forgot its gearbox")
+	fresh.free()
 	var buggy := Hauler.new()
 	buggy.setup(manager, 0, &"buggy")
 	world.add_child(buggy)
 	await step(2)
 	check(buggy.rig != null and is_equal_approx(buggy.rig.winch_power_kg, 1000.0), "the dune buggy has no 1 t winch")
 	check(buggy.rig != null and not buggy.rig.has_crane(), "the dune buggy should not have a crane")
-	# Both are on the store's shelf.
+	# Every level of both is on the store's shelf as a part.
 	var sold: Array = []
 	for p in GameData.store_products():
-		if String(p.get("kind", "")) == "upgrade":
-			sold.append(StringName(p.target))
-	check(sold.has(&"transmission") and sold.has(&"tyres"), "the store does not sell the vehicle upgrades")
-	# An old save's engine level comes back as the same level of gearbox.
+		if String(p.get("kind", "")) == "part":
+			sold.append("%s:%d" % [p.target, int(p.level)])
+	for track in ["transmission", "tyres"]:
+		for lvl in [2, 3, 4]:
+			check(sold.has("%s:%d" % [track, lvl]), "the store does not sell %s level %d" % [track, lvl])
+	# An old save's engine level comes back as a gearbox part to fit.
 	PlayerState.from_dict({"levels": {"engine": 3}})
-	check_eq(PlayerState.level(&"transmission"), 3, "an old save's engine did not become a gearbox")
+	check_eq(PlayerState.part_count(&"transmission", 3), 1, "an old save's engine did not become a gearbox part")
 	done()
 
 func test_recover_limits() -> void:

@@ -270,6 +270,13 @@ func carried_count() -> int:
 func driving() -> bool:
 	return vehicle != null and is_instance_valid(vehicle)
 
+## In a vehicle but not at the wheel: riding along in co-op.
+var passenger: bool = false
+
+## At the wheel (not a passenger): the keys work the vehicle.
+func at_wheel() -> bool:
+	return driving() and not passenger
+
 ## The vehicle went from under the player (a pad sent it back and made a new
 ## one): on their feet again, solid, where they sat.
 func _vehicle_gone() -> void:
@@ -446,7 +453,7 @@ func _on_key(event: InputEvent) -> void:
 	if Controls.pressed(event, &"camera_view"):
 		set_third_person(not third_person)
 		return
-	if driving() and _on_driving_key(event):
+	if at_wheel() and _on_driving_key(event):
 		act(&"lever")
 		return
 	var building := build_system != null and build_system.active
@@ -675,7 +682,7 @@ func _physics_step(delta: float) -> void:
 	if net_view and driving():
 		# In a truck the body is where the host has it. Driving it here, the
 		# arms are worked here too.
-		if vehicle is Hauler and (vehicle as Hauler).net_mirror:
+		if vehicle is Hauler and (vehicle as Hauler).net_mirror and not passenger:
 			_update_vehicle_controls(delta)
 		_update_chase_camera(delta)
 		return
@@ -684,7 +691,8 @@ func _physics_step(delta: float) -> void:
 		_follow_last = null
 	if driving():
 		_update_rack()
-		_update_vehicle_controls(delta)
+		if not passenger:
+			_update_vehicle_controls(delta)
 		_update_chase_camera(delta)
 		return
 
@@ -1657,6 +1665,7 @@ func exit_vehicle() -> void:
 		r.set_operating(false)
 		r.release_winch()
 	vehicle = null
+	passenger = false
 	# Solid again only once the body has been moved out to the door and the
 	# physics has caught up: the jump from the seat would otherwise be taken
 	# as a sweep through the cab, and kick the vehicle metres away.

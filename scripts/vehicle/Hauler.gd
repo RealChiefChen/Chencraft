@@ -300,7 +300,7 @@ func gear_ratios() -> Array[float]:
 	var out: Array[float] = gears.duplicate()
 	if is_trailer or loader != null:
 		return out
-	var extra := clampi(int(PlayerState.stat(&"transmission", "overdrive", 0.0)), 0, OVERDRIVE.size())
+	var extra := clampi(int(part_stat(&"transmission", "overdrive", 0.0)), 0, OVERDRIVE.size())
 	for k in extra:
 		out.append(OVERDRIVE[k])
 	return out
@@ -311,7 +311,19 @@ func top_ratio() -> float:
 	return g[g.size() - 1] if not g.is_empty() else 1.0
 
 func grip_scale() -> float:
-	return GRIP_MULT * PlayerState.stat(&"tyres", "grip", 1.0)
+	return GRIP_MULT * part_stat(&"tyres", "grip", 1.0)
+
+## The parts fitted to this vehicle (from its pad): track -> level.
+var part_levels: Dictionary = {}
+
+func part_stat(track: StringName, key: String, fallback: float) -> float:
+	var lvl := int(part_levels.get(track, 1))
+	return float(GameData.upgrade_level(track, lvl).get(key, fallback))
+
+## New parts on (or switched off) while it is out.
+func set_parts(levels: Dictionary) -> void:
+	part_levels = levels.duplicate()
+	_refresh_grip()
 
 ## Tyres bought since the wheels went on: new rubber on every wheel.
 func _refresh_grip() -> void:
@@ -370,9 +382,7 @@ func _ready() -> void:
 	# The wheels go on once the truck is where it is going: a pad puts it in
 	# place just after adding it.
 	_build_wheels.call_deferred()
-	PlayerState.upgraded.connect(func(track: StringName, _l: int):
-		if track == &"tyres":
-			_refresh_grip())
+
 
 func _build() -> void:
 	var chassis := CollisionShape3D.new()
@@ -674,6 +684,37 @@ func is_seat_point(world_point: Vector3) -> bool:
 
 func seat_transform() -> Transform3D:
 	return _seat.global_transform
+
+## Riding along: other players in the passenger seat(s), in co-op. A bike or
+## quad carries one on the back; anything with a cab one beside the driver.
+var passengers: Array[Node3D] = []
+
+func passenger_seats() -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	if is_trailer:
+		return out
+	var s := _vec(spec.get("seat", [0, 1.2, -1.9]))
+	for extra in spec.get("passenger_seats", []):
+		out.append(_vec(extra))
+	if not out.is_empty():
+		return out
+	if bike or style == &"quad":
+		out.append(s + Vector3(0, 0.08, 0.5))
+	else:
+		out.append(s + Vector3(0.65, 0, 0))
+	return out
+
+func free_passenger_seat() -> bool:
+	passengers = passengers.filter(func(n): return is_instance_valid(n))
+	return passengers.size() < passenger_seats().size()
+
+## Where `who` sits: the driver's seat, or their passenger seat.
+func seat_of(who: Node3D) -> Transform3D:
+	var i := passengers.find(who)
+	if i < 0:
+		return seat_transform()
+	var seats := passenger_seats()
+	return global_transform * Transform3D(Basis(), seats[mini(i, seats.size() - 1)])
 
 ## How high above a pad to put the vehicle so it drops onto its wheels.
 func spawn_height() -> float:

@@ -176,12 +176,34 @@
               "target": "boots"
             },
             {
-              "kind": "upgrade",
-              "target": "transmission"
+              "kind": "part",
+              "target": "transmission",
+              "level": 2
             },
             {
-              "kind": "upgrade",
-              "target": "tyres"
+              "kind": "part",
+              "target": "transmission",
+              "level": 3
+            },
+            {
+              "kind": "part",
+              "target": "transmission",
+              "level": 4
+            },
+            {
+              "kind": "part",
+              "target": "tyres",
+              "level": 2
+            },
+            {
+              "kind": "part",
+              "target": "tyres",
+              "level": 3
+            },
+            {
+              "kind": "part",
+              "target": "tyres",
+              "level": 4
             }
           ]
         },

@@ -102,6 +102,8 @@ func price_of(slot: Dictionary) -> int:
 				if c >= 0 and (cost < 0 or c < cost):
 					cost = c
 			return cost
+		&"part":
+			return int(GameData.upgrade_level(target, int(slot.get("level", 2))).get("cost", -1))
 		&"tier":
 			var tier: int = int(slot.tier)
 			if tier <= 1:
@@ -212,9 +214,9 @@ func _dress_box(box: LooseItem, slot: Dictionary) -> void:
 	label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	label.position = Vector3(0, -size.y * 0.5 + 0.05, face + 0.002)
 	box.add_extra_node(label)
-	if slot.kind == &"tier":
+	if slot.kind == &"tier" or slot.kind == &"part":
 		var badge := Label3D.new()
-		badge.text = "T%d" % int(slot.tier)
+		badge.text = ("T%d" % int(slot.tier)) if slot.kind == &"tier" else ("L%d" % int(slot.get("level", 2)))
 		badge.font = UITheme.font(800)
 		badge.font_size = 96
 		badge.pixel_size = 0.003
@@ -296,6 +298,10 @@ func open_box(item: LooseItem, kit: Object = null) -> String:
 			if not kit.give_tool(target):
 				return "you already have a %s" % GameData.tool_name(target)
 			what = "%s added to your inventory - it is on the hotbar [I]" % GameData.tool_name(target)
+		&"part":
+			var lvl: int = int(slot.get("level", 2))
+			PlayerState.add_part(target, lvl)
+			what = "%s added to your parts - fit it to a vehicle at its pad [R]" % GameData.part_name(target, lvl)
 		&"upgrade":
 			if kit is PlayerKit and PlayerKit.personal(target):
 				if not (kit as PlayerKit).level_up(target):
@@ -555,7 +561,7 @@ func _lay_out_sections() -> void:
 			var spot := frame * Vector3(x, y - 0.2, z)
 			slots.append({
 				"box": p.box, "kind": StringName(p.kind), "target": StringName(p.target),
-				"tier": int(p.get("tier", 0)), "section": p.section, "color": BoxArt._color(p.color),
+				"tier": int(p.get("tier", 0)), "level": int(p.get("level", 0)), "section": p.section, "color": BoxArt._color(p.color),
 				"spot": to_global(spot), "basis": global_transform.basis * frame.basis, "item": null})
 
 func _label(text: String, at: Vector3, basis: Basis, size: int, color: Color, outline: int) -> Label3D:

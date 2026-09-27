@@ -208,7 +208,7 @@ func _validate() -> void:
 			"tool":
 				if not tools.has(target):
 					load_errors.append("store box '%s' holds unknown tool '%s'" % [box, target])
-			"upgrade":
+			"upgrade", "part":
 				if not upgrade_tracks.has(target):
 					load_errors.append("store box '%s' upgrades unknown track '%s'" % [box, target])
 			"tier":
@@ -324,12 +324,18 @@ func store_products(store_id: StringName = &"") -> Array:
 				out.append(p)
 	return out
 
+## A vehicle part: one level of a vehicle upgrade track, by its own name.
+func part_name(track: StringName, lvl: int) -> String:
+	return String(upgrade_level(track, lvl).get("label", "%s %d" % [track, lvl]))
+
 const TIER_COLORS := [[0.92, 0.45, 0.15], [0.52, 0.56, 0.64], [0.20, 0.36, 0.82]]
 
 static func box_id(p: Dictionary) -> StringName:
 	var id := "box_%s" % String(p.get("target", ""))
 	if p.has("tier"):
 		id += "_t%d" % int(p.tier)
+	elif String(p.get("kind", "")) == "part":
+		id += "_p%d" % int(p.get("level", 2))
 	elif String(p.get("kind", "")) == "upgrade":
 		id += "_up"
 	return StringName(id)
@@ -346,6 +352,8 @@ func product_name(p: Dictionary) -> String:
 		"tier":
 			var b := building(target)
 			return "%s T%d" % [b.display_name if b != null else String(target), int(p.get("tier", 1))]
+		"part":
+			return part_name(target, int(p.get("level", 2)))
 	var def := building(target)
 	return def.display_name if def != null else String(target)
 

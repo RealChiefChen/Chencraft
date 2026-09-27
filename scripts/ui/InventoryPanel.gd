@@ -46,6 +46,10 @@ func _ready() -> void:
 	_grid.add_theme_constant_override("v_separation", 10)
 	scroll.add_child(_grid)
 	col.add_child(scroll)
+	col.add_child(UIKit.label("VEHICLE PARTS", "Subheader", 13))
+	_parts = UIKit.label("", "Small")
+	_parts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(_parts)
 	col.add_child(UIKit.label("HOTBAR", "Subheader", 13))
 	_bar = UIKit.hbox(8)
 	_bar.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -56,14 +60,16 @@ func _ready() -> void:
 		if player != null:
 			player.set_ui_blocking(visible))
 
+var _parts: Label
+
 func toggle() -> void:
 	visible = not visible
 
 func _process(_delta: float) -> void:
 	if not visible:
 		return
-	var sig := "%s|%s|%d" % [",".join(PlayerState.tools), ",".join(PlayerState.hotbar),
-		player.selected_slot if player != null else -1]
+	var sig := "%s|%s|%d|%s" % [",".join(PlayerState.tools), ",".join(PlayerState.hotbar),
+		player.selected_slot if player != null else -1, str(PlayerState.parts)]
 	if sig == _sig:
 		return
 	_sig = sig
@@ -73,6 +79,14 @@ func _process(_delta: float) -> void:
 		c.queue_free()
 	for id in PlayerState.tools:
 		_grid.add_child(_tool_card(id))
+	var lines: Array[String] = []
+	var keys := PlayerState.parts.keys()
+	keys.sort()
+	for key in keys:
+		var bits := String(key).split(":")
+		lines.append("%d × %s" % [int(PlayerState.parts[key]), GameData.part_name(StringName(bits[0]), int(bits[1]))])
+	_parts.text = ("   ·   ".join(lines) + "   -   fit them at a vehicle's pad [R]") if not lines.is_empty() \
+		else "None yet: gearboxes and tyres come boxed from the store, and are fitted at a vehicle's pad [R]."
 	for i in PlayerState.HOTBAR_SLOTS:
 		_bar.add_child(_Slot.new(i, player))
 

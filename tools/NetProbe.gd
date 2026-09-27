@@ -127,6 +127,27 @@ func _host() -> void:
 		await get_tree().create_timer(0.25).timeout
 		t += 0.25
 	_check(not guest.driving() and truck.driver == null, "the guest got out")
+	# Now the host drives, and the guest rides along in the passenger seat.
+	world.drive(truck)
+	t = 0.0
+	while not guest.driving() and t < 30.0:
+		await get_tree().create_timer(0.25).timeout
+		t += 0.25
+	_check(guest.driving() and guest.passenger and truck.passengers.has(guest) and truck.driver == world.player,
+		"the guest got in beside the host's driver")
+	var ride_from := truck.global_position
+	Input.action_press("move_forward")
+	await get_tree().create_timer(3.0).timeout
+	Input.action_release("move_forward")
+	await get_tree().create_timer(1.5).timeout
+	_check(truck.global_position.distance_to(ride_from) > 4.0, "the host drove off with the guest (%.1f m)" % truck.global_position.distance_to(ride_from))
+	_check(guest.global_position.distance_to(truck.seat_of(guest).origin) < 1.0, "the guest rode in the passenger seat")
+	t = 0.0
+	while guest.driving() and t < 30.0:
+		await get_tree().create_timer(0.25).timeout
+		t += 0.25
+	_check(not guest.driving() and not truck.passengers.has(guest), "the passenger got out")
+	world._toggle_vehicle(world.player)
 	# Hold on until the guest has checked its side and gone.
 	t = 0.0
 	while not world.guests.is_empty() and t < 60.0:
@@ -329,6 +350,23 @@ func _join() -> void:
 		await get_tree().create_timer(0.25).timeout
 		t += 0.25
 	_check(not world.player.driving(), "out of the truck again")
+	# The host gets in to drive: this player rides along.
+	await get_tree().create_timer(1.5).timeout
+	t = 0.0
+	while not world.player.driving() and t < 20.0:
+		client.send_press(_key(KEY_F))
+		await get_tree().create_timer(1.0).timeout
+		t += 1.0
+	_check(world.player.driving() and world.player.passenger, "this player is a passenger here")
+	await get_tree().create_timer(5.0).timeout
+	_check(not truck.net_mirror, "a passenger's copy of the truck is not driven here")
+	_check(world.player.global_position.distance_to(truck.global_position) < 4.0, "this player rode along as a passenger")
+	client.send_press(_key(KEY_F))
+	t = 0.0
+	while world.player.driving() and t < 10.0:
+		await get_tree().create_timer(0.25).timeout
+		t += 0.25
+	_check(not world.player.driving() and not world.player.passenger, "out of the passenger seat")
 	await get_tree().create_timer(1.0).timeout
 
 static func _key(code: Key) -> InputEventKey:

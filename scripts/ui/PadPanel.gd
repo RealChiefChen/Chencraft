@@ -13,6 +13,7 @@ var _swatches: GridContainer
 var _fit_row: HBoxContainer
 var _fit: OptionButton
 var _now: Label
+var _parts: VBoxContainer
 
 func _ready() -> void:
 	UIKit.fill(self)
@@ -52,6 +53,9 @@ func _ready() -> void:
 	_fit.item_selected.connect(func(i: int): _choose_fitting(LoaderArm.ATTACHMENTS[i]))
 	_fit_row.add_child(_fit)
 	col.add_child(_fit_row)
+	col.add_child(UIKit.label("PARTS", "Subheader", 13))
+	_parts = UIKit.vbox(8)
+	col.add_child(_parts)
 	_now = UIKit.label("", "Small")
 	_now.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_now.custom_minimum_size.x = 480
@@ -82,9 +86,67 @@ func open(p: VehiclePad) -> void:
 		b.pressed.connect(func(): _choose_paint(colour))
 		_swatches.add_child(b)
 	_fit_row.visible = p.is_loader_pad()
+	_build_parts()
 	_fit.selected = maxi(0, LoaderArm.ATTACHMENTS.find(p.attachment))
 	_refresh_note()
 	visible = true
+
+## One row per kind of part: which is fitted (stock, or any you have in your
+## parts), and a switch to run without it.
+func _build_parts() -> void:
+	for c in _parts.get_children():
+		c.queue_free()
+	for track in PlayerState.VEHICLE_TRACKS:
+		var row := UIKit.hbox(10)
+		var t: Dictionary = GameData.upgrade_tracks.get(track, {})
+		var name_label := UIKit.label(String(t.get("display_name", track)))
+		name_label.custom_minimum_size.x = 140
+		row.add_child(name_label)
+		var pick := OptionButton.new()
+		pick.focus_mode = Control.FOCUS_NONE
+		var levels: Array[int] = []
+		var now := pad.fitted_level(track)
+		var count := (t.get("levels", []) as Array).size()
+		for lvl in range(1, count + 1):
+			var have := PlayerState.part_count(track, lvl)
+			if lvl != 1 and lvl != now and have <= 0:
+				continue
+			var label := GameData.part_name(track, lvl)
+			if lvl == now:
+				label += "  (fitted)"
+			elif lvl > 1:
+				label += "  (%d in parts)" % have
+			pick.add_item(label)
+			levels.append(lvl)
+		pick.selected = maxi(0, levels.find(now))
+		pick.item_selected.connect(func(i: int): _fit_part(track, levels[i]))
+		row.add_child(pick)
+		var on := CheckBox.new()
+		on.text = "On"
+		on.focus_mode = Control.FOCUS_NONE
+		on.button_pressed = pad.part_on(track)
+		on.toggled.connect(func(v: bool): _switch_part(track, v))
+		row.add_child(on)
+		_parts.add_child(row)
+
+func _fit_part(track: StringName, lvl: int) -> void:
+	if pad == null or not is_instance_valid(pad):
+		return
+	if Net.is_client():
+		_send({"fit": [String(track), lvl]})
+	else:
+		var err := pad.fit(track, lvl)
+		if err != "" and player != null:
+			player.interacted.emit(err)
+	open(pad)
+
+func _switch_part(track: StringName, on: bool) -> void:
+	if pad == null or not is_instance_valid(pad):
+		return
+	if Net.is_client():
+		_send({"on": [String(track), on]})
+	pad.set_part_on(track, on)
+	_refresh_note()
 
 func _choose_paint(colour: Color) -> void:
 	if pad == null or not is_instance_valid(pad):

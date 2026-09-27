@@ -35,6 +35,48 @@ const PAINTS := [
 	["Graphite", Color(0.20, 0.21, 0.23)], ["Sand", Color(0.82, 0.70, 0.50)],
 ]
 
+## The parts fitted to this pad's vehicle: track -> level (1 is stock), and
+## which of them are switched on. They go on whichever vehicle comes off the
+## pad, and on the one out now as soon as they are fitted or switched.
+var fitted: Dictionary = {}
+var switched_off: Dictionary = {}
+
+func fitted_level(track: StringName) -> int:
+	return int(fitted.get(track, 1))
+
+func part_on(track: StringName) -> bool:
+	return not bool(switched_off.get(track, false))
+
+## What the vehicle runs with: the fitted level of each track, or stock where
+## a part is switched off.
+func effective_parts() -> Dictionary:
+	var out := {}
+	for track in PlayerState.VEHICLE_TRACKS:
+		out[track] = fitted_level(track) if part_on(track) else 1
+	return out
+
+## Fits a part from the inventory (level 1: back to stock); the part taken off
+## goes back into the inventory. Returns "" or why not.
+func fit(track: StringName, lvl: int) -> String:
+	var now := fitted_level(track)
+	if lvl == now:
+		return ""
+	if lvl > 1 and not PlayerState.take_part(track, lvl):
+		return "no %s in your parts" % GameData.part_name(track, lvl)
+	if now > 1:
+		PlayerState.add_part(track, now)
+	fitted[track] = lvl
+	_apply_parts()
+	return ""
+
+func set_part_on(track: StringName, on: bool) -> void:
+	switched_off[track] = not on
+	_apply_parts()
+
+func _apply_parts() -> void:
+	if has_vehicle() and vehicle is Hauler:
+		(vehicle as Hauler).set_parts(effective_parts())
+
 var _size: Vector3 = Vector3(4, 0.2, 6)
 
 func setup(p_manager: LooseItemManager, p_def: BuildingDef, p_plot_id: int = 0,
@@ -60,6 +102,7 @@ func spawn() -> Node3D:
 	var truck := Hauler.new()
 	truck.setup(manager, plot_id, def.vehicle if def != null else &"hauler")
 	truck.paint_override = paint
+	truck.part_levels = effective_parts()
 	truck.terrain = terrain
 	var target: Node3D = host if host != null else get_parent() as Node3D
 	if target == null:
@@ -101,7 +144,7 @@ func status_line() -> String:
 		line = "%s: [E] recall and respawn (it is %.0f m away)" % [def.display_name, distance]
 	else:
 		line = "%s: [E] spawn the %s" % [def.display_name, vehicle_name().to_lower()]
-	line += "\n[R] paint%s" % (" and bucket or grapple (now the %s)" % _attachment_name() if is_loader_pad() else "")
+	line += "\n[R] paint, parts%s" % (" and bucket or grapple (now the %s)" % _attachment_name() if is_loader_pad() else "")
 	return line
 
 func vehicle_name() -> String:
@@ -172,8 +215,14 @@ func _attachment_name() -> String:
 	return "log grapple" if attachment == &"grapple" else "bucket"
 
 func to_dict() -> Dictionary:
+	var fit := {}
+	for k in fitted:
+		fit[String(k)] = int(fitted[k])
+	var off := {}
+	for k in switched_off:
+		off[String(k)] = bool(switched_off[k])
 	var d := {"has_vehicle": has_vehicle(), "attachment": String(attachment),
-		"paint": [paint.r, paint.g, paint.b, paint.a]}
+		"paint": [paint.r, paint.g, paint.b, paint.a], "fitted": fit, "off": off}
 	if has_vehicle() and vehicle.has_method("to_dict"):
 		d["vehicle"] = vehicle.call("to_dict")
 	return d
@@ -182,6 +231,12 @@ func from_dict(d: Dictionary) -> void:
 	attachment = StringName(String(d.get("attachment", "bucket")))
 	var c: Array = d.get("paint", [0, 0, 0, 0])
 	paint = Color(float(c[0]), float(c[1]), float(c[2]), float(c[3]))
+	fitted.clear()
+	for k in d.get("fitted", {}):
+		fitted[StringName(k)] = int(d["fitted"][k])
+	switched_off.clear()
+	for k in d.get("off", {}):
+		switched_off[StringName(k)] = bool(d["off"][k])
 	if not bool(d.get("has_vehicle", false)):
 		return
 	var truck := spawn()

@@ -547,11 +547,13 @@ func _view(e: Dictionary) -> void:
 	p.selected_slot = int(e.get("slot", -1))
 	p.net_carry = e.get("carry", [0, 0.0])
 	var veh := int(e.get("veh", -1))
-	if veh == _last_veh:
+	var pas := bool(e.get("pas", false))
+	if veh == _last_veh and pas == p.passenger:
 		return
 	_last_veh = veh
 	if veh < 0:
 		_let_go()
+		p.passenger = false
 		if p.vehicle != null:
 			p.vehicle = null
 			p.camera.position = Vector3(0, 1.65, 0)
@@ -559,5 +561,7 @@ func _view(e: Dictionary) -> void:
 	else:
 		var v: Variant = _nodes.get(veh, null)
 		p.vehicle = v as Node3D if v != null and is_instance_valid(v) else null
-		if p.vehicle is Hauler and not (p.vehicle as Hauler).is_trailer:
+		p.passenger = pas
+		# Riding along: the host's driver drives; this is only a seat.
+		if p.vehicle is Hauler and not (p.vehicle as Hauler).is_trailer and not pas:
 			_drive_here(veh, p.vehicle as Hauler)

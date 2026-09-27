@@ -162,7 +162,7 @@ func _model_for(product: Dictionary) -> Node3D:
 			mi.mesh = ToolModel.mesh(GameData.tool(target))
 			mi.rotation = Vector3(0, 0, -0.6)
 			return mi
-		"upgrade":
+		"upgrade", "part":
 			var g := Greeble.new()
 			if target == &"boots":
 				for x in [-0.18, 0.18]:

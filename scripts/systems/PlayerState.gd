@@ -15,6 +15,10 @@ var unlocked_buildings: Array[StringName] = []
 ## Store-bought buildings not yet built: "id:tier" -> how many. Building one
 ## uses a copy up; taking it down puts it back.
 var spare: Dictionary = {}
+## Vehicle parts in the inventory, not yet fitted: "track:level" -> how many.
+## Bought boxed at the store; fitted to one vehicle at its pad [R].
+var parts: Dictionary = {}
+const VEHICLE_TRACKS := [&"transmission", &"tyres"]
 ## Getting-started steps already done, so a loaded game does not teach you to
 ## chop a tree again.
 var tutorial_done: Array[StringName] = []
@@ -40,6 +44,7 @@ func reset() -> void:
 		levels[track_id] = 1
 	unlocked_buildings.clear()
 	spare.clear()
+	parts.clear()
 	tutorial_done.clear()
 	discovered.clear()
 	caches.clear()
@@ -56,6 +61,25 @@ func reset() -> void:
 	for def: BuildingDef in GameData.buildings.values():
 		if not GameData.sold_copy(def.id, 1) and not def.hidden:
 			unlocked_buildings.append(def.id)
+
+static func part_key(track: StringName, lvl: int) -> String:
+	return "%s:%d" % [track, lvl]
+
+func add_part(track: StringName, lvl: int, count: int = 1) -> void:
+	var key := part_key(track, lvl)
+	parts[key] = int(parts.get(key, 0)) + count
+
+func part_count(track: StringName, lvl: int) -> int:
+	return int(parts.get(part_key(track, lvl), 0))
+
+func take_part(track: StringName, lvl: int) -> bool:
+	var key := part_key(track, lvl)
+	if int(parts.get(key, 0)) <= 0:
+		return false
+	parts[key] = int(parts[key]) - 1
+	if int(parts[key]) <= 0:
+		parts.erase(key)
+	return true
 
 func level(track: StringName) -> int:
 	return int(levels.get(track, 1))
@@ -262,7 +286,7 @@ func to_dict() -> Dictionary:
 	return {"levels": lv, "unlocked": ub, "tutorial": tut,
 		"discovered": discovered.duplicate(), "caches": caches.duplicate(),
 		"tools": tools.map(func(t): return String(t)),
-		"spare": spare.duplicate(), "guests": guest_kits.duplicate(true),
+		"spare": spare.duplicate(), "parts": parts.duplicate(), "guests": guest_kits.duplicate(true),
 		"hotbar": hotbar.map(func(t): return String(t))}
 
 func from_dict(d: Dictionary) -> void:
@@ -274,6 +298,15 @@ func from_dict(d: Dictionary) -> void:
 		if GameData.upgrade_tracks.has(&"transmission"):
 			levels[&"transmission"] = maxi(int(levels.get(&"transmission", 1)), int(levels[&"engine"]))
 		levels.erase(&"engine")
+	for key in d.get("parts", {}):
+		parts[String(key)] = int(d["parts"][key])
+	# Saves from when vehicle upgrades were for every vehicle: what was bought
+	# is in the inventory now, as a part to fit.
+	if not d.has("parts"):
+		for track in VEHICLE_TRACKS:
+			if int(levels.get(track, 1)) > 1:
+				add_part(track, int(levels[track]))
+			levels[track] = 1
 	# What reset() gave is everything buildable from the start, including
 	# pieces added since the save was made; the save only adds to it.
 	var ub: Array = d.get("unlocked", [])

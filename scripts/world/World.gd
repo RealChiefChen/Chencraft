@@ -1973,7 +1973,7 @@ func _physics_process(delta: float) -> void:
 		if riding != null and is_instance_valid(riding):
 			# The player rides the seat; the camera is a child of the player,
 			# so this doubles as the driving camera.
-			p.global_position = riding.seat_transform().origin
+			p.global_position = riding.seat_of(p).origin
 			p.velocity = Vector3.ZERO
 	if not autosave or not playing or not Settings.flag(&"autosave"):
 		return
@@ -2227,7 +2227,15 @@ func _toggle_vehicle(p: Player = null) -> void:
 		p = player
 	if p.driving():
 		var riding := p.vehicle as Hauler
+		var was_passenger := p.passenger
 		p.exit_vehicle()
+		if riding != null and is_instance_valid(riding) and was_passenger:
+			riding.passengers.erase(p)
+			# Out of the passenger's side.
+			p.global_position = riding.global_position \
+				- riding.global_transform.basis.x * (riding.body_size.x * 0.5 + 1.3) + Vector3(0, 1.0, 0)
+			_tell(p, "got out of the %s" % riding.display_name.to_lower())
+			return
 		if riding != null and is_instance_valid(riding):
 			riding.driver = null
 			# Out of the driver's door, clear of the body whatever its width.
@@ -2307,7 +2315,14 @@ func drive(v: Hauler, p: Player = null) -> void:
 	if v == null or p.driving():
 		return
 	if v.driver != null:
-		_tell(p, "someone else is driving the %s" % v.display_name.to_lower())
+		# Someone is at the wheel: ride along, if there is a seat.
+		if v.driver != p and not v.is_trailer and v.free_passenger_seat():
+			p.enter_vehicle(v)
+			p.passenger = true
+			v.passengers.append(p)
+			_tell(p, "riding along in the %s - [F] to get out" % v.display_name.to_lower())
+			return
+		_tell(p, "someone else is driving the %s, and there is no seat free" % v.display_name.to_lower())
 		return
 	if v.is_trailer:
 		_tell(p, "a trailer has no seat - back a truck up to it and hitch it [T]")

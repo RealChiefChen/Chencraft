@@ -362,39 +362,40 @@ func _build_environment() -> void:
 	env.sky = Sky.new()
 	var sky := ProceduralSkyMaterial.new()
 	_sky = sky
-	sky.sky_top_color = Color(0.24, 0.45, 0.78)
-	sky.sky_horizon_color = Color(0.70, 0.80, 0.88)
+	sky.sky_top_color = Color(0.16, 0.42, 0.86)
+	sky.sky_horizon_color = Color(0.62, 0.80, 0.95)
 	sky.sky_curve = 0.12
 	# Below the horizon the sky is the haze, so past the far plane there is
 	# only haze.
-	sky.ground_bottom_color = Color(0.68, 0.78, 0.87)
-	sky.ground_horizon_color = Color(0.68, 0.78, 0.87)
+	sky.ground_bottom_color = Color(0.62, 0.78, 0.92)
+	sky.ground_horizon_color = Color(0.62, 0.78, 0.92)
 	sky.sun_angle_max = 24.0
 	sky.sun_curve = 0.08
 	env.sky.sky_material = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = OUTDOOR_AMBIENT
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	# Filmic response, so bright ground and snow roll off rather than clip.
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.95
-	env.tonemap_white = 6.0
+	# Bright and punchy: a plain response keeps the colours as painted (filmic
+	# greyed them), with a little headroom so snow does not clip.
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	env.tonemap_exposure = 0.92
+	env.tonemap_white = 1.0
 	env.ssao_radius = 1.4
 	env.ssao_intensity = 1.6
 	env.glow_intensity = 0.35
 	env.glow_bloom = 0.04
 	env.glow_hdr_threshold = 1.1
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.12
-	env.adjustment_contrast = 1.04
+	env.adjustment_saturation = 1.18
+	env.adjustment_contrast = 1.06
 	# Haze the colour of the horizon, so distance reads as air rather than grey.
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.68, 0.78, 0.87)
+	env.fog_light_color = Color(0.62, 0.78, 0.92)
 	env.fog_sun_scatter = 0.18
 	env.fog_mode = Environment.FOG_MODE_DEPTH
 	env.fog_depth_curve = 1.6
 	env.fog_density = 1.0
-	env.fog_aerial_perspective = 0.35
+	env.fog_aerial_perspective = 0.15
 	env.fog_sky_affect = 0.0
 	env_node.environment = env
 	add_child(env_node)
@@ -1694,12 +1695,12 @@ func _apply_all_settings() -> void:
 ## deep blue at night, when the moon gives just enough light to find your way
 ## and your hat lamp comes on. With the moving sun turned off it is always
 ## mid-morning.
-const DAY_SKY_TOP := Color(0.24, 0.45, 0.78)
-const DAY_SKY_HORIZON := Color(0.70, 0.80, 0.88)
+const DAY_SKY_TOP := Color(0.16, 0.42, 0.86)
+const DAY_SKY_HORIZON := Color(0.62, 0.80, 0.95)
 const DUSK_HORIZON := Color(0.98, 0.62, 0.42)
 const NIGHT_SKY_TOP := Color(0.02, 0.03, 0.08)
 const NIGHT_SKY_HORIZON := Color(0.07, 0.09, 0.17)
-const DAY_HAZE := Color(0.68, 0.78, 0.87)
+const DAY_HAZE := Color(0.62, 0.78, 0.92)
 const NIGHT_HAZE := Color(0.05, 0.07, 0.12)
 
 func _update_sun() -> void:

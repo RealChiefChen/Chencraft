@@ -427,3 +427,9 @@ func shot_aerial() -> void:
 	Settings.set_value(&"moving_sun", false, false)
 	await look(Vector3(40, 170, 220), Vector3(-30, 0, -40))
 	await snap("aerial")
+
+func shot_ground() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var c: Vector3 = world.starter_forest
+	await look(c + Vector3(50, 8, 55), c)
+	await snap("ground")

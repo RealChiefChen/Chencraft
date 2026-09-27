@@ -1392,7 +1392,7 @@ func _build_sheets(sea: PackedVector3Array, water: PackedVector3Array) -> void:
 		add_child(_flat_mesh(sea, bed, "SeaBed"))
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.18, 0.34, 0.46, 0.72) if regions.is_empty() else Color(0.25, 0.62, 0.92, 0.82)
+	mat.albedo_color = Color(0.18, 0.34, 0.46, 0.72) if regions.is_empty() else Color(0.10, 0.42, 0.78, 0.86)
 	mat.roughness = 0.15
 	mat.metallic = 0.2 if regions.is_empty() else 0.05
 	var outer := PackedVector3Array()
@@ -1519,11 +1519,11 @@ func _chunk_arrays(buf: ChunkBuf, x0: int, z0: int, x1: int, z1: int) -> void:
 
 ## Bright, simple ground: grass, sand, snow, a shade apart shelf to shelf.
 const TOON_GROUND := {
-	Biome.WOODLAND: Color(0.42, 0.74, 0.36),
-	Biome.SWAMP: Color(0.44, 0.60, 0.30),
-	Biome.DESERT: Color(0.96, 0.84, 0.60),
-	Biome.MOUNTAIN: Color(0.40, 0.66, 0.40),
-	Biome.TAIGA: Color(0.30, 0.60, 0.40),
+	Biome.WOODLAND: Color(0.30, 0.58, 0.20),
+	Biome.SWAMP: Color(0.34, 0.46, 0.16),
+	Biome.DESERT: Color(0.92, 0.70, 0.38),
+	Biome.MOUNTAIN: Color(0.32, 0.52, 0.26),
+	Biome.TAIGA: Color(0.20, 0.48, 0.30),
 	Biome.SNOW: Color(0.95, 0.97, 1.0),
 }
 const TOON_ROCK := {
@@ -1540,8 +1540,9 @@ func _toon_ground(ix: int, iz: int, height: float, biome: Biome) -> Color:
 	var color: Color = TOON_GROUND[biome]
 	if height < WATER_LEVEL - 0.3:
 		return TOON_BEACH.darkened(0.2)
-	# Sand only right at the water's edge.
-	if height < 0.9 and biome != Biome.SWAMP and biome != Biome.SNOW:
+	# Sand only right at the water's edge: low ground away from the water is
+	# still grass (the plain round home sits barely above the sea).
+	if height < 0.9 and biome != Biome.SWAMP and biome != Biome.SNOW and _near_water(ix, iz):
 		return TOON_BEACH
 	if biome == Biome.MOUNTAIN and height > 60.0:
 		color = color.lerp(Color(0.56, 0.62, 0.46), smoothstep(60.0, 90.0, height))

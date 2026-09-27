@@ -327,12 +327,21 @@ func _weld_all() -> void:
 			var r := _find(parent, offsets[ti] + k)
 			var nn: Vector3 = plate_n[r]
 			var col: Color = plate_c[r]
+			# A big plate (a whole plain) is not one colour: grass inland,
+			# sand only where it meets the water. Each triangle takes the
+			# colour of where it is, with the plate's own shade.
+			if float(sum_a[r]) > BIG_PLATE:
+				var mid := (t.tris[k * 3] + t.tris[k * 3 + 1] + t.tris[k * 3 + 2]) / 3.0
+				col = terrain.panel_color(mid, nn, int(r) * 7919)
 			for v in 3:
 				t.normals[k * 3 + v] = nn
 				t.colors[k * 3 + v] = col
 	plates = sum_n.size()
 
 var plates: int = 0
+## Plates bigger than this (in doubled square metres, as summed above) are
+## coloured triangle by triangle.
+const BIG_PLATE := 300.0
 
 ## A vertex as a key: to the centimetre, so both tiles' copies of a shared
 ## edge point agree.

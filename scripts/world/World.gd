@@ -42,7 +42,7 @@ const AUTOSAVE_SECONDS := 60.0
 const OUTDOOR_AMBIENT := 0.6
 const STARTING_MONEY := 250
 
-@export var tree_count: int = 1800
+@export var tree_count: int = int(Balance.num("world.tree_count", 14000.0))
 @export var rock_count: int = 80
 @export var autosave: bool = true
 
@@ -718,10 +718,11 @@ func _build_forest() -> void:
 		var field := ResourceField.new()
 		field.name = "Forest_%s" % kind.name.replace(" ", "_")
 		field.quota = quota
-		field.min_spacing = 4.2
+		field.min_spacing = 3.3
 		field.refill_seconds = 6.0
 		field.churn_seconds = 30.0
-		field.wake_distance = 360.0
+		field.wake_distance = TREE_WAKE
+		field.impostor = _tree_impostor(kind)
 		# Each species grows in groves of its own, with a few strays between.
 		var sampler := _from_pool(pool) if kind.has("site") else _grove_sampler(kind, pool, _groves(pool, String(kind.name)))
 		field.setup([kind], _build_tree, sampler, _rng.randi())
@@ -732,10 +733,11 @@ func _build_forest() -> void:
 
 ## How big a grove is, and what share of a species' trees stand in one rather
 ## than scattered on their own.
-static var GROVE_RADIUS: float = Balance.num("world.grove_radius", 42.0)
-static var GROVE_SHARE: float = Balance.num("world.grove_share", 0.88)
-## Roughly one grove for this many of a species' vetted spots.
-const GROVE_SPOTS := 36
+static var GROVE_RADIUS: float = Balance.num("world.grove_radius", 55.0)
+static var GROVE_SHARE: float = Balance.num("world.grove_share", 0.93)
+## Roughly one grove for this many of a species' vetted spots: fewer, bigger
+## woods rather than a thin sprinkle.
+const GROVE_SPOTS := 48
 
 ## Where a species' groves stand: spots picked from its own country, kept
 ## apart from each other. The same seed gives the same woods.
@@ -794,7 +796,7 @@ func _tree_can_stand(x: float, z: float, biomes: Array, wet: float) -> bool:
 ## is not a trek: pine, birch and a few oaks in the nearest patch of woodland.
 const STARTER_NEAR := 75.0
 const STARTER_FAR := 190.0
-const STARTER_RADIUS := 30.0
+const STARTER_RADIUS := 38.0
 var starter_forest: Vector3 = Vector3.INF
 
 func _build_starter_forest(species: Array) -> void:
@@ -843,11 +845,12 @@ func _build_starter_forest(species: Array) -> void:
 		return scatter.call(rng)
 	var field := ResourceField.new()
 	field.name = "Forest_Starter"
-	field.quota = int(Balance.num("world.starter_forest_trees", 28.0))
-	field.min_spacing = 4.0
+	field.quota = int(Balance.num("world.starter_forest_trees", 70.0))
+	field.min_spacing = 3.4
 	field.refill_seconds = 20.0
 	field.churn_seconds = 0.0
-	field.wake_distance = 360.0
+	field.wake_distance = TREE_WAKE
+	field.impostor = _tree_impostor(kinds[0])
 	field.setup(kinds, _build_tree, sampler, 4242)
 	add_child(field)
 	field.prefill()
@@ -894,6 +897,42 @@ func _on_ground(sampler: Callable) -> Callable:
 			# Nudged rather than rejected, so a field near a river still fills.
 			flat += Vector3(rng.randf_range(-18.0, 18.0), 0.0, rng.randf_range(-18.0, 18.0))
 		return terrain.place(flat)
+
+## Real trees stand within this many metres of a player; further off they are
+## drawn as stand-ins (see ResourceField.impostor).
+static var TREE_WAKE: float = Balance.num("world.tree_wake_distance", 230.0)
+
+## A species' stand-in for the far distance: a trunk and a crown of its own
+## colour and rough shape, a few dozen triangles.
+static func _tree_impostor(kind: Dictionary) -> Mesh:
+	var g := Greeble.new()
+	var h := (float(kind.height[0]) + float(kind.height[1])) * 0.5
+	var r := (float(kind.radius[0]) + float(kind.radius[1])) * 0.5
+	var bark: Color = kind.get("bark", Color(0, 0, 0, 0))
+	if bark.a <= 0.0:
+		bark = Color(0.40, 0.28, 0.18)
+	var leaf: Color = kind.leaf
+	var start := float(kind.start)
+	var style: StringName = kind.get("style", &"cone")
+	var crown := maxf(float(kind.crown[0]) * 0.45, float(kind.foliage) * 0.22)
+	crown = clampf(crown, r * 2.0, 5.0)
+	var trunk_h := h * (start if style != &"bare" else 1.0)
+	g.prism(5, r, r * float(kind.taper), trunk_h, Transform3D(), bark)
+	match style:
+		&"bare":
+			pass
+		&"ball", &"puff":
+			var y := h * start
+			var rr := crown
+			g.prism(7, rr * 0.55, rr, rr * 0.7, Transform3D(Basis(), Vector3(0, y, 0)), leaf)
+			g.prism(7, rr, rr * 0.5, rr * 0.8, Transform3D(Basis(), Vector3(0, y + rr * 0.7, 0)), leaf.lightened(0.05))
+		&"palm":
+			g.prism(6, crown, 0.2, 0.6, Transform3D(Basis(), Vector3(0, h - 0.3, 0)), leaf)
+		_:
+			# A spire: from low on the trunk to the top.
+			var y0 := h * start * 0.8
+			g.prism(6, crown * 0.75, 0.0, (h - y0) * 1.1, Transform3D(Basis(), Vector3(0, y0, 0)), leaf)
+	return g.commit()
 
 func _build_tree(kind: Dictionary, form_seed: int) -> Node3D:
 	var rng := RandomNumberGenerator.new()

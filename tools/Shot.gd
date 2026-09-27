@@ -422,3 +422,8 @@ func shot_coop() -> void:
 	cam.global_transform = Transform3D(Basis(), at + Vector3(0, 1.8, 0.5)).looking_at(at + Vector3(0, 1.1, -4.0), Vector3.UP)
 	await _frames(5)
 	await snap("coop")
+
+func shot_aerial() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	await look(Vector3(40, 170, 220), Vector3(-30, 0, -40))
+	await snap("aerial")

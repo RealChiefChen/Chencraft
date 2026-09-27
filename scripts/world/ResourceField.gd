@@ -51,6 +51,42 @@ var anchor: Vector3 = Vector3.ZERO
 ## The notes: {entry, seed, position}.
 var dormant: Array[Dictionary] = []
 var _wake_timer: float = 0.0
+## Far off, each note is drawn as a stand-in - one cheap mesh for the whole
+## field, placed by a MultiMesh - so a forest reads as a forest out to the
+## horizon without a real tree for every one. Null draws nothing.
+var impostor: Mesh = null
+var _impostors: MultiMeshInstance3D
+var _impostors_dirty: bool = false
+## Every standing spot, built or noted, bucketed by `min_spacing` squares, so
+## checking a new spot's spacing looks at its neighbours, not the whole field.
+var _grid: Dictionary = {}              ## Vector2i -> Array of Vector3
+
+func _cell_of(p: Vector3) -> Vector2i:
+	var s := maxf(min_spacing, 0.5)
+	return Vector2i(floori(p.x / s), floori(p.z / s))
+
+func _grid_add(p: Vector3) -> void:
+	var c := _cell_of(p)
+	if not _grid.has(c):
+		_grid[c] = []
+	(_grid[c] as Array).append(p)
+
+func _grid_remove(p: Vector3) -> void:
+	var c := _cell_of(p)
+	var bucket: Array = _grid.get(c, [])
+	for i in bucket.size():
+		if (bucket[i] as Vector3).is_equal_approx(p):
+			bucket.remove_at(i)
+			return
+
+func _spacing_clear(p: Vector3) -> bool:
+	var c := _cell_of(p)
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			for q in _grid.get(c + Vector2i(dx, dz), []):
+				if (q as Vector3).distance_to(p) < min_spacing:
+					return false
+	return true
 
 ## Forms to draw from. Each entry is passed to `builder` as-is.
 var species: Array[Dictionary] = []
@@ -101,7 +137,30 @@ func prefill() -> int:
 			break
 		if _try_spawn() != null:
 			placed += 1
+	_refresh_impostors()
 	return placed
+
+## Redraws the stand-ins for the notes as they are now.
+func _refresh_impostors() -> void:
+	_impostors_dirty = false
+	if impostor == null:
+		return
+	if _impostors == null:
+		_impostors = MultiMeshInstance3D.new()
+		_impostors.name = "Impostors"
+		_impostors.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_impostors)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = impostor
+	mm.instance_count = dormant.size()
+	var rng := RandomNumberGenerator.new()
+	for i in dormant.size():
+		var note: Dictionary = dormant[i]
+		rng.seed = int(note.seed)
+		var s := rng.randf_range(0.85, 1.15)
+		mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), note.position))
+	_impostors.multimesh = mm
 
 func _process(delta: float) -> void:
 	if Net.is_client():
@@ -111,6 +170,8 @@ func _process(delta: float) -> void:
 		if _wake_timer <= 0.0:
 			_wake_timer = 0.4
 			_wake_and_sleep()
+			if _impostors_dirty:
+				_refresh_impostors()
 	if at_quota():
 		# Armed while full, so the first loss waits out a refill interval like
 		# any other. Otherwise a felled tree is replaced the same frame it falls.
@@ -139,8 +200,10 @@ func _try_spawn() -> Node3D:
 	_next_index += 1
 	var form_seed := _rng.randi()
 	total_spawned += 1
+	_grid_add(position)
 	if wake_distance > 0.0 and not _near_focus(to_global(position), wake_distance):
 		dormant.append({"entry": entry, "seed": form_seed, "position": position})
+		_impostors_dirty = true
 		return self
 	return _build(entry, form_seed, position)
 
@@ -173,6 +236,7 @@ func _wake_and_sleep() -> void:
 			dormant.remove_at(i)
 			_build(d.entry, int(d.seed), d.position)
 			woken += 1
+			_impostors_dirty = true
 	for i in range(alive.size() - 1, -1, -1):
 		var node := alive[i]
 		if not is_instance_valid(node) or node.is_queued_for_deletion():
@@ -184,6 +248,7 @@ func _wake_and_sleep() -> void:
 		alive.remove_at(i)
 		dormant.append({"entry": node.get_meta("entry"), "seed": int(node.get_meta("form_seed")),
 			"position": node.position})
+		_impostors_dirty = true
 		node.queue_free()
 
 ## Takes away one untouched node out of the player's reach, if there is one.
@@ -191,8 +256,11 @@ func _wake_and_sleep() -> void:
 func retire_one() -> Node3D:
 	# A note far away is the cheapest thing to retire, and nobody can see it go.
 	if not dormant.is_empty():
-		dormant.remove_at(_rng.randi() % dormant.size())
+		var gone: int = _rng.randi() % dormant.size()
+		_grid_remove(dormant[gone].position)
+		dormant.remove_at(gone)
 		total_retired += 1
+		_impostors_dirty = true
 		return self
 	var candidates: Array[Node3D] = []
 	for node in alive:
@@ -207,6 +275,7 @@ func retire_one() -> Node3D:
 		return null
 	var node := candidates[_rng.randi() % candidates.size()]
 	alive.erase(node)
+	_grid_remove(node.position)
 	total_retired += 1
 	retired.emit(self, node)
 	node.queue_free()
@@ -245,19 +314,7 @@ func _find_spot() -> Variant:
 			continue
 		if vehicle_near(to_global(candidate)):
 			continue
-		var clear := true
-		for other in alive:
-			if not is_instance_valid(other):
-				continue
-			if other.position.distance_to(candidate) < min_spacing:
-				clear = false
-				break
-		if clear:
-			for note in dormant:
-				if (note.position as Vector3).distance_to(candidate) < min_spacing:
-					clear = false
-					break
-		if clear:
+		if _spacing_clear(candidate):
 			return candidate
 	return null
 
@@ -271,6 +328,7 @@ func _watch(node: Node3D) -> void:
 
 func _on_consumed(node: Node3D) -> void:
 	alive.erase(node)
+	_grid_remove(node.position)
 	depleted.emit(self, node)
 	# One frame of grace: the node is mid-signal, and whatever it dropped is
 	# still being spawned out of it.

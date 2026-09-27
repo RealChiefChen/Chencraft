@@ -78,10 +78,12 @@
   },
 
   "world": {
-    "_about": "Trees grow in groves of their own kind: grove_radius (m) is how big a grove is, grove_share how many of a kind stand in one rather than as strays. starter_forest_trees: the wood a short walk from the plot. vehicle_clearance: no tree or rock appears within this many metres of a vehicle. kill_plane_y: loose pieces below this height are put back on the surface (keep it under the deepest cave, about -90).",
-    "grove_radius": 42.0,
-    "grove_share": 0.88,
-    "starter_forest_trees": 28,
+    "_about": "Trees grow in groves of their own kind: tree_count is roughly how many there are across the map; grove_radius (m) is how big a grove is, grove_share how many of a kind stand in one rather than as strays. starter_forest_trees: the wood a short walk from the plot. vehicle_clearance: no tree or rock appears within this many metres of a vehicle. kill_plane_y: loose pieces below this height are put back on the surface (keep it under the deepest cave, about -90).",
+    "tree_count": 14000,
+    "grove_radius": 55.0,
+    "grove_share": 0.93,
+    "starter_forest_trees": 90,
+    "tree_wake_distance": 230,
     "vehicle_clearance": 7.0,
     "kill_plane_y": -170.0
   }

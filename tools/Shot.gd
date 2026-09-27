@@ -640,3 +640,31 @@ func shot_bike() -> void:
 		await get_tree().physics_frame
 	await look(bike.global_position + Vector3(-3, 1.5, 1.5), bike.global_position)
 	await snap("bike")
+
+## One of each of the main species, photographed where it grows.
+func shot_trees() -> void:
+	world.hud.visible = false
+	for i in 60:
+		await get_tree().physics_frame
+	var want := ["Pine", "Oak", "Birch", "Maple", "Palm", "Ironwood"]
+	var cam := world.player.camera
+	cam.top_level = true
+	for species in want:
+		var best: ChoppableTree = null
+		for t in world.trees():
+			if t.species == species and t.standing() and (best == null or t.trunk_height > best.trunk_height):
+				best = t
+		if best == null:
+			print("no ", species)
+			continue
+		var at := best.global_position
+		var h := best.trunk_height
+		var back := Vector3(0.6, 0, 1).normalized() * (h * 1.5 + 6.0)
+		var eye := at + back
+		eye.y = maxf(world.terrain.height_at(eye.x, eye.z) + 1.7, at.y + 1.7)
+		world.player.global_position = at + back * 0.5
+		for i in 20:
+			await get_tree().physics_frame
+		cam.global_transform = Transform3D(Basis(), eye).looking_at(at + Vector3(0, h * 0.55, 0), Vector3.UP)
+		await _frames(10)
+		await snap("tree_" + species.to_lower())

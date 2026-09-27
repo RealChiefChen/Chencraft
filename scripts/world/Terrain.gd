@@ -496,6 +496,8 @@ func generate() -> void:
 	_block_bridges()
 	_build_mesh()
 	_lap("mesh")
+	_build_occluders()
+	_lap("occluders")
 
 ## A row of samples, filled on a worker thread.
 class RowBuf:
@@ -1657,6 +1659,64 @@ func _build_mesh() -> void:
 		cs.shape = shape
 		add_child(cs)
 	_build_sheets(sea, water)
+
+## Occluders: the ground as seen by the renderer's occlusion culling, so a
+## wood behind a hill is not drawn at all. A coarse copy of the land, one
+## vertex every OCCLUDER_STEP cells, kept OCCLUDER_SINK metres under the lowest
+## ground round each vertex so it never hides anything that shows over the
+## real ridge line. Tiled, so each tile is only tested when it is in view.
+const OCCLUDER_STEP := 4
+const OCCLUDER_TILE := 32
+const OCCLUDER_SINK := 3.0
+
+func _build_occluders() -> void:
+	if _cells <= 0 or _heights.is_empty():
+		return
+	var tiles := int(ceil(float(_cells) / float(OCCLUDER_TILE)))
+	var half := OCCLUDER_STEP / 2
+	for tz in tiles:
+		for tx in tiles:
+			var x0 := tx * OCCLUDER_TILE
+			var z0 := tz * OCCLUDER_TILE
+			var x1 := mini(_cells, x0 + OCCLUDER_TILE)
+			var z1 := mini(_cells, z0 + OCCLUDER_TILE)
+			var cols := (x1 - x0) / OCCLUDER_STEP + 1
+			var rows := (z1 - z0) / OCCLUDER_STEP + 1
+			if cols < 2 or rows < 2:
+				continue
+			var verts := PackedVector3Array()
+			var lowest := INF
+			for r in rows:
+				for c in cols:
+					var ix := x0 + c * OCCLUDER_STEP
+					var iz := z0 + r * OCCLUDER_STEP
+					var h := _heights[_index(ix, iz)]
+					for o in [Vector2i(-half, -half), Vector2i(half, -half), Vector2i(-half, half), Vector2i(half, half),
+							Vector2i(-OCCLUDER_STEP, 0), Vector2i(OCCLUDER_STEP, 0), Vector2i(0, -OCCLUDER_STEP), Vector2i(0, OCCLUDER_STEP)]:
+						h = minf(h, _heights[_index(ix + o.x, iz + o.y)])
+					h -= OCCLUDER_SINK
+					lowest = minf(lowest, h)
+					verts.append(Vector3(-half_extent + float(ix) * CELL, h, -half_extent + float(iz) * CELL))
+			# Ground that is all under the sea hides nothing worth the test.
+			if lowest < WATER_LEVEL - 40.0 and _all_below(verts, WATER_LEVEL - 2.0):
+				continue
+			var idx := PackedInt32Array()
+			for r in rows - 1:
+				for c in cols - 1:
+					var i := r * cols + c
+					idx.append_array([i, i + 1, i + cols, i + 1, i + cols + 1, i + cols])
+			var occ := ArrayOccluder3D.new()
+			occ.set_arrays(verts, idx)
+			var inst := OccluderInstance3D.new()
+			inst.name = "Occluder_%d_%d" % [tx, tz]
+			inst.occluder = occ
+			add_child(inst)
+
+static func _all_below(verts: PackedVector3Array, y: float) -> bool:
+	for v in verts:
+		if v.y > y:
+			return false
+	return true
 
 ## The region map's land: welded plates (see Facets), a mesh and a collision
 ## shape per tile, and the water over every wet cell.

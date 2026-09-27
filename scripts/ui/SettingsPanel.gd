@@ -48,10 +48,12 @@ func show_page(i: int) -> void:
 			_toggle(&"manual_gearbox", "Manual gearbox for trucks (change gear yourself)")
 			_bindings()
 		"Video":
+			_preset()
 			_toggle(&"fullscreen", "Fullscreen")
 			_toggle(&"vsync", "V-Sync")
 			_slider(&"render_scale", "Render scale", 0.5, 1.0, 0.05, "%d%%", 100.0)
 			_choice(&"shadows", "Shadows", ["Off", "Low", "High"])
+			_choice(&"anti_aliasing", "Anti-aliasing", ["Off", "FXAA", "MSAA 2x"])
 			_toggle(&"ambient_occlusion", "Ambient occlusion")
 			_toggle(&"bloom", "Bloom")
 			_slider(&"view_distance", "View distance", 150.0, 1200.0, 50.0, "%d m")
@@ -203,6 +205,21 @@ func _slider(key: StringName, title: String, lo: float, hi: float, step: float,
 		Settings.set_value(key, v))
 	row.add_child(slider)
 	row.add_child(readout)
+
+## The graphics preset: picking one sets every video setting below it, and
+## the page redraws to show them.
+func _preset() -> void:
+	var row := _row("Graphics quality")
+	var pick := OptionButton.new()
+	for o in ["Low (fastest)", "Medium", "High", "Custom"]:
+		pick.add_item(o)
+	pick.selected = clampi(int(Settings.value(&"quality")), 0, 3)
+	pick.set_item_disabled(3, true)
+	pick.custom_minimum_size.x = 160
+	pick.item_selected.connect(func(i: int):
+		Settings.apply_preset(i)
+		show_page.call_deferred(_page))
+	row.add_child(pick)
 
 func _choice(key: StringName, title: String, options: Array) -> void:
 	var row := _row(title)

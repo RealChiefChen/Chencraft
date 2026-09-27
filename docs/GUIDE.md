@@ -610,7 +610,7 @@ Nearly every mesh is built in code from primitives. The one exception is you.
   plaid shirt, braces, mittens and a tiny yellow beanie:
   `assets/models/player.glb`, made in Blender to the game's own rules (flat
   colours, boxes, eight-sided round parts, rough flat shading) with the
-  source in `player.blend` beside it. The model is six pivots - legs, torso,
+  source in `source/player.blend` (Godot skips that folder). The model is six pivots - legs, torso,
   arms, head - and `PlayerAvatar` poses them in code every frame; nothing is
   keyframed in the file. Its base pose follows what you are doing: standing
   (breathing), walking and sprinting (short quick steps, arms swinging), in the
@@ -651,6 +651,20 @@ Nearly every mesh is built in code from primitives. The one exception is you.
   in silhouette rather than in colour alone: where branches start up the trunk,
   how far they are swept up or out, how long they are, how wide the foliage
   clumps are, and whether there is a crown on top at all.
+  The leaves, palm fronds and root flare are made in Blender
+  (`assets/models/trees.glb`, source in `source/trees.blend`): low-poly pieces
+  with light and shade painted into their vertex colours and tinted per tree -
+  a conifer's drooping tiers, round lumpy clumps (birch, maple), broad flatter
+  canopies (oak, ironwood, willow, mahogany), blossom clouds, arching fronds,
+  and buttress roots at every trunk's foot; a birch has black marks up its
+  bark. Leaves carry no collider, so cutting is unchanged. An untouched tree is
+  one merged mesh, in two versions: every clump in full within 35 m, and past
+  that the same outline in a fraction of the triangles.
+* **Only what can be seen is drawn.** Besides the usual culling of what is
+  outside the camera's view, the ground is an occluder (a coarse copy of the
+  land a few metres under it): woods and buildings behind a hill are not drawn.
+  Near cave mouths and underground it is switched off, since there the ground is
+  not solid.
 * **Ore chunks** are slabs of rock with the ore breaking out of them as
   crystals, so iron, copper and gold read differently at a glance and gold
   catches the light - sunk into the ground by however much is buried, and

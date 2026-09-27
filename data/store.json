@@ -134,11 +134,6 @@
             },
             {
               "kind": "tier",
-              "target": "crusher",
-              "tier": 2
-            },
-            {
-              "kind": "tier",
               "target": "furnace",
               "tier": 1
             },
@@ -344,11 +339,6 @@
             {
               "kind": "tier",
               "target": "gem_polisher",
-              "tier": 3
-            },
-            {
-              "kind": "tier",
-              "target": "crusher",
               "tier": 3
             },
             {

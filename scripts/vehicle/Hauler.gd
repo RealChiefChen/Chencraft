@@ -108,7 +108,7 @@ var rear_steer: float = 0.0
 ## manual gearbox (Settings > Controls), which only trucks have.
 var gears: Array[float] = [0.3, 0.52, 0.76, 1.0]
 var gear: int = 0
-static var GEAR_TORQUE_EXP: float = Balance.num("vehicles.gear_torque_exponent", 0.85)
+static var GEAR_TORQUE_EXP: float = Balance.num("vehicles.gear_torque_exponent", 1.0)
 ## The transmission upgrades add overdrive gears above a vehicle's own top
 ## gear: each one a higher top speed with less pull, so it is a cruising gear
 ## on the flat and the automatic drops out of it on a hill.
@@ -1480,13 +1480,13 @@ func _drive_wheels() -> void:
 	var ratio: float = box[clampi(gear, 0, box.size() - 1)] if not box.is_empty() else 1.0
 	var pull: float = pow(1.0 / maxf(0.05, ratio), GEAR_TORQUE_EXP)
 	if not manual:
-		# The automatic only brings the low gears' extra pull to bear going
-		# uphill, where it is needed; on the flat it pulls away as it always
-		# did, so a loose load is not snatched off the back.
+		# The automatic brings half the low gears' extra pull to bear on the
+		# flat - enough to feel, not so much a loose load is snatched off the
+		# back - and all of it going uphill, where it is needed.
 		var uphill := forward.y * signf(throttle if absf(throttle) > 0.05 else 1.0)
 		# (Past a few degrees: pulling away squats the tail and lifts the
 		# nose a little, which is not a hill.)
-		pull = lerpf(1.0, pull, clampf((uphill - 0.08) / 0.22, 0.0, 1.0))
+		pull = lerpf(1.0, pull, maxf(0.5, clampf((uphill - 0.08) / 0.22, 0.0, 1.0)))
 	# An overdrive always pulls less: that is the price of its speed.
 	if ratio > 1.0:
 		pull = minf(pull, pow(1.0 / ratio, GEAR_TORQUE_EXP))

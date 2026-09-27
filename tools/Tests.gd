@@ -341,6 +341,13 @@ func test_prices() -> void:
 	var rate_big := float(Economy.price_of(&"lumber_pine", big_piece)) / Solid.volume(big_piece)
 	check(rate_big > rate_small * 1.6, "no bonus for a big piece (%.0f vs %.0f per m3)" % [rate_big, rate_small])
 	check_near(Economy.size_bonus(def, small_piece), 1.0, 0.0001, "a small piece is marked down")
+	# A gemstone's price runs with the square of its volume.
+	var gem := GameData.item(&"gem_ruby")
+	var g1 := Solid.box(Solid.bounds(gem.default_dims()))
+	var g2 := Solid.box(Solid.bounds(gem.default_dims()) * pow(2.0, 1.0 / 3.0))
+	var p1 := float(Economy.price_of(&"gem_ruby", g1))
+	var p2 := float(Economy.price_of(&"gem_ruby", g2))
+	check(absf(p2 / p1 - 4.0) < 0.1, "twice the stone is not four times the price (%.0f vs %.0f)" % [p1, p2])
 	done()
 
 func test_chop() -> void:
@@ -1170,6 +1177,11 @@ func _feed(m: InlineMachine, id: StringName, dims: Dictionary = {}) -> LooseItem
 	return manager.spawn(id, Transform3D(m.global_transform.basis * LooseItem.lying_basis(0.0), at),
 		0, Vector3.ZERO, dims, true)
 
+## Drops a piece into a top-loaded machine's hopper.
+func _drop_in(m: InlineMachine, id: StringName, dims: Dictionary) -> LooseItem:
+	var at := m.global_transform * Vector3(0, InlineMachine.DECK_THICKNESS + m.canopy_height() + InlineMachine.HOPPER_DEPTH + 0.6, 0)
+	return manager.spawn(id, Transform3D(Basis(), at), 0, Vector3.ZERO, dims, true)
+
 ## Waits for the next piece out of the machine's far end and returns it (a
 ## piece going in is taken off the belt; what comes out is a new body).
 func _through(m: InlineMachine, _item: LooseItem, frames: int = 600) -> LooseItem:
@@ -1208,7 +1220,7 @@ func test_planker() -> void:
 	check_near(size.y, 3.0, 0.001, "the plank is not as long as the log")
 	check(size.x > 0.35 and size.z > 0.15, "the plank is thin: %s" % str(size))
 	check(size.x > size.z * 1.5, "that is a beam, not a plank: %s" % str(size))
-	check(log_piece.volume() < log_volume, "milling made wood out of nothing")
+	check_near(log_piece.volume(), log_volume, 0.001, "milling lost or made wood")
 	check(Economy.price_of(&"lumber_pine", log_piece.dims) > Economy.price_of(&"wood_pine", Solid.with_finish(Solid.cylinder(0.26, 0.22, 3.0), &"sanded")),
 		"a plank is worth less than the log it came from")
 	check(not log_piece.freeze and log_piece.state == LooseItem.State.FREE, "the plank is not a free body")
@@ -1272,7 +1284,7 @@ func test_material_values() -> void:
 				var sanded := Solid.with_finish(log_dims, &"sanded")
 				pre = raw_def.base_value_of(sanded) / v
 				var r := 0.28
-				var plank := Solid.keep_finish(sanded, Solid.box(Vector3(r * 1.8, 2.0, r * 0.8)))
+				var plank := Solid.keep_finish(sanded, Solid.box(Vector3(r * 2.6, 2.0, v / (2.0 * r * 2.6))))
 				fin = fin_def.base_value_of(plank) / v
 			"metal":
 				var ore := Solid.cube(0.5)
@@ -1365,7 +1377,7 @@ func test_gem_line() -> void:
 	var crusher := _inline(&"crusher")
 	_runout(crusher)
 	await step(3)
-	var quartz := _feed(crusher, &"gem_quartz", Solid.cube(1.0))
+	var quartz := _drop_in(crusher, &"gem_quartz", Solid.cube(0.4))
 	var q_volume := quartz.volume()
 	for i in 1800:
 		if crusher.total_processed >= 1 and crusher.queue.is_empty():
@@ -1823,7 +1835,8 @@ func test_ore_line() -> void:
 	var crusher := _inline(&"crusher")
 	_runout(crusher)
 	await step(3)
-	var chunk := _feed(crusher, &"ore_iron", Solid.cube(0.9))
+	check(crusher.top_loaded(), "the crusher is not fed from above")
+	var chunk := _drop_in(crusher, &"ore_iron", Solid.cube(0.45))
 	var chunk_volume := chunk.volume()
 	chunk = await _through(crusher, chunk)
 	check(chunk != null, "the chunk never came out of the crusher")
@@ -1833,29 +1846,29 @@ func test_ore_line() -> void:
 		await step(1)
 	check(crusher.queue.is_empty(), "the crusher never let all its lumps out")
 	var lumps := manager.free_items()
-	check(lumps.size() > 1, "the crusher made %d piece(s) from a big chunk" % lumps.size())
+	check(lumps.size() >= 5, "the crusher made %d piece(s) from a 0.45 m3 chunk" % lumps.size())
 	var total := 0.0
 	for lump in lumps:
 		total += lump.volume()
-		var b := Solid.bounds(lump.dims)
-		check(maxf(b.x, maxf(b.y, b.z)) <= crusher.machine_def.max_piece + 0.001, "a lump is still too big")
+		check(lump.volume() <= 0.1001, "a lump is bigger than 0.1 m3 (%.3f)" % lump.volume())
 	check_near(total, chunk_volume, 0.0001, "the crusher did not conserve ore")
-	# A chunk far too big for the mouth is still taken in and crushed.
-	var huge := _feed(crusher, &"ore_iron", Solid.cube(1.6))
-	var huge_volume := huge.volume()
-	var got := 0.0
-	var out_before := crusher.total_out
-	for i in 1800:
-		if crusher.total_processed >= 2 and crusher.queue.is_empty():
-			break
-		await step(1)
-	check(crusher.total_processed >= 2, "a chunk bigger than the mouth was not taken in")
-	check(crusher.total_out - out_before >= 8, "a chunk bigger than the mouth was not crushed (%d out)" % (crusher.total_out - out_before))
+	# More than half a cubic metre will not go in: it sits in the hopper.
+	var huge := _drop_in(crusher, &"ore_iron", Solid.cube(0.7))
+	var done_before := crusher.total_processed
+	await step(240)
+	check_eq(crusher.total_processed, done_before, "a 0.7 m3 chunk went into the crusher")
+	check(is_instance_valid(huge) and huge.get_parent() != null, "the oversized chunk vanished")
+	manager.despawn(huge)
 	for lump in manager.free_items():
-		got += lump.volume()
-	check_near(got, chunk_volume + huge_volume, 0.001, "crushing the big chunk lost ore")
+		manager.despawn(lump)
+	await step(2)
+	# Nothing goes in along the belt.
+	var along := _feed(crusher, &"ore_iron", Solid.cube(0.05))
+	await step(200)
+	check_eq(crusher.total_processed, done_before, "the crusher took a piece along the belt")
+	manager.despawn(along)
 	# A piece already small enough still gets crushed; its own lumps do not.
-	var small := _feed(crusher, &"ore_iron", Solid.cube(0.3))
+	var small := _drop_in(crusher, &"ore_iron", Solid.cube(0.03))
 	var before := crusher.total_out
 	for i in 900:
 		if crusher.total_out - before >= 2 and crusher.queue.is_empty():
@@ -2761,7 +2774,7 @@ func test_schematic() -> void:
 	# that (the balance file's share) in material. It starts as a drawing.
 	var cap := 4.0 * Schematic.MATERIAL_SHARE
 	check_near(plan.capacity_m3(), cap, 0.0001, "the plan wants the wrong volume")
-	check_near(Schematic.MATERIAL_SHARE, 0.1, 0.0001, "a plan should take a tenth of its volume")
+	check_near(Schematic.MATERIAL_SHARE, 0.05, 0.0001, "a plan should take a twentieth of its volume")
 	check(not plan.solid, "an empty plan is already solid")
 	check_eq(plan.material, &"", "an empty plan already has a material")
 	check(plan.can_accept(&"lumber_pine"), "an empty plan refused lumber")
@@ -3303,20 +3316,20 @@ func test_store() -> void:
 	var t1: Dictionary = {}
 	var t2: Dictionary = {}
 	for slot in shop.slots:
-		if slot.kind == &"tier" and slot.target == &"crusher":
+		if slot.kind == &"tier" and slot.target == &"sander":
 			if slot.tier == 1:
 				t1 = slot
 			elif slot.tier == 2:
 				t2 = slot
-	check(not t1.is_empty() and not t2.is_empty(), "the crusher tiers are not stocked")
-	check_eq(shop.blocked(t2), "", "crusher T2 is held back until the crusher is bought")
+	check(not t1.is_empty() and not t2.is_empty(), "the sander tiers are not stocked")
+	check_eq(shop.blocked(t2), "", "sander T2 is held back until the sander is bought")
 	var t2_box: LooseItem = t2.item
 	shop.buy([t2_box] as Array[LooseItem])
-	check(t2_box.owned, "crusher T2 was refused before the crusher")
+	check(t2_box.owned, "sander T2 was refused before the sander")
 	shop.open_box(t2_box)
-	# One T2 crusher to build, and no T1: every copy is bought on its own.
-	check_eq(PlayerState.spare_count(&"crusher", 2), 1, "crusher T2 did not give one T2 crusher")
-	check_eq(PlayerState.spare_count(&"crusher", 1), 0, "crusher T2 gave a T1 crusher too")
+	# One T2 sander to build, and no T1: every copy is bought on its own.
+	check_eq(PlayerState.spare_count(&"sander", 2), 1, "sander T2 did not give one T2 sander")
+	check_eq(PlayerState.spare_count(&"sander", 1), 0, "sander T2 gave a T1 sander too")
 	await step(2)
 	check(shop.available(t1) and shop.available(t2), "machine boxes left the shelf once bought")
 
@@ -3493,9 +3506,10 @@ func test_hotbar_tools() -> void:
 	var player := _make_player()
 	world.add_child(player)
 	await step(4)
-	check(PlayerState.owns_tool(&"rusty_axe") and PlayerState.owns_tool(&"club_hammer"), "a new player has no tools")
+	check(PlayerState.owns_tool(&"rusty_axe"), "a new player has no axe")
+	check(not PlayerState.owns_tool(&"club_hammer"), "a new player starts with more than an axe")
 	check_eq(PlayerState.hotbar_tool(0), &"rusty_axe", "the axe is not in slot 1")
-	check_eq(PlayerState.hotbar_tool(1), &"club_hammer", "the hammer is not in slot 2")
+	check(PlayerState.give_tool(&"club_hammer"), "could not give the hammer")
 	check_eq(player.selected_tool(), &"", "the player starts with a tool in hand")
 	player.select_slot(0)
 	check_eq(player.selected_tool(), &"rusty_axe", "slot 1 did not take the axe")
@@ -5468,6 +5482,9 @@ func test_full_base() -> void:
 				# The planker only planks sanded logs.
 				if wood and m.machine_def.id == &"sawmill":
 					dims = Solid.with_finish(dims, &"sanded")
+				if m.top_loaded():
+					_drop_in(m, feed, dims)
+					continue
 				manager.spawn(feed, Transform3D(m.global_transform.basis * LooseItem.lying_basis(0.0),
 					m.global_transform * Vector3(0, 0.6, m.length * 0.5 - 0.35)), 0, Vector3.ZERO, dims, true)
 		await get_tree().physics_frame
@@ -5745,7 +5762,18 @@ func test_machine_output_size() -> void:
 	var boards := saw._cut_to_size(saw.work({"id": &"wood_pine", "dims": log_dims.duplicate(true), "owned": true, "plot": 0, "changed": false, "ready": 0.0}))
 	check(boards.size() > 1, "set to 10 x 4 cm, still one plank")
 	var b0: Vector3 = boards[0].dims.size
-	check(absf(b0.x - 0.10) < 0.03 and absf(b0.z - 0.04) < 0.015, "boards are %.3f x %.3f m, not about 0.10 x 0.04" % [b0.x, b0.z])
+	for o in boards:
+		var bs: Vector3 = o.dims.size
+		check(absf(bs.x - 0.10) < 0.001 and absf(bs.z - 0.04) < 0.001, "a board is %.3f x %.3f m, not 0.10 x 0.04" % [bs.x, bs.z])
+	# A board bigger than the log's section: the size set, and short.
+	saw.set_setting(&"width_cm", 60)
+	saw.set_setting(&"thick_cm", 30)
+	var brick := saw._cut_to_size(saw.work({"id": &"wood_pine", "dims": log_dims.duplicate(true), "owned": true, "plot": 0, "changed": false, "ready": 0.0}))
+	var bb: Vector3 = brick[0].dims.size
+	check(brick.size() == 1 and absf(bb.x - minf(0.6, saw.hole.x)) < 0.011 and absf(bb.z - minf(0.3, saw.hole.y)) < 0.011 and bb.y < 2.0,
+		"a big board from a thin log is %s" % str(bb))
+	saw.set_setting(&"width_cm", 10)
+	saw.set_setting(&"thick_cm", 4)
 	var sum := 0.0
 	for o in boards:
 		sum += Solid.volume(o.dims)
@@ -5784,7 +5812,7 @@ func test_gearbox() -> void:
 	# Automatic: it pulls away in first and changes up as it goes.
 	truck.autopilot = true
 	truck.input_throttle = 1.0
-	await step(20)
+	await step(6)
 	check_eq(truck.gear, 0, "the automatic did not pull away in first")
 	var top_gear := 0
 	for k in 100:

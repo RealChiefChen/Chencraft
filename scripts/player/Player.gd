@@ -713,7 +713,8 @@ func _physics_step(delta: float) -> void:
 			velocity.y = 0.0
 	elif not is_on_floor():
 		velocity += get_gravity() * delta
-	elif input.just_pressed("jump"):
+	elif input.pressed("jump"):
+		# Held, it jumps again each time it lands.
 		velocity.y = jump_velocity
 		act(&"jump")
 

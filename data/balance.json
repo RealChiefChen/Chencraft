@@ -24,7 +24,7 @@
   },
 
   "vehicles": {
-    "_about": "engine_multiplier / top_speed_multiplier / grip_multiplier / steer_multiplier scale every vehicle (the Engine and Tyres upgrades go on top). gear_torque_exponent: how much harder the low gears pull (0 = no difference; the automatic only uses it uphill). steer_soften: how much steering eases off per m/s of speed. road_speed_bonus: extra top speed on roads (0.18 = +18%). bridge_extra_bonus: added on top of the road bonus on bridges. winch_multiplier scales every winch's pull; winch_speed is how fast they reel (m/s). recover_cooldown: seconds between recoveries. hold_speed / hold_after: a vehicle nobody is driving is held still once slower than this (m/s) for this long (s).",
+    "_about": "engine_multiplier / top_speed_multiplier / grip_multiplier / steer_multiplier scale every vehicle (the Engine and Tyres upgrades go on top). gear_torque_exponent: how much harder the low gears pull (0 = no difference; the automatic uses half of it on the flat, all of it uphill). steer_soften: how much steering eases off per m/s of speed. road_speed_bonus: extra top speed on roads (0.18 = +18%). bridge_extra_bonus: added on top of the road bonus on bridges. winch_multiplier scales every winch's pull; winch_speed is how fast they reel (m/s). recover_cooldown: seconds between recoveries. hold_speed / hold_after: a vehicle nobody is driving is held still once slower than this (m/s) for this long (s).",
     "handbrake_rear_grip": 0.12,
     "handbrake_front_grip": 0.22,
     "engine_multiplier": 1.0,
@@ -32,7 +32,7 @@
     "grip_multiplier": 1.0,
     "steer_multiplier": 1.0,
     "steer_soften": 0.05,
-    "gear_torque_exponent": 0.85,
+    "gear_torque_exponent": 1.0,
     "road_speed_bonus": 0.10,
     "bridge_extra_bonus": 0.25,
     "winch_multiplier": 1.0,
@@ -66,7 +66,7 @@
   "build": {
     "_about": "grid_snap: the build grid, in metres (0.25 = sixteen squares to the metre-square; buildings are still sized in whole metres). material_share: how much material a plan (block, slab, wall, pillar) takes, as a share of its volume.",
     "grid_snap": 0.25,
-    "material_share": 0.1
+    "material_share": 0.05
   },
 
   "economy": {

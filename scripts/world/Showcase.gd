@@ -78,6 +78,9 @@ func _build_line(title: String, feed: Array, origin: Vector3, machines: Array,
 		cursor -= m.length
 		var sign := _sign(m.position + Vector3(0, 4.3, 0), def.display_name)
 		m.processed.connect(_on_processed.bind(line, sign))
+		# Lumps small enough for a first-tier smelter.
+		if m.top_loaded():
+			m.set_setting(&"max_cm", 26)
 		line.machines.append(m)
 		_belt(Vector3(origin.x, 0, cursor - 2.0), 4.0)
 		cursor -= 4.0
@@ -142,6 +145,11 @@ func _drop(line: Dictionary) -> void:
 	var vol: Vector2 = line.volume
 	var dims := Solid.cube(_rng.randf_range(vol.x, vol.y))
 	var at := head.global_transform * Vector3(_rng.randf_range(-0.1, 0.1), 1.6, 1.2)
+	# A top-loaded first machine (the crusher) is fed through its hopper.
+	var first: InlineMachine = (line.machines as Array)[0]
+	if first.top_loaded():
+		at = first.global_transform * Vector3(_rng.randf_range(-0.1, 0.1),
+			InlineMachine.DECK_THICKNESS + first.canopy_height() + InlineMachine.HOPPER_DEPTH + 0.5, 0)
 	# Dropped square to the belt: a chunk turned corner-first is wider than
 	# the crusher's mouth, and jams there as it would for you.
 	var item := manager.spawn(id, Transform3D(head.global_transform.basis * Basis(Vector3.UP,

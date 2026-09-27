@@ -118,7 +118,10 @@ func _build_canopy() -> void:
 	# Side walls and roof.
 	for side in [-1.0, 1.0]:
 		_solid(Vector3(WALL, h, run), Vector3(side * (half - WALL * 0.5), floor_y + h * 0.5, 0))
-	_solid(Vector3(outer, 0.12, run), Vector3(0, floor_y + h + 0.06, 0))
+	if top_loaded():
+		_build_hopper(outer, run, h)
+	else:
+		_solid(Vector3(outer, 0.12, run), Vector3(0, floor_y + h + 0.06, 0))
 	# Inside, a duct exactly the size of the mouths, from one bulkhead to the
 	# other. With room to spare in there, pieces wandered off the line -
 	# sideways, or up on top of each other - and fetched up against the out
@@ -126,11 +129,15 @@ func _build_canopy() -> void:
 	var duct := run - WALL * 2.0
 	for side in [-1.0, 1.0]:
 		_solid(Vector3(WALL, hole.y, duct), Vector3(side * (hole.x * 0.5 + WALL * 0.5), floor_y + hole.y * 0.5, 0))
-	if h - hole.y > 0.01:
+	if h - hole.y > 0.01 and not top_loaded():
 		_solid(Vector3(hole.x, WALL, duct), Vector3(0, floor_y + hole.y + WALL * 0.5, 0))
-	# The bulkheads at each end, with the mouth cut out of them.
+	# The bulkheads at each end, with the mouth cut out of them - but a
+	# top-loaded machine is shut at the in-feed end.
 	for end in [-1.0, 1.0]:
 		var z: float = end * (run * 0.5 - WALL * 0.5)
+		if end > 0.0 and top_loaded():
+			_solid(Vector3(outer, h, WALL), Vector3(0, floor_y + h * 0.5, z))
+			continue
 		var jamb := (outer - hole.x) * 0.5
 		for side in [-1.0, 1.0]:
 			_solid(Vector3(jamb, h, WALL), Vector3(side * (half - jamb * 0.5), floor_y + h * 0.5, z))
@@ -142,7 +149,7 @@ func _build_canopy() -> void:
 	# mouth, so a piece riding off-centre is steered in rather than stopped
 	# against the bulkhead beside the opening - with the rest heaping up
 	# behind it.
-	if hole.x < width - 0.1:
+	if hole.x < width - 0.1 and not top_loaded():
 		for side in [-1.0, 1.0]:
 			var a := Vector3(side * (width * 0.5 - 0.04), floor_y, length * 0.5)
 			var b := Vector3(side * (hole.x * 0.5 - 0.02), floor_y, run * 0.5)
@@ -160,6 +167,59 @@ func _build_canopy() -> void:
 	_canopy.add_child(mesh)
 	_add_lamp(Vector3(half - 0.05, floor_y + h * 0.75, run * 0.5 - 0.3))
 	_add_effects(run, h)
+
+## The crusher is fed from above: a hopper on the roof, open to the sky, as
+## big as the biggest piece it takes. It is not fed along the belt.
+const HOPPER_DEPTH := 0.8
+
+func top_loaded() -> bool:
+	return machine_def != null and machine_def.mode == MachineDef.MODE_CRUSH
+
+func hopper_opening() -> float:
+	return pow(machine_def.max_in, 1.0 / 3.0) * 1.3
+
+var _hopper_area: Area3D
+var _hopper_shape: CollisionShape3D
+
+func _build_hopper(outer: float, run: float, h: float) -> void:
+	var floor_y := DECK_THICKNESS
+	var open := minf(hopper_opening(), minf(outer, run) - 0.3)
+	var roof_y := floor_y + h + 0.06
+	# The roof round the opening.
+	var side_w := (outer - open) * 0.5
+	var end_l := (run - open) * 0.5
+	for s in [-1.0, 1.0]:
+		_solid(Vector3(side_w, 0.12, run), Vector3(s * (open * 0.5 + side_w * 0.5), roof_y, 0))
+		_solid(Vector3(open, 0.12, end_l), Vector3(0, roof_y, s * (open * 0.5 + end_l * 0.5)))
+	# The hopper's walls, standing up round it.
+	for s in [-1.0, 1.0]:
+		_solid(Vector3(0.08, HOPPER_DEPTH, open + 0.16), Vector3(s * (open * 0.5 + 0.04), roof_y + HOPPER_DEPTH * 0.5, 0))
+		_solid(Vector3(open, HOPPER_DEPTH, 0.08), Vector3(0, roof_y + HOPPER_DEPTH * 0.5, s * (open * 0.5 + 0.04)))
+	# What falls into it is taken.
+	_hopper_area = Area3D.new()
+	_hopper_area.collision_layer = Layers.TRIGGER
+	_hopper_area.collision_mask = Layers.LOOSE
+	_hopper_shape = CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(open, HOPPER_DEPTH + 0.6, open)
+	_hopper_shape.shape = box
+	_hopper_shape.position = Vector3(0, roof_y + (HOPPER_DEPTH + 0.6) * 0.5 - 0.6, 0)
+	_hopper_area.add_child(_hopper_shape)
+	_canopy.add_child(_hopper_area)
+
+## Pieces that have dropped into the hopper and are small enough: taken.
+func _feed_hopper() -> void:
+	if _hopper_area == null:
+		return
+	for body in Trigger.bodies_inside(_hopper_area, _hopper_shape, 0.05):
+		var item := body as LooseItem
+		if item == null or item.state != LooseItem.State.FREE:
+			continue
+		if item.volume() > machine_def.max_in + 0.0001:
+			continue
+		if not GameData.machine_accepts(machine_def.id, item.item_id):
+			continue
+		take(item)
 
 func _solid(size: Vector3, pos: Vector3) -> void:
 	var cs := CollisionShape3D.new()
@@ -187,13 +247,30 @@ func _dress_canopy(outer: float, run: float, h: float) -> Greeble:
 			g.box(Vector3(0.06, h + 0.1, 0.12), Transform3D(Basis(), Vector3(side * (half + 0.03), floor_y + h * 0.5, z)), body.darkened(0.3))
 		g.box(Vector3(0.03, h * 0.45, run * 0.4), Transform3D(Basis(), Vector3(side * (half + 0.02), floor_y + h * 0.45, 0)), body.lightened(0.12))
 		g.rivets(Vector3(side * (half + 0.04), floor_y + h * 0.7, -run * 0.2), Vector3(side * (half + 0.04), floor_y + h * 0.7, run * 0.2), 5, steel, 0.035)
-	g.box(Vector3(outer + 0.08, 0.12, run + 0.08), Transform3D(Basis(), Vector3(0, floor_y + h + 0.06, 0)), body.darkened(0.15))
+	if top_loaded():
+		var open := minf(hopper_opening(), minf(outer, run) - 0.3)
+		var roof_y := floor_y + h + 0.06
+		var side_w := (outer + 0.08 - open) * 0.5
+		var end_l := (run + 0.08 - open) * 0.5
+		for sd in [-1.0, 1.0]:
+			g.box(Vector3(side_w, 0.12, run + 0.08), Transform3D(Basis(), Vector3(sd * (open * 0.5 + side_w * 0.5), roof_y, 0)), body.darkened(0.15))
+			g.box(Vector3(open, 0.12, end_l), Transform3D(Basis(), Vector3(0, roof_y, sd * (open * 0.5 + end_l * 0.5))), body.darkened(0.15))
+			g.box(Vector3(0.08, HOPPER_DEPTH, open + 0.16), Transform3D(Basis(), Vector3(sd * (open * 0.5 + 0.04), roof_y + HOPPER_DEPTH * 0.5, 0)), body)
+			g.box(Vector3(open, HOPPER_DEPTH, 0.08), Transform3D(Basis(), Vector3(0, roof_y + HOPPER_DEPTH * 0.5, sd * (open * 0.5 + 0.04))), body)
+		g.stripes(open + 0.2, 0.1, Transform3D(Basis(), Vector3(0, roof_y + HOPPER_DEPTH + 0.01, 0)))
+		# The jaws, down in the dark under the hopper.
+		g.box(Vector3(open, 0.02, open), Transform3D(Basis(), Vector3(0, floor_y + h * 0.5, 0)), dark)
+	else:
+		g.box(Vector3(outer + 0.08, 0.12, run + 0.08), Transform3D(Basis(), Vector3(0, floor_y + h + 0.06, 0)), body.darkened(0.15))
 	g.box(Vector3(hole.x, 0.02, run - 0.2), Transform3D(Basis(), Vector3(0, floor_y + hole.y + 0.01, 0)), dark)
 	# Mouths: a bulkhead each end with a hazard-striped frame round the hole
 	# and strip curtains hanging over it.
 	for end in [-1.0, 1.0]:
 		var z: float = end * (run * 0.5 - WALL * 0.5)
 		var face := Transform3D(Basis(Vector3.UP, 0.0 if end > 0 else PI), Vector3(0, 0, z))
+		if end > 0.0 and top_loaded():
+			g.box(Vector3(outer, h, WALL), face * Transform3D(Basis(), Vector3(0, floor_y + h * 0.5, 0)), body.darkened(0.1))
+			continue
 		var jamb := (outer - hole.x) * 0.5
 		for side in [-1.0, 1.0]:
 			g.box(Vector3(jamb, h, WALL), face * Transform3D(Basis(), Vector3(side * (half - jamb * 0.5), floor_y + h * 0.5, 0)), body.darkened(0.1))
@@ -228,7 +305,6 @@ func _dress_canopy(outer: float, run: float, h: float) -> Greeble:
 			g.prism(10, 0.22, 0.08, 0.35, Transform3D(Basis(), Vector3(0, top + 0.2, 0)), Color(0.75, 0.6, 1.0), true)
 			g.lamp(Transform3D(Basis(), Vector3(0, floor_y + 0.2, run * 0.5 + 0.05)), Color(0.7, 0.5, 1.0), 0.16)
 		&"crush":
-			g.wedge(Vector3(outer * 0.7, 0.5, run * 0.5), Transform3D(Basis(), Vector3(0, top + 0.25, 0)), body.darkened(0.25))
 			g.prism(12, 0.4, 0.4, 0.14, Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(half + 0.1, floor_y + h * 0.55, 0)), steel)
 		_:
 			# Planker and sander: a motor and a drive belt guard.
@@ -345,9 +421,12 @@ func _physics_process(delta: float) -> void:
 	super(delta)
 	_clock += delta
 	if running:
-		for item in _riding.keys():
-			if is_instance_valid(item) and item.state == LooseItem.State.FREE and _in_mouth(item):
-				take(item)
+		if top_loaded():
+			_feed_hopper()
+		else:
+			for item in _riding.keys():
+				if is_instance_valid(item) and item.state == LooseItem.State.FREE and _in_mouth(item):
+					take(item)
 		_release()
 	var busy := running and not queue.is_empty()
 	for p in _ambient:
@@ -357,23 +436,16 @@ func _physics_process(delta: float) -> void:
 	_refresh_lamp()
 
 ## Has the front of this piece got into the in-feed mouth? A piece too big
-## for the mouth never does: it is stopped at the bulkhead - except at the
-## crusher, which takes anything that reaches it.
+## for the mouth never does: it is stopped at the bulkhead. (The crusher is
+## fed through its hopper instead.)
 func _in_mouth(item: LooseItem) -> bool:
 	var inverse := global_transform.affine_inverse()
 	var local := inverse * item.global_position
 	# Only what is coming in: what the machine has set down is on the far side.
 	if local.z < 0.0:
 		return false
-	# The crusher's jaws take whatever is fed to them, however big: a piece
-	# goes in as soon as its front touches the in-feed bulkhead.
-	if machine_def.mode == MachineDef.MODE_CRUSH:
-		var front := item.extent_along(global_transform.basis.z)
-		return local.z - front < canopy_length() * 0.5 + 0.12 and absf(local.x) < width * 0.5 + 0.3
-	# It has to fit the opening, across and up, as it lies - nothing is taken
-	# that could not really have got through.
-	if not fits_mouth(item):
-		return false
+	# No size rule beyond the opening itself: the bulkhead stops what is too
+	# big, and whatever has got well into the tunnel is taken and worked.
 	var reach := item.extent_along(global_transform.basis.z)
 	var depth := minf(MOUTH_DEPTH, reach * 2.0)
 	return local.z - reach < canopy_length() * 0.5 - depth and absf(local.x) < hole.x * 0.5 + 0.2
@@ -536,8 +608,12 @@ func work(entry: Dictionary) -> Array[Dictionary]:
 			# through untouched - sand it first.
 			if category == &"wood" and dims.get("shape", Solid.BOX) == Solid.CYLINDER and to != &"" \
 					and Solid.has_finish(dims, &"sanded"):
+				# All of the log's wood, as one broad plank.
 				var r := (float(dims.r0) + float(dims.r1)) * 0.5
-				_change(entry, to, Solid.keep_finish(dims, Solid.box(Vector3(r * 1.8, Solid.length_of(dims), r * 0.8))))
+				var run := Solid.length_of(dims)
+				var wide := r * 2.6
+				var thick := Solid.volume(dims) / maxf(0.001, run * wide)
+				_change(entry, to, Solid.keep_finish(dims, Solid.box(Vector3(wide, run, thick))))
 		MachineDef.MODE_SAND:
 			# Stone is polished rather than sanded: same belt, finer grit. A
 			# cut jewel is finished already and goes through as it is.
@@ -641,21 +717,24 @@ func _shape_output(entry: Dictionary) -> Array[Dictionary]:
 	var v := Solid.volume(dims)
 	var n := 1
 	var each: Dictionary = {}
+	var leftover: Array[Dictionary] = []
 	match machine_def.mode:
 		MachineDef.MODE_PLANK:
 			var sz: Vector3 = dims.size
 			var w := setting(&"width_cm") / 100.0
 			var t := setting(&"thick_cm") / 100.0
+			# Boards are exactly the size set, across and through; the
+			# length is what the wood makes of it - a big board from a thin
+			# log comes out short.
 			if w > 0.0 and t > 0.0:
-				n = maxi(1, int(round(sz.x * sz.z / (w * t))))
-				var s := sqrt(sz.x * sz.z / (float(n) * w * t))
-				each = Solid.box(Vector3(w * s, sz.y, t * s))
+				n = maxi(1, int(floor(sz.x * sz.z / (w * t))))
+				each = Solid.box(Vector3(w, v / (float(n) * w * t), t))
 			elif w > 0.0:
-				n = maxi(1, int(round(sz.x / w)))
-				each = Solid.box(Vector3(sz.x / float(n), sz.y, sz.z))
+				n = maxi(1, int(floor(sz.x / w)))
+				each = Solid.box(Vector3(w, v / (float(n) * w * sz.z), sz.z))
 			elif t > 0.0:
-				n = maxi(1, int(round(sz.z / t)))
-				each = Solid.box(Vector3(sz.x, sz.y, sz.z / float(n)))
+				n = maxi(1, int(floor(sz.z / t)))
+				each = Solid.box(Vector3(sz.x, v / (float(n) * sz.x * t), t))
 		MachineDef.MODE_SMELT:
 			var t := setting(&"section_cm") / 100.0
 			if t > 0.0:
@@ -671,10 +750,24 @@ func _shape_output(entry: Dictionary) -> Array[Dictionary]:
 		MachineDef.MODE_CUT:
 			var size := setting(&"jewel_cm") / 100.0
 			if size > 0.0:
+				# Jewels of exactly the size set; what is left over too small
+				# for one more is cut as one smaller stone.
 				var r0 := size * 0.5
-				n = clampi(int(round(v / (1.649 * r0 * r0 * r0))), 1, 64)
-				r0 = pow(v / float(n) / 1.649, 1.0 / 3.0)
-				each = Solid.cylinder(r0, r0 * 0.5, r0 * 0.9)
+				var one := 1.649 * r0 * r0 * r0
+				n = clampi(int(floor(v / one)), 0, 64)
+				if n == 0:
+					var rs := pow(v / 1.649, 1.0 / 3.0)
+					each = Solid.cylinder(rs, rs * 0.5, rs * 0.9)
+					n = 1
+				else:
+					each = Solid.cylinder(r0, r0 * 0.5, r0 * 0.9)
+					var rest := v - one * float(n)
+					if rest > one * 0.05:
+						var rr := pow(rest / 1.649, 1.0 / 3.0)
+						var extra := entry.duplicate(true)
+						extra.dims = Solid.keep_finish(dims, Solid.cylinder(rr, rr * 0.5, rr * 0.9))
+						extra.ready = float(entry.ready) + 0.05 * float(n)
+						leftover.append(extra)
 	var out: Array[Dictionary] = []
 	if each.is_empty():
 		out.append(entry)
@@ -685,6 +778,7 @@ func _shape_output(entry: Dictionary) -> Array[Dictionary]:
 		piece.dims = each.duplicate(true)
 		piece.ready = float(entry.ready) + 0.05 * float(i)
 		out.append(piece)
+	out.append_array(leftover)
 	return out
 
 func _change(entry: Dictionary, id: StringName, dims: Dictionary) -> void:

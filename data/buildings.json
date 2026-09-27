@@ -229,14 +229,14 @@
       "id": "crusher",
       "display_name": "Crusher",
       "kind": "inline",
-      "cost": 1430,
+      "cost": 20000,
       "size": [
         2,
         3,
         4
       ],
       "machine": "crusher",
-      "blurb": "Breaks any ore or rough stone that reaches it into lumps a smelter or gem cutter will take."
+      "blurb": "Top-loaded: drop ore or rough stone up to half a cubic metre into the hopper and it comes out on the belt as lumps of a tenth of a cubic metre (or smaller, set with [R])."
     },
     {
       "id": "schematic_block",
@@ -823,7 +823,8 @@
         1.0
       ],
       "belt_speed": 3.0,
-      "max_piece": 0.28,
+      "max_piece": 0.52,
+      "max_in": 0.5,
       "color": [
         0.3,
         0.32,
@@ -859,7 +860,6 @@
         "ore_platinum": "ingot_platinum",
         "ore_starmetal": "ingot_starsteel"
       },
-      "yield": 0.6,
       "color": [
         0.33,
         0.31,
@@ -927,7 +927,6 @@
         "gem_diamond": "jewel_diamond",
         "gem_sapphire": "jewel_sapphire"
       },
-      "yield": 0.5,
       "color": [
         0.32,
         0.26,

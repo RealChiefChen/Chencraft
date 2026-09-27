@@ -31,7 +31,8 @@ var material_of: Dictionary = {}
 
 ## How much of a log's volume the planker keeps: a plank 1.8 r wide and 0.8 r
 ## thick out of a round of radius r.
-const PLANK_SHARE := 1.44 / PI
+## A plank keeps all of its log's wood (nothing is lost in processing).
+const PLANK_SHARE := 1.0
 ## The bonus a finished piece (a plank, a jewel) gets for having been through
 ## the first step (sanded, polished) before it was shaped. The rest of the
 ## first step's worth is in the raw material's own bonus.
@@ -116,8 +117,8 @@ func _read(file_name: String) -> Dictionary:
 func _apply_materials(table: Array) -> void:
 	materials.clear()
 	material_of.clear()
-	var smelt_yield := 0.6
-	var cut_yield := 0.5
+	var smelt_yield := 1.0
+	var cut_yield := 1.0
 	for m: MachineDef in machines.values():
 		if m.mode == MachineDef.MODE_SMELT:
 			smelt_yield = m.yield_share

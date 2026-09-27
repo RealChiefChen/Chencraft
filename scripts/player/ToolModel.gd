@@ -26,14 +26,40 @@ static func mesh(def: Dictionary) -> ArrayMesh:
 		var sides := [1.0, -1.0] if bool(def.get("twin", false)) else [1.0]
 		g.box(Vector3(0.08, 0.1, 0.06), Transform3D(Basis(), top), head.darkened(0.3))
 		for side in sides:
-			# The blade: a wedge, thick at the eye and thinning to the edge.
-			# The wedge's thin side is its +Y, turned out to face away.
-			var blade := Transform3D(Basis(Vector3.FORWARD, side * PI * 0.5), top + Vector3(side * 0.13, 0, 0))
-			g.wedge(Vector3(0.2, 0.18, 0.035), blade, head)
-			# The honed edge: a bright sliver along the thin side, no thicker
-			# than the edge itself - not a flat face stuck on the end.
-			g.box(Vector3(0.012, 0.2, 0.006), Transform3D(Basis(), top + Vector3(side * 0.222, 0, 0)), head.lightened(0.35), glow)
+			_blade(g, top, side, head, glow)
 	return g.commit()
+
+## One blade: from the eye out to the edge along +X (or -X), flaring from
+## the eye's height to a longer edge and thinning evenly on both faces to a
+## bright honed strip. Nothing reaches past the edge.
+static func _blade(g: Greeble, top: Vector3, side: float, head: Color, glow: bool) -> void:
+	var x0 := 0.04
+	var x1 := 0.215
+	var hone := 0.02
+	var half_eye := 0.05
+	var half_edge := 0.1
+	var thick := 0.0175
+	var thin := 0.004
+	var p := func(x: float, y: float, z: float) -> Vector3: return top + Vector3(side * x, y, z)
+	var hx := x1 - hone
+	var hy := lerpf(half_eye, half_edge, (hx - x0) / (x1 - x0))
+	var ht := lerpf(thick, thin, (hx - x0) / (x1 - x0))
+	for zs in [-1.0, 1.0]:
+		var out := Vector3(0, 0, zs)
+		# The cheek, eye to the start of the hone.
+		g.quad(p.call(x0, -half_eye, zs * thick), p.call(x0, half_eye, zs * thick),
+			p.call(hx, hy, zs * ht), p.call(hx, -hy, zs * ht), out, head, glow)
+		# The honed strip, out to the edge.
+		g.quad(p.call(hx, -hy, zs * ht), p.call(hx, hy, zs * ht),
+			p.call(x1, half_edge, zs * thin), p.call(x1, -half_edge, zs * thin), out, head.lightened(0.35), glow)
+	for ys in [-1.0, 1.0]:
+		var out := Vector3(0, ys, 0)
+		g.quad(p.call(x0, ys * half_eye, -thick), p.call(x0, ys * half_eye, thick),
+			p.call(hx, ys * hy, ht), p.call(hx, ys * hy, -ht), out, head.darkened(0.1), glow)
+		g.quad(p.call(hx, ys * hy, -ht), p.call(hx, ys * hy, ht),
+			p.call(x1, ys * half_edge, thin), p.call(x1, ys * half_edge, -thin), out, head.darkened(0.1), glow)
+	g.quad(p.call(x1, -half_edge, -thin), p.call(x1, half_edge, -thin),
+		p.call(x1, half_edge, thin), p.call(x1, -half_edge, thin), Vector3(side, 0, 0), head.lightened(0.45), glow)
 
 static func _color(a: Variant) -> Color:
 	var arr: Array = a

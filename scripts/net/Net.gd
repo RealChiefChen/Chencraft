@@ -30,6 +30,9 @@ var port: int = PORT
 ## The world-side ends: NetHost on the host, NetClient on a guest.
 var host_side: Object = null
 var client_side: Object = null
+## The world on screen is a copy of a host's. Sticks when the connection goes,
+## so that copy is never saved over the guest's own game.
+var guest_world: bool = false
 
 func _ready() -> void:
 	multiplayer.peer_connected.connect(_on_peer_connected)

@@ -67,7 +67,7 @@ func _show_main() -> void:
 	_add("Return to base", func(): home_requested.emit())
 	_add("Settings", func(): _show_page("Settings", SettingsPanel.new()))
 	_add("Controls", func(): _show_page("Controls", KeyGuide.sheet()))
-	if Net.is_client():
+	if Net.is_client() or Net.guest_world:
 		# The host's world, saved on the host's machine.
 		_add("Leave co-op", func(): leave_requested.emit())
 	else:

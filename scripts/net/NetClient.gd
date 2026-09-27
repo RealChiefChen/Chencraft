@@ -32,10 +32,10 @@ func _ready() -> void:
 		_hello()
 		return
 	Net.joined.connect(_hello, CONNECT_ONE_SHOT)
-	Net.join_failed.connect(func(reason: String): world.call("host_gone", reason), CONNECT_ONE_SHOT)
+	Net.join_failed.connect(func(reason: String): _give_up(reason), CONNECT_ONE_SHOT)
 	var err := Net.join(Net.address, Net.port)
 	if err != "":
-		world.call("host_gone", err)
+		_give_up(err)
 
 func _hello() -> void:
 	Net.rpc_id(1, "c_hello", Net.player_name)
@@ -47,7 +47,13 @@ func _exit_tree() -> void:
 		Net.client_side = null
 
 func on_host_gone() -> void:
-	world.call("host_gone", "the host has gone")
+	_give_up("the host has gone")
+
+func _give_up(reason: String) -> void:
+	if _leaving:
+		return
+	_leaving = true
+	world.call_deferred("host_gone", reason)
 
 # --- Sending ---------------------------------------------------------------------------
 
@@ -131,7 +137,20 @@ func on_motion(ids: PackedInt32Array, poses: PackedFloat32Array, tick: int) -> v
 
 ## Moving things glide to where the host last put them.
 var _trace_t := 0.0
+## How long to wait for the host's world before giving up on it, so a join
+## that half-worked never leaves you standing in an empty copy.
+const WORLD_WAIT := 40.0
+var _waited: float = 0.0
+var _leaving: bool = false
+
 func _process(delta: float) -> void:
+	if not _leaving:
+		if not Net.is_client():
+			_give_up("lost the host")
+		elif _me < 0:
+			_waited += delta
+			if _waited > WORLD_WAIT:
+				_give_up("the host did not send its world")
 	if OS.has_environment("NET_TRACE"):
 		_trace_t += delta
 		if _trace_t > 2.0:

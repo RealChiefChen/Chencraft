@@ -214,6 +214,7 @@ func _ready() -> void:
 	add_child(manager)
 	manager.register_plot(0, Vector3(0, 6, 0))
 	manager.ground_height = _ground_for_items
+	Net.guest_world = Net.is_client()
 	if Net.is_client():
 		# Every piece here is a copy of one on the host, moved by the host.
 		manager.mirror = true
@@ -1437,14 +1438,14 @@ func _build_menus() -> void:
 	pause_menu.main_menu_requested.connect(func():
 		quick_save()
 		pause_menu.close()
-		if Net.is_client():
+		if Net.guest_world:
 			Net.leave()
 			host_gone()
 			return
 		show_main_menu())
 	pause_menu.quit_requested.connect(quit_game)
 	pause_menu.leave_requested.connect(func():
-		if Net.is_client():
+		if Net.guest_world:
 			Net.leave()
 			host_gone()
 		else:
@@ -1506,7 +1507,7 @@ var loaded_game: bool = false
 
 func quick_save() -> bool:
 	# A guest's world is the host's; saving it here would overwrite their own.
-	if Net.is_client():
+	if Net.guest_world:
 		return false
 	var ok := SaveSystem.save_game(plot, player, "", manager, _padless_vehicle(), quests)
 	if ok:
@@ -1582,14 +1583,14 @@ func _rebuild_world() -> void:
 		get_tree().reload_current_scene())
 
 func quit_game() -> void:
-	if playing and not Net.is_client():
+	if playing and not Net.guest_world:
 		SaveSystem.save_game(plot, player, "", manager, _padless_vehicle(), quests)
 	get_tree().quit()
 
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_CLOSE_REQUEST:
-			if playing and hud != null and not Net.is_client():
+			if playing and hud != null and not Net.guest_world:
 				SaveSystem.save_game(plot, player, "", manager, _padless_vehicle(), quests)
 		NOTIFICATION_APPLICATION_FOCUS_OUT:
 			# Alt-tab pauses, rather than leaving the truck rolling.
@@ -1976,6 +1977,9 @@ static var leave_reason: String = ""
 func host_gone(reason: String = "") -> void:
 	leave_reason = reason
 	Net.leave()
+	# Nothing of the host's comes home: your own save is read in afresh.
+	PlayerState.reset()
+	Economy.from_dict({})
 	MainMenu.skip_once = false
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/boot.tscn")

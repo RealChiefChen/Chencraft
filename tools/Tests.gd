@@ -124,6 +124,7 @@ func _run_all() -> void:
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
 	await _test(&"co-op guests keep their own tools and gear", test_guest_kit)
+	await _test(&"co-op a guest's copy of a world is never saved", test_guest_world_not_saved)
 	await _test(&"every balance knob is read by the game", test_balance_file)
 	await _test(&"controls can be rebound and saved", test_controls)
 	await _test(&"build mode opens empty-handed, with a menu and a copy key", test_build_menu_and_pick)
@@ -4678,6 +4679,18 @@ func test_net_address() -> void:
 	check_eq(Net.split_address("10.0.0.2:30000"), ["10.0.0.2", 30000], "an IP with another port")
 	check_eq(Net.split_address("myhost.example.com"), ["myhost.example.com", Net.PORT], "a host name")
 	check_eq(Net.split_address("10.0.0.2:banana"), ["10.0.0.2", Net.PORT], "a junk port falls back")
+	done()
+
+func test_guest_world_not_saved() -> void:
+	# The connection has already gone (Net is offline), but the world on
+	# screen is still the host's copy: it must not go over this player's save.
+	var w := World.new()
+	Net.guest_world = true
+	check(not Net.is_client(), "offline, as after a failed or dropped join")
+	check(not w.quick_save(), "a guest's copy of the world was saved")
+	check(not w.save_to_slot(SaveSystem.slot), "a guest's copy was saved to a slot")
+	Net.guest_world = false
+	w.free()
 	done()
 
 func test_guest_kit() -> void:

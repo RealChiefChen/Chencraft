@@ -38,9 +38,11 @@ func _ready() -> void:
 	if terrain == null:
 		return
 	for road in terrain.road_paths:
-		_build_road(road.path, String(road.style), road.get("profile", PackedFloat32Array()))
+		_build_road(road.path, String(road.style), road.get("profile", PackedFloat32Array()),
+			float(road.get("trim", 0.0)))
 
-func _build_road(path: Array, style: String, profile: PackedFloat32Array = PackedFloat32Array()) -> void:
+func _build_road(path: Array, style: String, profile: PackedFloat32Array = PackedFloat32Array(),
+		trim: float = 0.0) -> void:
 	if path.size() < 2:
 		return
 	var span := terrain._path_length(path)
@@ -53,7 +55,8 @@ func _build_road(path: Array, style: String, profile: PackedFloat32Array = Packe
 	var posts := Greeble.new()
 	var piece_start := 0.0
 	var prev: Array = []
-	var along := 0.0
+	# A road leaving another starts at that one's edge, not over its surface.
+	var along := trim
 	var next_post := POST_EVERY * 0.5
 	while along <= span:
 		var p := terrain._point_along(path, along)

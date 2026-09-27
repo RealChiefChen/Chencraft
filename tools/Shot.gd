@@ -486,6 +486,115 @@ func shot_cavern() -> void:
 	await look(low, Vector3(o.x, floor_y, o.z) - out_dir * 4.0)
 	await snap("caveseam")
 
+## Every cave mouth, from out in front and a little above.
+func shot_mouths() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var t: Terrain = world.terrain
+	var only := int(args.get("n", "-1"))
+	for i in t.caves.size():
+		if only >= 0 and i != only:
+			continue
+		var c: Dictionary = t.caves[i]
+		var e: Vector3 = c.entrance
+		var d: Vector3 = c.dir
+		var side := Vector3(-d.z, 0, d.x)
+		var far := float(args.get("far", "26"))
+		var eye := e - d * far + side * far * 0.6
+		eye.y = maxf(t.height_at(eye.x, eye.z), e.y) + far * 0.25 + 1.5
+		world.player.global_position = eye
+		await look(eye, e + d * 6.0)
+		print("mouth ", i, " ", c.name, " at ", e, " dir ", d)
+		await snap("mouth_%d" % i)
+
+## Inside each entrance hall, looking in from the end of the way down.
+func shot_halls() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var t: Terrain = world.terrain
+	var lamp := OmniLight3D.new()
+	lamp.omni_range = 120.0
+	lamp.light_energy = 2.0
+	world.player.camera.add_child(lamp)
+	var only := int(args.get("n", "-1"))
+	for i in t.caves.size():
+		if only >= 0 and i != only:
+			continue
+		var c: Dictionary = t.caves[i]
+		var e: Vector3 = c.entrance
+		var d: Vector3 = c.dir
+		var z_end := Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH
+		var floor_y := float(c.ground) - Cave.CHAMBER_DROP
+		var eye := e + d * (z_end - 4.0)
+		eye.y = floor_y + 2.5
+		world.player.global_position = eye
+		await look(eye, eye + d * 20.0 + Vector3(0, 1.5, 0))
+		await snap("hall_%d" % i)
+
+## Where each road ends at a place: the last stretch, from behind and above.
+func shot_roadends() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var t: Terrain = world.terrain
+	var i := 0
+	for rp in t.road_paths:
+		if String(rp.style) != "dirt":
+			continue
+		var path: Array = rp.path
+		var end: Vector3 = path[path.size() - 1]
+		var back: Vector3 = t._point_along(path, maxf(0.0, t._path_length(path) - 40.0))
+		var eye := back + Vector3(0, 0, 0)
+		eye.y = t.height_at(back.x, back.z) + 9.0
+		end.y = t.height_at(end.x, end.z) + 1.0
+		world.player.global_position = eye
+		await look(eye, end)
+		print("roadend ", i, " at ", end)
+		await snap("roadend_%d" % i)
+		i += 1
+
+## Each place with a drive or spur, from back along its road.
+func shot_places() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var t: Terrain = world.terrain
+	var i := 0
+	for place in t.road_ends:
+		var end: Vector3 = t.road_ends[place]
+		var road_path: Array = []
+		for rp in t.road_paths:
+			var path: Array = rp.path
+			if (path[path.size() - 1] as Vector3).distance_to(end) < 0.5:
+				road_path = path
+		if road_path.is_empty():
+			continue
+		var span := t._path_length(road_path)
+		var back: Vector3 = t._point_along(road_path, maxf(0.0, span - 30.0))
+		var dir := Vector3(end.x - back.x, 0, end.z - back.z).normalized()
+		var eye := back - dir * 6.0 + Vector3(0, 0, 0)
+		eye.y = t.height_at(eye.x, eye.z) + 7.0
+		var at := end + dir * 10.0
+		at.y = t.height_at(at.x, at.z) + 2.0
+		world.player.global_position = eye
+		await look(eye, at)
+		print("place ", i, " ", place)
+		await snap("place_%d" % i)
+		i += 1
+
+func shot_yardtop() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var d: Vector3 = world.depot.global_position
+	var eye := d + Vector3(-12, 70, 0.01)
+	world.player.global_position = eye
+	await look(eye, d + Vector3(-12, 0, 0))
+	await snap("yardtop")
+
+func shot_depot() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var d: Vector3 = world.depot.global_position
+	for k in 4:
+		var a := TAU * float(k) / 4.0 + 0.4
+		var eye := d + Vector3(cos(a), 0, sin(a)) * 30.0
+		eye.y = world.terrain.height_at(eye.x, eye.z) + 5.0
+		world.player.global_position = eye
+		await look(eye, d)
+		await snap("depot_%d" % k)
+
 func shot_machinecfg() -> void:
 	var m := world.plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0, false) as InlineMachine
 	await get_tree().process_frame

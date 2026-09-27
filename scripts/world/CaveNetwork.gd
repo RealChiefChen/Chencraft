@@ -389,10 +389,19 @@ func _try_tunnel(ia: int, ib: int, attempts: int) -> bool:
 	var ra := minf(r, _fits(a))
 	var rb := minf(r, _fits(b))
 	r = maxf(ra, rb)
-	for attempt in attempts:
-		var wander := 0.3 if attempt < attempts - 1 else 0.08
-		var pts := _tunnel_curve(a, b, ra, rb, wander, via_a, via_b)
-		if pts.size() >= 2 and _tunnel_ok(pts, r, ia, ib):
+	# Each end aims straight at the other cavern first; where that would put
+	# its mouth over another tunnel's, it swings round the wall a way.
+	var swings := [0.0, 0.55, -0.55, 1.1, -1.1, 1.6, -1.6]
+	var tries := maxi(attempts, swings.size())
+	for attempt in tries:
+		var wander := 0.3 if attempt < tries - 1 else 0.08
+		var off: float = swings[attempt % swings.size()]
+		var aim_a: Variant = via_a if via_a != null else _aim(a, b, off)
+		var aim_b: Variant = via_b if via_b != null else _aim(b, a, -off)
+		var pts := _tunnel_curve(a, b, ra, rb, wander, aim_a, aim_b)
+		if pts.size() < 2 or _mouth_clash(ia, pts[0], ra) or _mouth_clash(ib, pts[pts.size() - 1], rb):
+			continue
+		if _tunnel_ok(pts, r, ia, ib):
 			var tunnel := {"a": ia, "b": ib, "points": pts, "radius": r, "ra": ra, "rb": rb,
 				"kind_a": a.kind, "kind_b": b.kind}
 			var ti := tunnels.size()
@@ -400,6 +409,25 @@ func _try_tunnel(ia: int, ib: int, attempts: int) -> bool:
 			a.links.append(ti)
 			b.links.append(ti)
 			_index_tunnel(ti)
+			return true
+	return false
+
+## A point to aim a mouth at: toward `to`, swung `off` radians round `from`.
+func _aim(from: Dictionary, to: Dictionary, off: float) -> Variant:
+	if off == 0.0:
+		return null
+	var d := Vector3(to.centre.x - from.centre.x, 0.0, to.centre.z - from.centre.z).normalized()
+	var p: Vector3 = (from.centre as Vector3) + d.rotated(Vector3.UP, off) * (maxf(float(from.rx), float(from.rz)) + 30.0)
+	return Vector3(p.x, float(from.floor) + 3.0, p.z)
+
+## Would a mouth at `at` (of radius r) overlap one already opened in cavern `ri`?
+func _mouth_clash(ri: int, at: Vector3, r: float) -> bool:
+	for ti in rooms[ri].links:
+		var t: Dictionary = tunnels[ti]
+		var tp: PackedVector3Array = t.points
+		var other := tp[0] if int(t.a) == ri else tp[tp.size() - 1]
+		var other_r := float(t.get("ra", t.radius)) if int(t.a) == ri else float(t.get("rb", t.radius))
+		if Vector2(at.x - other.x, at.z - other.z).length() < (r + other_r) * WIDEN + 3.0:
 			return true
 	return false
 
@@ -861,6 +889,7 @@ func _room_mesh(ri: int) -> Buf:
 		var b: Vector3 = pts[tri[1]]
 		var cc: Vector3 = pts[tri[2]]
 		var mid := (a + b + cc) / 3.0
+		var floor_tri: bool = on_floor[tri[0]] and on_floor[tri[1]] and on_floor[tri[2]]
 		# Pulled wholly onto one tube's outline: if it lies along the outline
 		# it is wall (the tube's sides carried back into the cavern), and it
 		# stays; if it spans across the outline it would close the tube off,
@@ -871,7 +900,9 @@ func _room_mesh(ri: int) -> Buf:
 			var d: Vector3 = mid - (mouth.origin as Vector3)
 			if _outline_scale(mouth.outline, Vector2(d.dot(mouth.side), d.dot(mouth.up))) > 1.03:
 				continue
-		if _cut_away(mid, entrance_frame, floor_y):
+		# The way in is cut through the wall; the floor under it stays, so
+		# there is no gap at the threshold.
+		if not floor_tri and _cut_away(mid, entrance_frame, floor_y):
 			continue
 		var n := (cc - a).cross(b - a)
 		if n.dot(inside - mid) < 0.0:

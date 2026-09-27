@@ -1676,6 +1676,36 @@ func test_cave_network() -> void:
 						qb.hit_back_faces = true
 						var hb := space.intersect_ray(qb)
 	check(leaks == 0, "%d of %d looks round the tunnel mouths see through the rock" % [leaks, looks])
+	# No two tunnels open out of a cavern on top of one another.
+	var overlaps := 0
+	for ri in net.rooms.size():
+		var ends: Array = []
+		for ti in net.rooms[ri].links:
+			var e := net._tube_end(ti, ri)
+			var tt: Dictionary = net.tunnels[ti]
+			var rr := float(tt.get("ra", tt.radius)) if int(tt.a) == ri else float(tt.get("rb", tt.radius))
+			for other in ends:
+				var o: Vector3 = other[0]
+				if Vector2(o.x - e.origin.x, o.z - e.origin.z).length() < (rr + float(other[1])) * CaveNetwork.WIDEN:
+					overlaps += 1
+			ends.append([e.origin, rr])
+	check_eq(overlaps, 0, "tunnel mouths overlapping in one cavern")
+	# Floor all the way across the threshold where each way in meets its hall.
+	var holes := 0
+	for plan_entry in land.caves:
+		var e: Vector3 = plan_entry.entrance
+		var d: Vector3 = plan_entry.dir
+		var side := Vector3(-d.z, 0, d.x)
+		var z_end := Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH
+		var fl := float(plan_entry.ground) - Cave.CHAMBER_DROP
+		for along in [z_end - 1.0, z_end, z_end + 1.0, z_end + 2.5]:
+			for across in [-2.4, -1.2, 0.0, 1.2, 2.4]:
+				var p: Vector3 = e + d * along + side * across
+				var q4 := PhysicsRayQueryParameters3D.create(Vector3(p.x, fl + 2.0, p.z), Vector3(p.x, fl - 2.0, p.z))
+				q4.hit_back_faces = false
+				if space.intersect_ray(q4).is_empty():
+					holes += 1
+	check_eq(holes, 0, "holes in the floor where a way in meets its hall")
 	var widest := 0.0
 	for t in net.tunnels:
 		widest = maxf(widest, float(t.radius) * CaveNetwork.WIDEN * 2.0)

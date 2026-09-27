@@ -7,7 +7,9 @@ extends Node3D
 ## 4.8 km across: a big home island and five more round it, joined by bridges
 ## and a causeway - bar one, which only a tunnel under the sea reaches.
 const MAP_HALF := 2400.0
-const DEPOT_POSITION := Vector3(0, 0, 70)
+const DEPOT_POSITION := Vector3(32, 0, 86)
+## The yard's open front faces the drive (west); its hut is at the back.
+const DEPOT_YAW := -PI * 0.5
 const STORE_POSITION := Vector3(185, 0, 52)
 const QUARRY_CENTRE := Vector3(-10, 0, -430)
 ## Where the demo lines stand when they are switched on (Settings > Debug).
@@ -447,7 +449,7 @@ func _build_terrain() -> void:
 		ring.append(ring_point(TAU * float(i % RING_POINTS) / float(RING_POINTS)))
 	terrain.roads = [
 		ring,
-		[Vector3(0, 0, 0), Vector3(0, 0, 30), DEPOT_POSITION, ring_point(PI * 0.5)],
+		[Vector3(0, 0, 50), Vector3(0, 0, 86), ring_point(PI * 0.5)],
 		# East, past the store, to the far coast.
 		{"bridge": true, "route": _arterial(0.0, [Vector3(260, 0, 15), Vector3(1000, 0, 180),
 			Vector3(1850, 0, 120)])},
@@ -483,9 +485,18 @@ func _build_terrain() -> void:
 	# The plot at its biggest, and a margin: flat under the pad all the way to
 	# its corners, and no road across it.
 	terrain.reserve_clear_square(Vector3(0, PLOT_GROUND, 0), 50.0, PLOT_GROUND, 10.0)
-	terrain.reserve_site(Vector3(DEPOT_POSITION.x, 0.6, DEPOT_POSITION.z), 16.0)
-	terrain.reserve_site(Vector3(STORE_POSITION.x, 0.6, STORE_POSITION.z), 20.0)
-	terrain.reserve_site(Vector3(QUARRY_CENTRE.x, 0.5, QUARRY_CENTRE.z), 34.0)
+	# Levelled to the lie of the land round them (NAN), and each with a short
+	# drive in from the road to its way in.
+	terrain.reserve_site(Vector3(DEPOT_POSITION.x, NAN, DEPOT_POSITION.z), 14.0)
+	terrain.reserve_site(Vector3(STORE_POSITION.x, NAN, STORE_POSITION.z), 20.0)
+	terrain.reserve_site(Vector3(QUARRY_CENTRE.x, NAN, QUARRY_CENTRE.z), 34.0)
+	terrain.driveways = [
+		{"name": "Sell Yard", "centre": DEPOT_POSITION, "radius": 14.0,
+			"door": DEPOT_POSITION + Vector3(-8.0, 0, 0)},
+		{"name": "Store", "centre": STORE_POSITION, "radius": 20.0,
+			"door": STORE_POSITION + Vector3(0, 0, -13.0)},
+		{"name": "Quarry", "centre": QUARRY_CENTRE, "radius": 34.0, "door": null},
+	]
 	# Kept clear for the demo lines, whether or not they are switched on.
 	terrain.reserve_site(Vector3(SHOWCASE_POSITION.x, SHOWCASE_GROUND, SHOWCASE_POSITION.z - 4.0), 30.0)
 	# Cave mouths: most on the home island, a couple on each of the others,
@@ -1184,8 +1195,9 @@ func _build_outposts() -> void:
 		if spec.kind == Outpost.Kind.TRADING_POST:
 			outpost.setup_trade(manager, quests, spec.premium)
 		outpost.position = at
-		# Facing home, so a trader's sign reads as you arrive from the plot.
-		outpost.rotation.y = atan2(-at.x, -at.z)
+		# Facing the road in, or home when there is none, so a trader's
+		# sign reads as you arrive.
+		outpost.rotation.y = _facing(String(spec.name), at)
 		add_child(outpost)
 		outposts.append(outpost)
 	# A miner's camp by each cave mouth, off to one side of the trench.
@@ -1199,6 +1211,16 @@ func _build_outposts() -> void:
 		camp.rotation.y = atan2(-mouth.basis.z.x, -mouth.basis.z.z)
 		add_child(camp)
 		outposts.append(camp)
+
+## Which way a place at `at` turns its front (local +Z): toward where its road
+## arrives, or toward home.
+func _facing(place: String, at: Vector3) -> float:
+	if terrain.road_ends.has(place):
+		var end: Vector3 = terrain.road_ends[place]
+		var d := Vector2(end.x - at.x, end.z - at.z)
+		if d.length() > 1.0:
+			return atan2(d.x, d.y)
+	return atan2(-at.x, -at.z)
 
 ## Everything worth marking on the map and the compass.
 func points_of_interest() -> Array[Dictionary]:
@@ -1260,7 +1282,14 @@ func _build_depot() -> void:
 	depot.name = "SellYard"
 	depot.setup(manager, quests)
 	depot.extents = Vector3(18.0, 4.0, 18.0)
-	depot.position = terrain.place(DEPOT_POSITION)
+	# On the highest ground under the pad, so no corner of the land comes up
+	# through it.
+	var top := -INF
+	for dx in [-9.0, 0.0, 9.0]:
+		for dz in [-9.0, 0.0, 9.0]:
+			top = maxf(top, terrain.height_at(DEPOT_POSITION.x + dx, DEPOT_POSITION.z + dz))
+	depot.position = Vector3(DEPOT_POSITION.x, top, DEPOT_POSITION.z)
+	depot.rotation.y = DEPOT_YAW
 	add_child(depot)
 	# The buildings have their own signs now; floating names are optional.
 	if Settings.flag(&"show_labels"):
@@ -1286,7 +1315,7 @@ func _build_store() -> void:
 		summit_store.setup(manager, plot, 0, &"summit")
 		summit_store.position = at
 		# Door toward home.
-		summit_store.rotation.y = atan2(-at.x, -at.z)
+		summit_store.rotation.y = _facing(SUMMIT_STORE, at)
 		add_child(summit_store)
 		# The buildings have their own signs now; floating names are optional.
 		if Settings.flag(&"show_labels"):

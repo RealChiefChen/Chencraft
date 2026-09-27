@@ -269,6 +269,51 @@ func _check_spread() -> void:
 			_require(false, "cavern %d cannot be reached from any cave mouth" % i)
 			break
 
+## Every road lies on its ground: under the carriageway the land is at the
+## road's own level (bridges, water and the joins between roads aside).
+func _check_roads() -> void:
+	var t: Terrain = world.terrain
+	var worst := 0.0
+	var worst_road := -1
+	var off := 0
+	for ri in t.road_paths.size():
+		var rp: Dictionary = t.road_paths[ri]
+		var path: Array = rp.path
+		var prof: PackedFloat32Array = rp.get("profile", PackedFloat32Array())
+		if prof.is_empty():
+			continue
+		var span := t._path_length(path)
+		var along := 0.0
+		while along <= span:
+			var p := t._point_along(path, along)
+			along += 4.0
+			var g := t.height_at(p.x, p.z)
+			if g < Terrain.WATER_LEVEL - 0.05 or t.in_clear_zone(p.x, p.z, 6.0):
+				continue
+			var skip := false
+			for b in t.bridges:
+				var cl := Geometry3D.get_closest_point_to_segment(p, b.a, b.b)
+				if Vector2(cl.x - p.x, cl.z - p.z).length() < 30.0:
+					skip = true
+			for rj in t.road_paths.size():
+				if not skip and rj != ri and t._distance_to_path(p, t.road_paths[rj].path).x < 8.0:
+					skip = true
+			if skip:
+				continue
+			# On a levelled place the road lies flush on it; elsewhere the land
+			# is a hand's width under the surface.
+			var ix := int(round(t._grid_coord(p.x)))
+			var iz := int(round(t._grid_coord(p.z)))
+			var sink := 0.0 if t._on_site(t._index(ix, iz)) else Terrain.ROAD_SINK
+			var diff := g - (t._profile_height(prof, along - 4.0, span) - sink)
+			if absf(diff) > 0.3:
+				off += 1
+			if absf(diff) > absf(worst):
+				worst = diff
+				worst_road = ri
+	print("roads on their ground: %d samples off by over 0.3 m, worst %.2f m (road %d)" % [off, worst, worst_road])
+	_require(absf(worst) < 3.0, "a road is %.1f m off its ground" % worst)
+
 func _require(condition: bool, message: String) -> void:
 	if not condition:
 		problems.append(message)
@@ -308,6 +353,8 @@ func _report() -> void:
 		total += v
 		worst = maxf(worst, v)
 	var avg := total / float(samples.size())
+	# Slow, so after the frames are counted.
+	_check_roads()
 	print("\n--- world smoke test ---")
 	print("frames            %d" % frames)
 	print("avg frame         %.2f ms (budget 16.67)" % avg)

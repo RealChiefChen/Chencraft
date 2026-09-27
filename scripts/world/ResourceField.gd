@@ -378,26 +378,59 @@ func _build(entry: Dictionary, form_seed: int, position: Vector3) -> Node3D:
 
 ## Builds the notes that have come within reach, a few at a time, and turns
 ## untouched nodes well out of reach back into notes.
+var _last_look: Array[Vector3] = []
+var _look_age: float = 0.0
+
 func _wake_and_sleep() -> void:
-	# Only the tiles within reach of someone can hold a note to wake.
+	var focus_points := _focus_points()
+	# Nobody has moved since the last look: nothing new has come in reach.
+	_look_age += 0.4
+	var moved := focus_points.size() != _last_look.size() or _look_age > 3.0
+	if not moved:
+		for k in focus_points.size():
+			if focus_points[k].distance_squared_to(_last_look[k]) > 64.0:
+				moved = true
+				break
+	if moved:
+		_last_look = focus_points.duplicate()
+		_look_age = 0.0
+		_queue_wakes(focus_points)
+	_sleep_far()
+
+func _queue_wakes(focus_points: Array[Vector3]) -> void:
+	# Only the tiles that reach into someone's circle can hold a note to wake.
 	var reach := int(ceil(wake_distance / TILE))
 	var seen: Dictionary = {}
-	for f in _focus_points():
-		var centre := _tile_of(to_local(f))
+	var locals: Array[Vector2] = []
+	for f in focus_points:
+		var lf := to_local(f)
+		locals.append(Vector2(lf.x, lf.z))
+		var centre := _tile_of(lf)
 		for dx in range(-reach, reach + 1):
 			for dz in range(-reach, reach + 1):
-				seen[centre + Vector2i(dx, dz)] = true
-	var focus_points := _focus_points()
+				var key := centre + Vector2i(dx, dz)
+				# The tile's nearest point to the player is within reach.
+				var lo := Vector2(key) * TILE
+				var nearest := Vector2(clampf(lf.x, lo.x, lo.x + TILE), clampf(lf.z, lo.y, lo.y + TILE))
+				if nearest.distance_to(Vector2(lf.x, lf.z)) <= wake_distance:
+					seen[key] = true
+	var r2 := wake_distance * wake_distance
 	var queued: Array = []
 	for key in seen:
 		for d in _tiles.get(key, []):
-			if _near_focus(to_global(d.position), wake_distance):
-				queued.append([_focus_distance(d.position, focus_points), d])
+			var p: Vector3 = d.position
+			var best := INF
+			for l in locals:
+				best = minf(best, Vector2(p.x - l.x, p.z - l.y).length_squared())
+			if best < r2:
+				queued.append([best, d])
 	# Nearest first: what is right in front of you is built before the rest.
 	queued.sort_custom(func(a, b): return a[0] < b[0])
 	_wake_queue.clear()
 	for q in queued:
 		_wake_queue.append(q[1])
+
+func _sleep_far() -> void:
 	for i in range(alive.size() - 1, -1, -1):
 		var node := alive[i]
 		if not is_instance_valid(node) or node.is_queued_for_deletion():

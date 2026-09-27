@@ -11,6 +11,8 @@ extends Node3D
 signal sold(total: int, count: int)
 
 @export var extents: Vector3 = Vector3(18.0, 4.0, 18.0)
+## Width of the gap in the front fence (local +Z) the drive comes in through.
+const GATE := 8.0
 ## Who is buying. The home yard is "Shopkeep"; out on the map, traders.
 @export var keeper: String = "Shopkeep"
 ## Out-of-town traders pay over the day's rate for what they are short of:
@@ -147,6 +149,9 @@ func _build() -> void:
 	var x := -half_x
 	while x <= half_x + 0.01:
 		for z in [-half_z, half_z]:
+			# A gate in the front, where the drive comes in.
+			if z > 0.0 and absf(x) < GATE * 0.5:
+				continue
 			_post(Vector3(x, 0, z), post_mat)
 		x += step
 	var z2 := -half_z + step

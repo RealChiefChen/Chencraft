@@ -62,6 +62,12 @@ var islands: Array[Dictionary] = []
 var features: Array[Dictionary] = []
 ## Found sites that want a road to them: names from `site_requests`.
 var spur_sites: Array = []
+## Short drives from the nearest road to a fixed place's way in:
+## {name, centre, radius, door (a point, or null for the edge nearest the road)}.
+var driveways: Array = []
+## Where each spur and driveway ends, by name: the way in to the place. A
+## place turns its front toward it.
+var road_ends: Dictionary = {}
 ## Big consolidated biome regions: {name, centre (Vector2), biome, scale}. A
 ## point belongs to the nearest centre (measured through a slow warp, so the
 ## borders wander), and each biome has its own shape of land - rolling woods,
@@ -70,12 +76,15 @@ var regions: Array[Dictionary] = []
 ## Where a found or routed road got to, for drawing its surface: {path,
 ## style}. Filled by `generate`.
 var road_paths: Array[Dictionary] = []
+## While generating: the cells under each graded carriageway proper (the mask
+## also covers a cell beyond it).
+var _road_core := PackedByteArray()
 ## When set, the whole generated country is written here and read back next
 ## time the same country is asked for, which skips all of generation bar the
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 20
+const GENERATOR_VERSION := 21
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -361,6 +370,16 @@ func is_blocked(x: float, z: float) -> bool:
 
 ## Build sites are kept clear, so an expanded plot never swallows a forest and
 ## nothing grows through the middle of the yard.
+## Is grid point `index` on a levelled place (inside its radius)?
+func _on_site(index: int) -> bool:
+	var x := -half_extent + float(index % (_cells + 1)) * CELL
+	var z := -half_extent + float(index / (_cells + 1)) * CELL
+	for site in build_sites:
+		var c: Vector3 = site.centre
+		if not is_nan(c.y) and Vector2(x - c.x, z - c.z).length() < float(site.radius):
+			return true
+	return false
+
 func _in_build_site(x: float, z: float) -> bool:
 	for site in build_sites:
 		var centre: Vector3 = site.centre
@@ -414,7 +433,9 @@ func _flatten_clear_zones() -> void:
 					# little under the pad, so no facet reaches up through it.
 					_heights[index] = float(zone.height)
 					_road_mask[index] = 0
-				else:
+				elif _road_mask[index] == 0:
+					# Easing back to the land, but never under a road: the
+					# road was graded already, and its surface is laid to that.
 					var t: float = clampf((out - CELL) / maxf(0.01, margin - CELL), 0.0, 1.0)
 					_heights[index] = lerpf(float(zone.height), _heights[index], smoothstep(0.0, 1.0, t))
 
@@ -436,13 +457,21 @@ func generate() -> void:
 		_holes.fill(0)
 		bridges.clear()
 		road_paths.clear()
+		road_ends.clear()
+		_road_core.resize(_road_mask.size())
+		_road_core.fill(0)
 		_carve_rivers()
+		_level_sites()
 		_route_roads()
 		_lap("routing")
 		# The plot's square is levelled before the roads are graded as well as
 		# after, so a road running up to it comes down to its level instead of
 		# ending in mid-air at its edge.
 		_flatten_clear_zones()
+		# The places asked for up front are levelled before the roads are
+		# graded, so a road running past or up to one is laid over it as it
+		# will be, and levelling it afterwards never digs under a road.
+		_flatten_sites()
 		_grade_roads(roads)
 		_lap("rivers+roads")
 		_place_requested_sites()
@@ -490,7 +519,7 @@ func _fill_row(iz: int, bufs: Array) -> void:
 
 func _cache_key() -> String:
 	var config := [GENERATOR_VERSION, half_extent, noise_seed, islands, regions, features, rivers,
-		roads, build_sites, site_requests, spur_sites, cave_count, clear_zones]
+		roads, build_sites, site_requests, spur_sites, driveways, cave_count, clear_zones]
 	return str(hash(var_to_str(config)))
 
 func _load_cache() -> bool:
@@ -512,6 +541,7 @@ func _load_cache() -> bool:
 	road_paths.assign(data.road_paths)
 	build_sites.assign(data.build_sites)
 	roads = data.roads
+	road_ends = data.get("road_ends", {})
 	return _heights.size() == (_cells + 1) * (_cells + 1)
 
 func _save_cache() -> void:
@@ -525,7 +555,7 @@ func _save_cache() -> void:
 	f.store_var({"key": _key_at_start, "heights": _heights, "biomes": _biomes,
 		"road_mask": _road_mask, "holes": _holes, "bridges": bridges, "caves": caves,
 		"found_sites": found_sites, "road_paths": road_paths, "build_sites": build_sites,
-		"roads": roads})
+		"roads": roads, "road_ends": road_ends})
 
 var _key_at_start: String = ""
 
@@ -913,12 +943,21 @@ func _grade_roads(list: Array) -> void:
 			continue
 		var reach := ROAD_HALF_WIDTH + ROAD_SHOULDER
 		var near := _cells_near(path, reach)
+		# Another road's carriageway, already laid, keeps its own level: a
+		# road joining it starts at that level and does not regrade it.
+		var laid := _road_core.duplicate()
 		for index in near:
+			if laid[index] == 1:
+				continue
 			var d: float = near[index].x
+			if d <= ROAD_HALF_WIDTH:
+				_road_core[index] = 1
 			# A bridged road leaves the water alone: the deck goes over it.
 			if bridged and _heights[index] < WATER_LEVEL - 0.05:
 				continue
 			var target := _profile_height(profile, near[index].y, span)
+			# On a levelled place the road lies on it: no cut under it.
+			var sink := 0.0 if _on_site(index) else ROAD_SINK
 			# Where a road meets a carved channel it crosses at a ford
 			# rather than filling the river in.
 			if not bridged and _heights[index] < WATER_LEVEL - 0.3:
@@ -929,11 +968,11 @@ func _grade_roads(list: Array) -> void:
 				# A little under the road's own level: the carriageway is laid
 				# on top (RoadSurface), level across, and on a bend the land
 				# between grid points must not come up through its edge.
-				_heights[index] = target - ROAD_SINK
+				_heights[index] = target - sink
 				_road_mask[index] = 1
 			else:
 				var t: float = clampf((d - ROAD_HALF_WIDTH - CELL) / ROAD_SHOULDER, 0.0, 1.0)
-				_heights[index] = lerpf(target, _heights[index], smoothstep(0.0, 1.0, t))
+				_heights[index] = lerpf(target - sink, _heights[index], smoothstep(0.0, 1.0, t))
 		# Where the road comes back past itself - a hairpin, a switchback, a
 		# tight bend on a hillside - the ground between the two legs belongs
 		# to whichever is nearer, and the other leg's edge would have the land
@@ -942,6 +981,8 @@ func _grade_roads(list: Array) -> void:
 		# a road on a turn.
 		var under := _lowest_under_road(path, profile, span, ROAD_HALF_WIDTH + CELL * 0.75, near)
 		for index in under:
+			if laid[index] == 1:
+				continue
 			if bridged and _heights[index] < WATER_LEVEL - 0.05:
 				continue
 			_heights[index] = minf(_heights[index], float(under[index]) - ROAD_SINK)
@@ -998,6 +1039,7 @@ func bridge_ends(bridge: Dictionary) -> Array:
 ## trading posts and the far store can be driven to. Hidden places get none.
 func _spur_roads() -> Array:
 	var out: Array = []
+	_spurs_laid = out
 	for name in spur_sites:
 		if not found_sites.has(name):
 			continue
@@ -1022,43 +1064,136 @@ func _spur_roads() -> Array:
 		var normal := Vector3(-best_tangent.z, 0.0, best_tangent.x)
 		if normal.dot(Vector3(site.x - best.x, 0.0, site.z - best.z)) < 0.0:
 			normal = -normal
+		# Off the end of a road there is no junction to square off: it sets
+		# out straight for the place.
+		if near.get("end", false):
+			normal = Vector3(site.x - best.x, 0.0, site.z - best.z).normalized()
 		var lead := best + normal * 40.0
 		var routed: Array = [best]
 		for p in _route(lead, Vector3(site.x, 0, site.z), false):
 			routed.append(p)
 		var path := _drive_path(_smooth_path(routed), normal)
-		# The last few metres into the site end dead on it.
-		if Vector2(path[path.size() - 1].x - site.x, path[path.size() - 1].z - site.z).length() > 0.5:
-			path.append(Vector3(site.x, 0, site.z))
-		# Flat across the site's own level at its end, so levelling the site
-		# afterwards leaves the road where it was.
-		var radius := 10.0
-		for bs in build_sites:
-			if Vector2((bs.centre as Vector3).x - site.x, (bs.centre as Vector3).z - site.z).length() < 1.0:
-				radius = float(bs.radius)
-		out.append({"path": path, "bridge": true, "style": "dirt", "hold_end": radius * 1.45, "end_level": site.y})
-		road_paths.append({"path": path, "style": "dirt", "bridge": true})
+		var radius := _site_radius(site)
+		# It stops at the edge of the place's levelled ground - its way in -
+		# rather than running on into the middle of it; the place turns its
+		# front to face the road there.
+		path = _stop_at(path, site, radius * 0.9)
+		_add_driveway(out, name, path, site.y, bool(near.get("end", false)))
+	for dw in driveways:
+		var centre: Vector3 = dw.centre
+		var radius := float(dw.radius)
+		var level := _site_level(centre)
+		var door: Variant = dw.get("door")
+		var near := _nearest_road_point(door if door != null else centre)
+		if near.is_empty():
+			continue
+		# No door named: the edge of the place nearest the road.
+		if door == null:
+			var toward := Vector3(near.at.x - centre.x, 0.0, near.at.z - centre.z).normalized()
+			door = centre + toward * radius * 0.9
+			near = _nearest_road_point(door)
+		var start: Vector3 = near.at
+		# The nearest point on a road is square off it: a straight drive in.
+		var path: Array = [Vector3(start.x, 0, start.z)]
+		var d: Vector3 = door
+		var run := Vector2(d.x - start.x, d.z - start.z).length()
+		var n := maxi(2, int(run / 6.0))
+		for k in range(1, n + 1):
+			path.append(Vector3(start.x, 0, start.z).lerp(Vector3(d.x, 0, d.z), float(k) / float(n)))
+		_add_driveway(out, String(dw.name), path, level)
 	return out
+
+func _add_driveway(out: Array, name: String, path: Array, level: float, from_end: bool = false) -> void:
+	# Level with the place for its last stretch, so levelling the place
+	# afterwards leaves the road where it was.
+	out.append({"path": path, "bridge": true, "style": "dirt", "hold_end": 8.0, "end_level": level})
+	# Its surface starts at the edge of the road it leaves, not over it.
+	road_paths.append({"path": path, "style": "dirt", "bridge": true,
+		"trim": 0.0 if from_end else RoadSurface.HALF + 1.0})
+	road_ends[name] = path[path.size() - 1]
+
+## The path cut where it first comes within `reach` of `centre`, ending on
+## that circle.
+func _stop_at(path: Array, centre: Vector3, reach: float) -> Array:
+	var out: Array = [path[0]]
+	for i in range(1, path.size()):
+		var p: Vector3 = path[i]
+		if Vector2(p.x - centre.x, p.z - centre.z).length() <= reach:
+			var q: Vector3 = out[out.size() - 1]
+			var dir := Vector3(q.x - centre.x, 0.0, q.z - centre.z).normalized()
+			if Vector2(q.x - centre.x, q.z - centre.z).length() > reach + 0.5:
+				out.append(Vector3(centre.x, 0, centre.z) + dir * reach)
+			return out
+		out.append(p)
+	return out
+
+func _site_radius(p: Vector3) -> float:
+	for bs in build_sites:
+		if Vector2((bs.centre as Vector3).x - p.x, (bs.centre as Vector3).z - p.z).length() < 1.0:
+			return float(bs.radius)
+	return 10.0
+
+func _site_level(p: Vector3) -> float:
+	for bs in build_sites:
+		var c: Vector3 = bs.centre
+		if Vector2(c.x - p.x, c.z - p.z).length() < 1.0:
+			return c.y
+	return height_at(p.x, p.z)
+
+## Sites asked for without a height (NAN) are levelled to the lie of the land
+## round them, not dug into it or stood up out of it.
+func _level_sites() -> void:
+	for i in build_sites.size():
+		var c: Vector3 = build_sites[i].centre
+		if is_nan(c.y):
+			c.y = maxf(WATER_LEVEL + 0.6, snappedf(_mean_height(c, float(build_sites[i].radius)), 0.25))
+			build_sites[i].centre = c
+	for dw in driveways:
+		var c: Vector3 = dw.centre
+		if is_nan(c.y):
+			dw.centre = Vector3(c.x, _site_level(c), c.z)
 
 ## The nearest point on a road to `point` - not on a bridge, not in a road's
 ## last few metres - with the road's direction there: {at, tangent, d}.
+## Does this road stop in open country (rather than at another road)?
+func _dead_end(path: Array) -> bool:
+	var end: Vector3 = path[path.size() - 1]
+	for road in roads + _spurs_laid:
+		var other: Array = road.get("path", []) if road is Dictionary else road
+		if other == path or other.size() < 2:
+			continue
+		if _distance_to_path(end, other).x < 15.0:
+			return false
+	return true
+
+## Spurs laid so far this generation, which later spurs may branch from.
+var _spurs_laid: Array = []
+
 func _nearest_road_point(point: Vector3) -> Dictionary:
 	var out: Dictionary = {}
 	var best_d := INF
-	for road in roads:
+	for road in roads + _spurs_laid:
 		var path: Array = road.get("path", []) if road is Dictionary else road
+		if path.size() < 2:
+			continue
 		var span := _path_length(path)
-		var along := 30.0
-		while along <= span - 30.0:
-			var p := _point_along(path, along)
-			var d := Vector2(p.x - point.x, p.z - point.z).length()
-			if d < best_d and height_at(p.x, p.z) > WATER_LEVEL + 0.3:
-				best_d = d
-				var ahead := _point_along(path, along + 6.0)
-				var behind := _point_along(path, along - 6.0)
-				out = {"at": p, "d": d,
-					"tangent": Vector3(ahead.x - behind.x, 0.0, ahead.z - behind.z).normalized()}
-			along += 12.0
+		# Exactly the nearest point on it (square off the road), kept out of
+		# its last few metres.
+		var hit := _distance_to_path(point, path)
+		# Near its far end, the road is carried on from its end instead: no
+		# junction just short of the end with the new road doubling back
+		# alongside it.
+		var at_end := hit.y > span - 30.0 and _dead_end(path)
+		var along := span if at_end else clampf(hit.y, 30.0, span - 30.0)
+		var p := _point_along(path, along)
+		var d := Vector2(p.x - point.x, p.z - point.z).length()
+		if d >= best_d or height_at(p.x, p.z) <= WATER_LEVEL + 0.3:
+			continue
+		best_d = d
+		var ahead := _point_along(path, minf(span, along + 6.0))
+		var behind := _point_along(path, along - 6.0)
+		out = {"at": p, "d": d, "end": at_end,
+			"tangent": Vector3(ahead.x - behind.x, 0.0, ahead.z - behind.z).normalized()}
 	return out
 
 # --- Routing -----------------------------------------------------------------
@@ -1139,6 +1274,11 @@ func _drive_path(plan: Array, heading: Vector3) -> Array:
 		var to_end := Vector2(end.x - pos.x, end.z - pos.z).length()
 		if progress >= span - 1.0 or to_end < 10.0:
 			break
+		# Close to the end but pointed away from it: no circling round to hit
+		# the exact point - the road ends here.
+		if to_end < ROAD_MIN_RADIUS * 2.5 and absf(dir.angle_to(Vector2(end.x - pos.x, end.z - pos.z))) > PI * 0.4:
+			end = Vector3(pos.x, 0.0, pos.z)
+			break
 		var target := _point_along(plan, minf(span, progress + ROAD_LOOKAHEAD))
 		var want := Vector2(target.x - pos.x, target.z - pos.z)
 		if want.length() > 0.01:
@@ -1155,6 +1295,14 @@ func _drive_path(plan: Array, heading: Vector3) -> Array:
 	for i in n + 1:
 		even.append(_point_along(out, total * float(i) / float(n)))
 	return even
+
+func _beside_road(x: float, z: float) -> bool:
+	for o in [Vector2.ZERO, Vector2(18, 0), Vector2(-18, 0), Vector2(0, 18), Vector2(0, -18)]:
+		var ix := clampi(int(round(_grid_coord(x + o.x))), 0, _cells)
+		var iz := clampi(int(round(_grid_coord(z + o.y))), 0, _cells)
+		if _road_mask[_index(ix, iz)] == 1:
+			return true
+	return false
 
 ## A* over a coarse grid in the box round the two ends. Edges steeper than the
 ## grade limit are left out altogether, so the search has to find a way that
@@ -1197,8 +1345,13 @@ func _route_on(a: Vector3, b: Vector3, lo: Vector2, nx: int, nz: int, grade: flo
 			var weight := 1.0 + rough * 0.14 + 6.0 * pow(_warp.get_noise_2d(x * 7.0, z * 7.0) * 0.5 + 0.5, 2.0)
 			if wet[id] != 0:
 				weight += 1.5 if wade else 5.0
-			if _in_build_site(x, z) and not (Vector2(x - a.x, z - a.z).length() < 60.0 or Vector2(x - b.x, z - b.z).length() < 60.0):
+			var near_ends := Vector2(x - a.x, z - a.z).length() < 60.0 or Vector2(x - b.x, z - b.z).length() < 60.0
+			if _in_build_site(x, z) and not near_ends:
 				weight += 3.0
+			# Not along another road: a way that runs beside one is a road
+			# too many, and two carriageways side by side fight over the land.
+			if not near_ends and _beside_road(x, z):
+				weight += 12.0
 			astar.add_point(id, Vector2(x, z), weight)
 	var steps := [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, -1),
 		Vector2i(2, 1), Vector2i(1, 2), Vector2i(2, -1), Vector2i(1, -2)]
@@ -1311,6 +1464,15 @@ func _road_profile(path: Array, span: float, floor_h: float = -INF, hold_end: fl
 	out[n] = end_h
 	fixed[0] = 1
 	fixed[n] = 1
+	# Across a levelled place the road is level with it.
+	for i in out.size():
+		var q := _point_along(path, float(i) * ds)
+		for bs in build_sites:
+			var c: Vector3 = bs.centre
+			if not is_nan(c.y) and Vector2(q.x - c.x, q.z - c.z).length() < float(bs.radius):
+				out[i] = c.y
+				fixed[i] = 1
+				break
 	# No steeper than a truck can climb, either way - or, where the two
 	# ends are further apart in height than that allows (a road up a peak),
 	# one steady climb the whole way rather than a wall at the end.
@@ -1374,6 +1536,11 @@ func _point_along(path: Array, along: float) -> Vector3:
 ## factory floor.
 func _flatten_sites() -> void:
 	for site in build_sites:
+		# Each is levelled once: later passes leave alone what the roads have
+		# since been graded over.
+		if site.get("done", false):
+			continue
+		site["done"] = true
 		var centre: Vector3 = site.centre
 		var radius: float = float(site.radius)
 		var margin: float = radius * 0.45
@@ -1387,6 +1554,10 @@ func _flatten_sites() -> void:
 					continue
 				var t: float = clampf((d - radius) / maxf(0.01, margin), 0.0, 1.0)
 				var index := _index(ix, iz)
+				# Nor under a road graded since (a cave mouth by the road): the
+				# road's surface is laid to its own level.
+				if _road_mask[index] == 1 and t > 0.0:
+					continue
 				_heights[index] = lerpf(centre.y, _heights[index], smoothstep(0.0, 1.0, t))
 				if d <= radius:
 					_road_mask[index] = _road_mask[index]

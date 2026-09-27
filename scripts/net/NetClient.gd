@@ -323,9 +323,9 @@ func _build(e: Dictionary) -> Node:
 	if def == null:
 		return null
 	var size := Vector3i(int(e.size[0]), int(e.size[1]), int(e.size[2]))
-	var tr: Array = e.get("trim", [0, 0, 0])
+	var tr: Array = e.get("trim", [def.trim.x, def.trim.y, def.trim.z])
 	var trim := Vector3i(int(tr[0]), int(tr[1]), int(tr[2]))
-	if size != def.size or trim != Vector3i.ZERO:
+	if size != def.size or trim != def.trim:
 		def = Plot.resized(def, size, trim)
 	var r: Array = e.rot
 	var node := plot.place(def, Vector2i(int(e.cell[0]), int(e.cell[1])), Vector3i(int(r[0]), int(r[1]), int(r[2])),
@@ -500,6 +500,8 @@ func _let_go() -> void:
 
 func _vehicle_state(v: Hauler, s: Dictionary) -> void:
 	var here: bool = _local_veh >= 0 and _nodes.get(_local_veh, null) == v
+	if s.has("ramps") and v.bed_kind == &"deck" and bool(s.ramps) != v.ramps_down:
+		v.set_ramps(bool(s.ramps))
 	if s.has("tub") and v.bed_kind == &"tub":
 		v._tub_angle = float(s.tub)
 		v._pose_tub(v._tub_angle)

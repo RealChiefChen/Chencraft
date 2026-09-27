@@ -30,7 +30,9 @@ static func mesh(def: Dictionary) -> ArrayMesh:
 			# The wedge's thin side is its +Y, turned out to face away.
 			var blade := Transform3D(Basis(Vector3.FORWARD, side * PI * 0.5), top + Vector3(side * 0.13, 0, 0))
 			g.wedge(Vector3(0.2, 0.18, 0.035), blade, head)
-			g.box(Vector3(0.02, 0.2, 0.04), Transform3D(Basis(), top + Vector3(side * 0.225, 0, 0)), head.lightened(0.35), glow)
+			# The honed edge: a bright sliver along the thin side, no thicker
+			# than the edge itself - not a flat face stuck on the end.
+			g.box(Vector3(0.012, 0.2, 0.006), Transform3D(Basis(), top + Vector3(side * 0.222, 0, 0)), head.lightened(0.35), glow)
 	return g.commit()
 
 static func _color(a: Variant) -> Color:

@@ -162,12 +162,17 @@ static func _step(t: float, n: float) -> float:
 static func _click(t: float, _n: float) -> float:
 	return sin(TAU * 900.0 * t) * exp(-t * 90.0) * 0.4
 
-## A diesel at idle: a buzzing saw tooth that chugs.
+## A diesel at idle: a deep, round rumble - a low fundamental with soft
+## harmonics, each cylinder's firing a smooth thump rather than a click, a
+## slow lope, and a rumble of low noise under it. Every rate divides the loop
+## (0.5 s) into whole cycles, so it goes round without a seam.
 static func _engine(t: float, n: float) -> float:
-	var f := 50.0
-	var saw := fposmod(t * f, 1.0) * 2.0 - 1.0
-	var chug := 0.5 + 0.5 * sin(TAU * f * 0.5 * t)
-	return (saw * 0.45 + sin(TAU * f * 2.0 * t) * 0.25) * (0.6 + 0.4 * chug) + n * 0.05
+	var f := 32.0
+	var tone := sin(TAU * f * t) + 0.5 * sin(TAU * f * 2.0 * t + 0.3) + 0.16 * sin(TAU * f * 3.0 * t + 0.9)
+	var phase := fposmod(t * f * 2.0, 1.0) - 0.5
+	var thump := exp(-phase * phase / 0.018)
+	var lope := 0.85 + 0.15 * sin(TAU * 8.0 * t)
+	return (tone * 0.42 + thump * 0.3) * lope + n * 0.12
 
 ## A machine running.
 static func _hum(t: float, n: float) -> float:

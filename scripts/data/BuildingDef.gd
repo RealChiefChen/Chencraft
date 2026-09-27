@@ -54,6 +54,9 @@ static func from_dict(d: Dictionary) -> BuildingDef:
 	b.hidden = bool(d.get("hidden", false))
 	b.shape = StringName(d.get("shape", "box"))
 	b.vehicle = StringName(d.get("vehicle", "hauler" if b.kind == &"pad" else ""))
+	# Fine steps taken off the whole-metre size: a wall that starts out thin.
+	var tr: Array = d.get("trim", [0, 0, 0])
+	b.trim = Vector3i(int(tr[0]), int(tr[1]), int(tr[2]))
 	return b
 
 func footprint_world(cell_size: float) -> Vector3:

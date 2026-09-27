@@ -357,6 +357,17 @@ func surface_at(x: float, z: float) -> float:
 var _blocked: Dictionary = {}
 const BLOCK_GRID := 8.0
 
+## Nothing grows on a bridge or up through its deck: the ground along each one,
+## ends and all, is kept clear.
+func _block_bridges() -> void:
+	for b in bridges:
+		var a: Vector3 = b.a
+		var e: Vector3 = b.b
+		var run := Vector2(e.x - a.x, e.z - a.z).length()
+		var n := maxi(1, int(run / 4.0))
+		for k in n + 1:
+			mark_blocked(a.lerp(e, float(k) / float(n)), 10.0)
+
 func mark_blocked(centre: Vector3, radius: float) -> void:
 	var r := int(ceil(radius / BLOCK_GRID))
 	var c := Vector2i(int(floor(centre.x / BLOCK_GRID)), int(floor(centre.z / BLOCK_GRID)))
@@ -368,8 +379,6 @@ func mark_blocked(centre: Vector3, radius: float) -> void:
 func is_blocked(x: float, z: float) -> bool:
 	return _blocked.has(Vector2i(int(floor(x / BLOCK_GRID)), int(floor(z / BLOCK_GRID))))
 
-## Build sites are kept clear, so an expanded plot never swallows a forest and
-## nothing grows through the middle of the yard.
 ## Is grid point `index` on a levelled place (inside its radius)?
 func _on_site(index: int) -> bool:
 	var x := -half_extent + float(index % (_cells + 1)) * CELL
@@ -380,6 +389,8 @@ func _on_site(index: int) -> bool:
 			return true
 	return false
 
+## Build sites are kept clear, so an expanded plot never swallows a forest and
+## nothing grows through the middle of the yard.
 func _in_build_site(x: float, z: float) -> bool:
 	for site in build_sites:
 		var centre: Vector3 = site.centre
@@ -482,6 +493,7 @@ func generate() -> void:
 		_flatten_sites()
 		_flatten_clear_zones()
 		_save_cache()
+	_block_bridges()
 	_build_mesh()
 	_lap("mesh")
 

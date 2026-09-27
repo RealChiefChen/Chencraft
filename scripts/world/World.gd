@@ -930,7 +930,7 @@ func _on_ground(sampler: Callable) -> Callable:
 		var flat: Vector3 = sampler.call(rng)
 		if terrain == null:
 			return flat
-		if terrain.water_depth(flat.x, flat.z) > 0.0 or terrain.is_road(flat.x, flat.z):
+		if terrain.water_depth(flat.x, flat.z) > 0.0 or terrain.is_road(flat.x, flat.z) or terrain.is_blocked(flat.x, flat.z):
 			# Nudged rather than rejected, so a field near a river still fills.
 			flat += Vector3(rng.randf_range(-18.0, 18.0), 0.0, rng.randf_range(-18.0, 18.0))
 		return terrain.place(flat)
@@ -2133,8 +2133,12 @@ func handle_key(p: Player, event: InputEvent) -> void:
 	elif Controls.pressed(event, &"unload"):
 		p.act(&"lever" if p.driving() else &"use")
 		var v := vehicle_at_hand(8.0, p)
+		if v != null and v.towing != null and is_instance_valid(v.towing) and v.towing.bed_kind == &"deck":
+			v = v.towing
 		if v != null:
-			if not v.has_bed():
+			if v.bed_kind == &"deck":
+				_tell(p, "ramps down - drive aboard" if v.toggle_ramps() else "ramps up")
+			elif not v.has_bed():
 				_tell(p, "the %s has nothing to unload" % v.display_name.to_lower())
 			else:
 				var n := v.unload()

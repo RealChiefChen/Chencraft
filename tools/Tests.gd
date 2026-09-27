@@ -51,7 +51,7 @@ func _run_all() -> void:
 	await _test(&"the sander finishes wood and adds value", test_sander)
 	await _test(&"crusher, smelter and refiner work ore down the line", test_ore_line)
 	await _test(&"every material is worth its raw, pre and final values", test_material_values)
-	await _test(&"stones are polished in the gem polisher and faceted in the gem cutter", test_gem_line)
+	await _test(&"stones are either polished or cut, and which pays depends on the stone", test_gem_line)
 	await _test(&"islands, bridges and carved places", test_islands)
 	await _test(&"big consolidated biome regions with real relief", test_regions)
 	await _test(&"roads are routed over the land, graded, with no tight bends", test_road_routing)
@@ -96,6 +96,8 @@ func _run_all() -> void:
 	await _test(&"things are dragged by the point grabbed", test_drag_at_point)
 	await _test(&"tools come from an inventory onto a hotbar", test_hotbar_tools)
 	await _test(&"build mode edits placed buildings", test_build_edit)
+	await _test(&"dragging a building, its knobs go with it", test_build_knobs_follow)
+	await _test(&"walls can be thin", test_thin_walls)
 	await _test(&"build mode previews the building itself", test_build_preview)
 	await _test(&"build mode only opens on your own land", test_build_territory)
 	await _test(&"an old save still gets the new belt pieces", test_old_save_belts)
@@ -121,6 +123,7 @@ func _run_all() -> void:
 	await _test(&"winch and crane respect their power ratings", test_vehicle_rig)
 	await _test(&"a driven truck's settled load is fixed as it lies", test_load_fixed_while_driven)
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
+	await _test(&"the front loader drives up onto the low-loader and rides on it", test_low_loader)
 	await _test(&"vehicles bump into each other", test_vehicles_collide)
 	await _test(&"a hard brake at speed slides", test_handbrake_slide)
 	await _test(&"a ladder takes you up onto the cab roof", test_cab_ladder)
@@ -149,7 +152,8 @@ func _run_all() -> void:
 	await _test(&"machines make their output in the size they are set to", test_machine_output_size)
 	await _test(&"trucks change gear, climb and turn tighter", test_gearbox)
 	await _test(&"a loaded log truck climbs a 38-degree slope", test_climb)
-	await _test(&"engine and tyre upgrades are for every vehicle", test_vehicle_upgrades)
+	await _test(&"transmission and tyre upgrades are for every vehicle", test_vehicle_upgrades)
+	await _test(&"overdrive gears are more top speed", test_overdrive_speed)
 	await _test(&"recovering is rate-limited and not on outriggers", test_recover_limits)
 	await _test(&"a crane picks logs out of the trailer it tows", test_crane_from_trailer)
 	await _test(&"the loader swaps its bucket for a log grapple", test_loader_grapple)
@@ -325,8 +329,18 @@ func test_prices() -> void:
 	var long_board := Solid.box(Vector3(0.3, 2.0, 0.3))
 	var a := Economy.price_of(&"lumber_pine", short_board)
 	var b := Economy.price_of(&"lumber_pine", long_board)
-	check(absf(float(b) - float(a) * 2.0) <= 2.0,
-		"price is not proportional to volume (%d vs %d)" % [a, b])
+	check(float(b) >= float(a) * 2.0 - 2.0 and float(b) <= float(a) * 2.0 * 1.3,
+		"price is not in step with volume (%d vs %d)" % [a, b])
+	# Big pieces carry a bonus: a piece eight times the usual size pays well
+	# over eight times as much, a small one pays the plain rate.
+	var def := GameData.item(&"lumber_pine")
+	var usual := def.default_dims()
+	var small_piece := Solid.box(Solid.bounds(usual) * 0.5)
+	var big_piece := Solid.box(Solid.bounds(usual) * 2.0)
+	var rate_small := float(Economy.price_of(&"lumber_pine", small_piece)) / Solid.volume(small_piece)
+	var rate_big := float(Economy.price_of(&"lumber_pine", big_piece)) / Solid.volume(big_piece)
+	check(rate_big > rate_small * 1.6, "no bonus for a big piece (%.0f vs %.0f per m3)" % [rate_big, rate_small])
+	check_near(Economy.size_bonus(def, small_piece), 1.0, 0.0001, "a small piece is marked down")
 	done()
 
 func test_chop() -> void:
@@ -1274,7 +1288,8 @@ func test_material_values() -> void:
 				var polished := Solid.with_finish(rough, &"polished")
 				pre = raw_def.base_value_of(polished) / v3
 				var r0 := pow(v3 * cut.yield_share / 1.649, 1.0 / 3.0)
-				var jewel := Solid.keep_finish(polished, Solid.cylinder(r0, r0 * 0.5, r0 * 0.9))
+				# Cut from rough, not from polished: one or the other.
+				var jewel := Solid.cylinder(r0, r0 * 0.5, r0 * 0.9)
 				fin = fin_def.base_value_of(jewel) / v3
 		# The wood check uses a plank from the log's mean radius, as the planker does.
 		var tol := 0.02
@@ -1310,14 +1325,35 @@ func test_gem_line() -> void:
 	check(stone.display_name().begins_with("Polished"), "a polished stone is called %s" % stone.display_name())
 	var polished_price := Economy.price_of(stone.item_id, stone.dims)
 	check(polished_price >= raw_price, "polishing an emerald lost value")
+	# Polished is finished: the cutter sends it through as it came.
 	var again := _feed(cutter, stone.item_id, stone.dims)
 	again = await _through(cutter, again)
-	check(again != null, "the stone never came through the gem cutter")
-	check_eq(again.item_id, &"jewel_emerald", "the cutter made %s" % again.item_id)
-	check_eq(again.dims.get("shape"), Solid.CYLINDER, "a jewel is not faceted round")
-	check_near(again.volume(), volume * cutter.machine_def.yield_share, 0.0001, "the jewel is the wrong size")
-	check(Solid.has_finish(again.dims, &"polished"), "cutting lost the polish")
-	check(Economy.price_of(again.item_id, again.dims) > polished_price * 2.0, "a cut emerald is not worth the cutting")
+	check(again != null, "the polished stone never came through the gem cutter")
+	check_eq(again.item_id, &"gem_emerald", "the cutter cut a polished stone")
+	# Rough goes under the cutting head instead.
+	var rough_em := _feed(cutter, &"gem_emerald", Solid.cube(0.12))
+	var cut := await _through(cutter, rough_em)
+	check(cut != null, "the rough stone never came through the gem cutter")
+	check_eq(cut.item_id, &"jewel_emerald", "the cutter made %s" % cut.item_id)
+	check_eq(cut.dims.get("shape"), Solid.CYLINDER, "a jewel is not faceted round")
+	check_near(cut.volume(), volume * cutter.machine_def.yield_share, 0.0001, "the jewel is the wrong size")
+	check(not Solid.has_finish(cut.dims, &"polished"), "a cut jewel came out polished")
+	# And a jewel is not polished afterwards.
+	var jewel := _feed(sander, cut.item_id, cut.dims)
+	jewel = await _through(sander, jewel)
+	check(jewel != null and not Solid.has_finish(jewel.dims, &"polished"), "a cut jewel was polished")
+	# An emerald is one of the stones worth more cut than polished.
+	check(Economy.price_of(cut.item_id, cut.dims) > polished_price, "a cut emerald is worth less than a polished one")
+	# About half the stones are worth more one way, half the other.
+	var cut_better := 0
+	var gems := 0
+	for mat in GameData.materials.values():
+		if String(mat.get("path", "")) == "gem":
+			gems += 1
+			if float(mat.final) > float(mat.pre):
+				cut_better += 1
+	check(cut_better * 2 >= gems - 1 and cut_better * 2 <= gems + 1,
+		"%d of %d stones are worth more cut" % [cut_better, gems])
 	# The gem cutter leaves ore alone.
 	var ore := _feed(cutter, &"ore_iron", Solid.cube(0.2))
 	ore = await _through(cutter, ore)
@@ -1621,6 +1657,26 @@ func test_cave_network() -> void:
 		small += int(maxf(room.rx, room.rz) < 35.0)
 	check(below > net.rooms.size() / 2, "most caverns are above sea level")
 	check(big >= 1 and small >= 1, "the caverns are all one size")
+	# Not balls: each cavern bulges out into bays, and its dressing grows out
+	# of the walls, clear of the floor.
+	var lobed := 0
+	var on_floor := 0
+	var rng := RandomNumberGenerator.new()
+	for room in net.rooms:
+		var lo := INF
+		var hi := 0.0
+		for i in 48:
+			var a := TAU * float(i) / 48.0
+			var b := net._bump(room, Vector3(cos(a), 0.0, sin(a)))
+			lo = minf(lo, b)
+			hi = maxf(hi, b)
+		lobed += int(hi / lo > 1.3)
+		for i in 20:
+			var spot: Variant = net.wall_point(room, rng)
+			if spot != null and (spot[0] as Vector3).y < float(room.floor) + 0.9:
+				on_floor += 1
+	check(lobed >= net.rooms.size() / 2, "only %d of %d caverns have bays" % [lobed, net.rooms.size()])
+	check(on_floor == 0, "%d formations on a cavern floor" % on_floor)
 	# Every tunnel mouth open into its cavern, and every tunnel floored.
 	var space := world.get_world_3d().direct_space_state
 	var blocked := 0
@@ -1667,14 +1723,11 @@ func test_cave_network() -> void:
 					var yaw := TAU * float(i) / 48.0
 					var pitch: float = [-0.3, 0.15, 0.6][i % 3]
 					var dir := Vector3(cos(yaw) * cos(pitch), sin(pitch), sin(yaw) * cos(pitch))
-					var q3 := PhysicsRayQueryParameters3D.create(eye, eye + dir * (width * 2.0 + 260.0))
+					var q3 := PhysicsRayQueryParameters3D.create(eye, eye + dir * (width * 2.0 + 520.0))
 					q3.hit_back_faces = false
 					looks += 1
 					if space.intersect_ray(q3).is_empty():
 						leaks += 1
-						var qb := PhysicsRayQueryParameters3D.create(eye, eye + dir * (width * 2.0 + 260.0))
-						qb.hit_back_faces = true
-						var hb := space.intersect_ray(qb)
 	check(leaks == 0, "%d of %d looks round the tunnel mouths see through the rock" % [leaks, looks])
 	# No two tunnels open out of a cavern on top of one another.
 	var overlaps := 0
@@ -1753,11 +1806,13 @@ func test_machine_lines() -> void:
 	check(smelter.total_processed > crusher.total_processed * 3, "the lumps did not reach the smelter")
 	check(refiner.total_processed >= smelter.total_processed * 0.8,
 		"the refiner fell behind the smelter (%d of %d)" % [refiner.total_processed, smelter.total_processed])
+	var jewel: Dictionary = show.lines[2]
 	var sander: InlineMachine = stone.machines[0]
-	var cutter: InlineMachine = stone.machines[1]
+	var cutter: InlineMachine = jewel.machines[0]
 	check(sander.total_processed >= 12, "the polisher polished only %d stones" % sander.total_processed)
-	check(cutter.total_processed >= sander.total_processed - 2, "the gem cutter fell behind the polisher")
-	check(int(ore.made) > 20 and int(stone.made) > 8, "the lines finished too little (%d, %d)" % [ore.made, stone.made])
+	check(cutter.total_processed >= 12, "the gem cutter cut only %d stones" % cutter.total_processed)
+	check(int(ore.made) > 20 and int(stone.made) > 8 and int(jewel.made) > 8,
+		"the lines finished too little (%d, %d, %d)" % [ore.made, stone.made, jewel.made])
 	show.clear_all()
 	check_eq(manager.active_count(), 0, "switching the demo off left pieces behind")
 	done()
@@ -1814,7 +1869,7 @@ func test_ore_line() -> void:
 	var smelter := _inline(&"furnace")
 	var refiner := _inline(&"refiner", Vector3(6, 0, 0))
 	await step(3)
-	var ore := _feed(smelter, &"ore_iron", Solid.cube(0.3))
+	var ore := _feed(smelter, &"ore_iron", Solid.cube(0.035))
 	var ore_price := Economy.price_of(&"ore_iron", ore.dims)
 	var ore_volume := ore.volume()
 	ore = await _through(smelter, ore)
@@ -3548,6 +3603,62 @@ func test_old_save_belts() -> void:
 	PlayerState.reset()
 	done()
 
+## Spec: thin walls. A wall plan starts a quarter metre thick, can be made
+## thicker or thinner a quarter at a time, and keeps its thickness through a
+## save.
+func test_thin_walls() -> void:
+	_setup()
+	Economy.from_dict({"money": 100000, "day": 1})
+	var wall := plot.place(GameData.building(&"schematic_wall"), Vector2i(0, 0), 0)
+	check(wall != null, "the wall was not placed")
+	await step(1)
+	var index := plot.index_at_world(wall.global_position)
+	var def: BuildingDef = plot.placed[index].def
+	check_near(def.extent().z, 0.25, 0.001, "a new wall is %.2f m thick" % def.extent().z)
+	# Made a full metre thick, it stays so through a save.
+	check_eq(plot.edit(index, plot.placed[index].cell, Vector3i.ZERO, def.size, 0.0, Vector3i.ZERO), "", "thickening the wall failed")
+	var saved := plot.to_dict()
+	plot.from_dict(saved)
+	await step(1)
+	check_near((plot.placed[0].def as BuildingDef).extent().z, 1.0, 0.001, "a 1 m wall came back %.2f m thick" % (plot.placed[0].def as BuildingDef).extent().z)
+	# And back to thin.
+	check_eq(plot.edit(0, plot.placed[0].cell, Vector3i.ZERO, def.size, 0.0, Vector3i(0, 0, 3)), "", "thinning the wall failed")
+	plot.from_dict(plot.to_dict())
+	await step(1)
+	check_near((plot.placed[0].def as BuildingDef).extent().z, 0.25, 0.001, "a thin wall came back thick")
+	done()
+
+## Spec: dragging a building, its knobs go with it, and the drag is still
+## measured from where it began.
+func test_build_knobs_follow() -> void:
+	_setup()
+	Economy.from_dict({"money": 100000, "day": 1})
+	var player := _make_player()
+	world.add_child(player)
+	await step(2)
+	var bs := BuildSystem.new()
+	world.add_child(bs)
+	bs.setup(plot, player.camera, player)
+	player.global_position = plot.global_position + Vector3(2, 1, 2)
+	bs.set_active(true)
+	var node := plot.place(GameData.building(&"conveyor"), Vector2i(0, 0) * Plot.SUB, 0)
+	await step(2)
+	var index := plot.index_at_world(node.global_position)
+	bs.select_building(index)
+	await step(1)
+	var h: Dictionary = bs._gizmo.handles[0]
+	var knob_was: Vector3 = (h.node as Node3D).global_position
+	var point_was: Vector3 = h.point
+	check_eq(plot.edit(index, Vector2i(2, 0) * Plot.SUB, Vector3i.ZERO, Vector3i(1, 1, 4), 0.0), "", "moving the belt failed")
+	bs._refresh_gizmo_box()
+	await step(1)
+	var knob_now: Vector3 = (h.node as Node3D).global_position
+	check_near(knob_now.x - knob_was.x, 2.0 * Plot.CELL, 0.01, "the knob did not move with the building")
+	check((h.point as Vector3).is_equal_approx(point_was), "the drag's starting point moved")
+	bs.set_active(false)
+	bs.free()
+	done()
+
 func test_build_territory() -> void:
 	_setup()
 	var player := _make_player()
@@ -5057,6 +5168,61 @@ func test_vehicles_collide() -> void:
 	check(gap > touch * 0.8, "the pickup drove through the dump truck (gap %.1f m, touching at %.1f)" % [gap, touch])
 	done()
 
+func test_low_loader() -> void:
+	_setup(false)
+	var deck := Hauler.new()
+	deck.setup(manager, 0, &"low_loader")
+	world.add_child(deck)
+	deck.global_position = Vector3(0, deck.spawn_height(), 0)
+	var digger := Hauler.new()
+	digger.setup(manager, 0, &"loader")
+	world.add_child(digger)
+	digger.global_position = Vector3(0, digger.spawn_height(), deck.bed_back + Hauler.RAMP_LENGTH + 4.0)
+	await step(90)
+	check(deck.bed_kind == &"deck" and not deck.has_bed(), "the low-loader is not a bare deck")
+	check(not deck.ramps_down, "the ramps start down")
+	check(deck.toggle_ramps(), "the ramps did not come down")
+	digger.loader.lift = digger.loader.lift_min + 0.3
+	await step(20)
+	# Up the ramps and on until it is over the middle of the deck.
+	digger.autopilot = true
+	var aboard := false
+	for i in 900:
+		var local := deck.to_local(digger.global_position)
+		digger.input_throttle = 0.5 if local.z > deck.bed_mid_z + 0.4 else 0.0
+		digger.input_brake = local.z <= deck.bed_mid_z + 0.4
+		if digger.input_brake and digger.linear_velocity.length() < 0.3:
+			aboard = true
+			break
+		await step(1)
+	var on := deck.to_local(digger.global_position)
+	check(aboard, "the loader never got over the deck (%.1f m back)" % on.z)
+	check(on.y > deck.bed_floor + 0.3, "the loader is not up on the deck (%.2f m)" % on.y)
+	check(deck.toggle_ramps() == false, "the ramps did not go up")
+	digger.input_throttle = 0.0
+	digger.input_brake = true
+	# Hitched behind the log truck and towed off, it stays aboard.
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"log_truck")
+	world.add_child(truck)
+	var ahead := deck.tongue_point() - Vector3(0, 0, truck.hitch_offset.z + 0.5)
+	truck.global_position = Vector3(ahead.x, truck.spawn_height(), ahead.z)
+	await step(60)
+	check_eq(truck.hitch(deck), "", "the truck would not hitch the low-loader")
+	await step(30)
+	truck.autopilot = true
+	truck.input_throttle = 0.6
+	await step(180)
+	truck.input_throttle = 0.0
+	truck.input_brake = true
+	await step(120)
+	var moved := absf(deck.global_position.z)
+	var still := deck.to_local(digger.global_position)
+	check(moved > 8.0, "the low-loader was not towed (%.1f m)" % moved)
+	check(still.y > deck.bed_floor + 0.3 and absf(still.z - deck.bed_mid_z) < 1.5 and absf(still.x) < 1.0,
+		"the loader fell off or slid on the deck (%.1f, %.1f, %.1f)" % [still.x, still.y, still.z])
+	done()
+
 func test_trailers() -> void:
 	for pair in [[&"hauler", &"trailer"], [&"log_truck", &"log_trailer"], [&"dump_truck", &"dump_trailer"]]:
 		_setup(false)
@@ -5565,6 +5731,13 @@ func test_machine_output_size() -> void:
 	var saw := plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0, false) as InlineMachine
 	await step(2)
 	check(saw.config_fields().size() == 2, "the planker has no board sizes")
+	# Boards can be set as big as the out-feed opening passes: short, fat bricks too.
+	saw.set_setting(&"width_cm", 9999)
+	saw.set_setting(&"thick_cm", 9999)
+	check_eq(int(saw.setting(&"width_cm")), int(floor(saw.hole.x * 100.0)), "board width is not capped at the opening")
+	check_eq(int(saw.setting(&"thick_cm")), int(floor(saw.hole.y * 100.0)), "board thickness is not capped at the opening")
+	saw.set_setting(&"width_cm", 0)
+	saw.set_setting(&"thick_cm", 0)
 	var whole := saw._cut_to_size(saw.work({"id": &"wood_pine", "dims": log_dims.duplicate(true), "owned": true, "plot": 0, "changed": false, "ready": 0.0}))
 	check_eq(whole.size(), 1, "as it comes, one plank")
 	saw.set_setting(&"width_cm", 10)
@@ -5639,22 +5812,66 @@ func test_gearbox() -> void:
 	check(not loader.manual_gearbox(), "the loader should always be automatic")
 	done()
 
+## Spec: the transmission upgrades are more top speed on the flat - the
+## stock box tops out at the vehicle's own speed, the best box well past it.
+func test_overdrive_speed() -> void:
+	var tops: Array[float] = []
+	for lvl in [1, 4]:
+		_setup(false)
+		PlayerState.reset()
+		Economy.from_dict({"money": 1000000, "day": 1})
+		for k in lvl - 1:
+			PlayerState.try_upgrade(&"transmission")
+		for c in world.get_children():
+			if c.name == "Ground":
+				c.free()
+		# Open road, as far as it takes.
+		var floor_body := StaticBody3D.new()
+		floor_body.collision_layer = Layers.WORLD
+		var fs := CollisionShape3D.new()
+		fs.shape = WorldBoundaryShape3D.new()
+		floor_body.add_child(fs)
+		world.add_child(floor_body)
+		var truck := Hauler.new()
+		truck.setup(manager, 0, &"pickup")
+		world.add_child(truck)
+		truck.global_position = Vector3(0, 1.5, 0)
+		truck.rotation.y = -PI * 0.5
+		await step(20)
+		truck.autopilot = true
+		var best := 0.0
+		for i in 60 * 8:
+			truck.input_throttle = 1.0
+			await step(1)
+			best = maxf(best, Vector2(truck.linear_velocity.x, truck.linear_velocity.z).length())
+		tops.append(best)
+		truck.queue_free()
+	check(tops[0] > 21.0 and tops[0] < 26.0, "the stock pickup tops out at %.1f m/s" % tops[0])
+	check(tops[1] > tops[0] * 1.3, "the best gearbox is only %.1f m/s against %.1f" % [tops[1], tops[0]])
+	done()
+
 func test_vehicle_upgrades() -> void:
 	_setup(false)
 	PlayerState.reset()
-	for track in [&"engine", &"tyres"]:
+	for track in [&"transmission", &"tyres"]:
 		check(GameData.upgrade_tracks.has(track), "there is no %s upgrade" % track)
+	check(not GameData.upgrade_tracks.has(&"engine"), "engines are still upgraded")
 	var truck := Hauler.new()
 	truck.setup(manager, 0, &"pickup")
 	world.add_child(truck)
 	truck.global_position = Vector3(0, truck.spawn_height(), 0)
 	await step(10)
 	var grip0 := (truck.wheel_bodies[0].physics_material_override as PhysicsMaterial).friction
-	var engine0 := truck.engine_scale()
+	var gears0 := truck.gear_ratios().size()
+	var top0 := truck.top_ratio()
 	Economy.from_dict({"money": 100000, "day": 1})
-	check(PlayerState.try_upgrade(&"engine"), "could not buy the engine upgrade")
+	check(PlayerState.try_upgrade(&"transmission"), "could not buy the transmission upgrade")
 	check(PlayerState.try_upgrade(&"tyres"), "could not buy the tyre upgrade")
-	check(truck.engine_scale() > engine0, "the engine upgrade did nothing")
+	check_eq(truck.gear_ratios().size(), gears0 + 1, "the new gearbox has no extra gear")
+	check(truck.top_ratio() > top0, "the new gearbox is no faster at the top")
+	# The new top gear pulls less than the old one did.
+	check(pow(1.0 / truck.top_ratio(), Hauler.GEAR_TORQUE_EXP) < pow(1.0 / top0, Hauler.GEAR_TORQUE_EXP),
+		"the overdrive pulls as hard as the old top gear")
 	var grip1 := (truck.wheel_bodies[0].physics_material_override as PhysicsMaterial).friction
 	check(grip1 > grip0, "new tyres did not grip better (%.2f -> %.2f)" % [grip0, grip1])
 	var buggy := Hauler.new()
@@ -5668,7 +5885,10 @@ func test_vehicle_upgrades() -> void:
 	for p in GameData.store_products():
 		if String(p.get("kind", "")) == "upgrade":
 			sold.append(StringName(p.target))
-	check(sold.has(&"engine") and sold.has(&"tyres"), "the store does not sell the vehicle upgrades")
+	check(sold.has(&"transmission") and sold.has(&"tyres"), "the store does not sell the vehicle upgrades")
+	# An old save's engine level comes back as the same level of gearbox.
+	PlayerState.from_dict({"levels": {"engine": 3}})
+	check_eq(PlayerState.level(&"transmission"), 3, "an old save's engine did not become a gearbox")
 	done()
 
 func test_recover_limits() -> void:

@@ -325,7 +325,9 @@ func _particles(color: Color, glowing: bool, amount: int) -> CPUParticles3D:
 ## is room for it there. Nothing rides through the inside, so nothing can
 ## jam in there; a busy out-feed just holds the queue up.
 
-const MOUTH_DEPTH := 0.1          ## how far into the mouth a piece has to get
+## How far into the mouth a piece has to get before it is taken in: well in,
+## so it is plainly through the opening (all of it, if it is shorter).
+const MOUTH_DEPTH := 0.5
 
 ## Entries waiting inside: {id, dims, owned, plot, changed, ready}.
 var queue: Array[Dictionary] = []
@@ -368,11 +370,19 @@ func _in_mouth(item: LooseItem) -> bool:
 	if machine_def.mode == MachineDef.MODE_CRUSH:
 		var front := item.extent_along(global_transform.basis.z)
 		return local.z - front < canopy_length() * 0.5 + 0.12 and absf(local.x) < width * 0.5 + 0.3
-	var axis := inverse.basis * item.global_transform.basis.y.normalized()
-	var reach := absf(axis.normalized().z) * item.length() * 0.5
-	var b := Solid.bounds(item.dims)
-	reach += maxf(b.x, b.z) * 0.5 * sqrt(maxf(0.0, 1.0 - axis.normalized().z * axis.normalized().z))
-	return local.z - reach < canopy_length() * 0.5 - MOUTH_DEPTH and absf(local.x) < hole.x * 0.5 + 0.2
+	# It has to fit the opening, across and up, as it lies - nothing is taken
+	# that could not really have got through.
+	if not fits_mouth(item):
+		return false
+	var reach := item.extent_along(global_transform.basis.z)
+	var depth := minf(MOUTH_DEPTH, reach * 2.0)
+	return local.z - reach < canopy_length() * 0.5 - depth and absf(local.x) < hole.x * 0.5 + 0.2
+
+## Would this piece, lying as it lies, pass through the opening?
+func fits_mouth(item: LooseItem) -> bool:
+	var across := item.extent_along(global_transform.basis.x) * 2.0
+	var up := item.extent_along(global_transform.basis.y) * 2.0
+	return across <= hole.x + 0.02 and up <= hole.y + 0.02
 
 ## Takes a piece off the belt into the machine. Returns true if it went in.
 func take(item: LooseItem) -> bool:
@@ -516,19 +526,22 @@ func work(entry: Dictionary) -> Array[Dictionary]:
 				var r := (float(dims.r0) + float(dims.r1)) * 0.5
 				_change(entry, to, Solid.keep_finish(dims, Solid.box(Vector3(r * 1.8, Solid.length_of(dims), r * 0.8))))
 		MachineDef.MODE_SAND:
-			# Stone is polished rather than sanded: same belt, finer grit.
-			var finish := &"polished" if category == &"gem" or category == &"jewel" else &"sanded"
-			if not Solid.has_finish(dims, finish):
+			# Stone is polished rather than sanded: same belt, finer grit. A
+			# cut jewel is finished already and goes through as it is.
+			var finish := &"polished" if category == &"gem" else &"sanded"
+			if category != &"jewel" and not Solid.has_finish(dims, finish):
 				_change(entry, entry.id, Solid.with_finish(dims, finish))
 		MachineDef.MODE_REFINE:
 			if not Solid.has_finish(dims, &"refined"):
 				_change(entry, entry.id, Solid.with_finish(dims, &"refined"))
 		MachineDef.MODE_CUT:
 			var to := machine_def.output_for(entry.id)
-			if to != &"":
+			# A polished stone has had its finish: it is sold as it is, not cut
+			# as well. Only rough goes under the cutting head.
+			if to != &"" and not Solid.has_finish(dims, &"polished"):
 				# Volume of a frustum r0 -> r0/2 over 0.9 r0 is 1.649 r0^3.
 				var r0 := pow(Solid.volume(dims) * machine_def.yield_share / 1.649, 1.0 / 3.0)
-				_change(entry, to, Solid.keep_finish(dims, Solid.cylinder(r0, r0 * 0.5, r0 * 0.9)))
+				_change(entry, to, Solid.cylinder(r0, r0 * 0.5, r0 * 0.9))
 		MachineDef.MODE_SMELT:
 			var to := machine_def.output_for(entry.id)
 			if to != &"":
@@ -571,17 +584,21 @@ func _cut_to_size(outs: Array[Dictionary]) -> Array[Dictionary]:
 func config_fields() -> Array:
 	if machine_def == null:
 		return []
+	# Anything up to what the out-feed opening passes: short, fat bricks
+	# included.
+	var wide := int(floor(hole.x * 100.0))
+	var tall := int(floor(hole.y * 100.0))
 	match machine_def.mode:
 		MachineDef.MODE_PLANK:
-			return [[&"width_cm", "Board width", 0, 150, 1], [&"thick_cm", "Board thickness", 0, 60, 1]]
+			return [[&"width_cm", "Board width", 0, wide, 1], [&"thick_cm", "Board thickness", 0, tall, 1]]
 		MachineDef.MODE_CRUSH:
 			return [[&"max_cm", "Largest lump", 0, int(machine_def.max_piece * 90.0), 1]]
 		MachineDef.MODE_SMELT:
-			return [[&"section_cm", "Bar thickness", 0, 30, 1]]
+			return [[&"section_cm", "Bar thickness", 0, mini(int(floor(hole.x * 100.0 / 1.6)), tall), 1]]
 		MachineDef.MODE_REFINE:
-			return [[&"section_cm", "Cross-section", 0, 60, 1]]
+			return [[&"section_cm", "Cross-section", 0, mini(wide, tall), 1]]
 		MachineDef.MODE_CUT:
-			return [[&"jewel_cm", "Jewel size", 0, 30, 1]]
+			return [[&"jewel_cm", "Jewel size", 0, mini(wide, tall), 1]]
 	return []
 
 func setting(key: StringName) -> float:

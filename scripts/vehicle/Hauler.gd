@@ -66,7 +66,7 @@ const HITCH_REACH := 2.5
 var vehicle_id: StringName = &"hauler"
 var display_name: String = "Flatbed Hauler"
 var spec: Dictionary = {}
-## Body style (truck, quad, buggy) and bed kind (sides, stakes, tub, rack, none).
+## Body style (truck, quad, buggy) and bed kind (sides, stakes, tub, rack, deck, none).
 var style: StringName = &"truck"
 var bed_kind: StringName = &"sides"
 var paint: Color = Color(0.62, 0.20, 0.16)
@@ -109,7 +109,11 @@ var rear_steer: float = 0.0
 var gears: Array[float] = [0.3, 0.52, 0.76, 1.0]
 var gear: int = 0
 static var GEAR_TORQUE_EXP: float = Balance.num("vehicles.gear_torque_exponent", 0.85)
-## Whole-fleet knobs, and what the engine and tyre upgrades add on top.
+## The transmission upgrades add overdrive gears above a vehicle's own top
+## gear: each one a higher top speed with less pull, so it is a cruising gear
+## on the flat and the automatic drops out of it on a hill.
+const OVERDRIVE: Array[float] = [1.15, 1.32, 1.5]
+## Whole-fleet knobs, and what the tyre upgrades add on top.
 static var ENGINE_MULT: float = Balance.num("vehicles.engine_multiplier", 1.0)
 static var TOP_SPEED_MULT: float = Balance.num("vehicles.top_speed_multiplier", 1.0)
 static var GRIP_MULT: float = Balance.num("vehicles.grip_multiplier", 1.0)
@@ -131,6 +135,12 @@ var _still_for: Dictionary = {}
 const FIX_SPEED := 0.25          ## m/s relative to the bed, and rad/s of spin
 const FIX_SECONDS := 0.4
 var _tailgate: CollisionShape3D
+## A low-loader's loading ramps: up (stowed on end at the back, a gate) or
+## down to the ground to drive a machine aboard.
+var ramps_down := false
+var _ramps_up: Array[CollisionShape3D] = []
+var _ramps_flat: Array[CollisionShape3D] = []
+var ramp_meshes: Array[Node3D] = []
 var _tailgate_mesh: Node3D
 ## Unloading: seconds left of the bed floor walking the load out the back,
 ## and the pieces being walked out.
@@ -240,8 +250,9 @@ func manual_gearbox() -> bool:
 
 ## Up or down a gear (manual). Returns what the gauge should say.
 func shift_gear(step: int) -> String:
-	gear = clampi(gear + step, 0, gears.size() - 1)
-	return "gear %d of %d" % [gear + 1, gears.size()]
+	var box := gear_ratios()
+	gear = clampi(gear + step, 0, box.size() - 1)
+	return "gear %d of %d" % [gear + 1, box.size()]
 
 func gear_label() -> String:
 	return "%s%d" % ["M" if manual_gearbox() else "A", gear + 1]
@@ -251,17 +262,35 @@ func gear_label() -> String:
 ## slows down, which is when it needs the pull.
 func _auto_gear(speed: float, top: float) -> void:
 	var v := absf(speed)
-	if gear < gears.size() - 1 and v > gears[gear] * top * 0.9:
+	var box := gear_ratios()
+	gear = clampi(gear, 0, box.size() - 1)
+	if gear < box.size() - 1 and v > box[gear] * top * 0.9:
 		gear += 1
-	elif gear > 0 and v < gears[gear - 1] * top * 0.7:
+	elif gear > 0 and v < box[gear - 1] * top * 0.7:
 		gear -= 1
 
-## The engine and tyre upgrades, bought once for every vehicle.
+## Engine and gearing are the vehicle's own; the transmission upgrade (bought
+## once for every vehicle) adds overdrive gears.
 func engine_scale() -> float:
-	return ENGINE_MULT * PlayerState.stat(&"engine", "engine", 1.0)
+	return ENGINE_MULT
 
 func speed_scale() -> float:
-	return TOP_SPEED_MULT * PlayerState.stat(&"engine", "top_speed", 1.0)
+	return TOP_SPEED_MULT
+
+## The gears in the box now: the vehicle's own, then any overdrives bought.
+func gear_ratios() -> Array[float]:
+	var out: Array[float] = gears.duplicate()
+	if is_trailer or loader != null:
+		return out
+	var extra := clampi(int(PlayerState.stat(&"transmission", "overdrive", 0.0)), 0, OVERDRIVE.size())
+	for k in extra:
+		out.append(OVERDRIVE[k])
+	return out
+
+## The fastest the box will take it on the flat.
+func top_ratio() -> float:
+	var g := gear_ratios()
+	return g[g.size() - 1] if not g.is_empty() else 1.0
 
 func grip_scale() -> float:
 	return GRIP_MULT * PlayerState.stat(&"tyres", "grip", 1.0)
@@ -378,6 +407,8 @@ func _build() -> void:
 			_build_stake_bed()
 		&"tub":
 			_build_tub()
+		&"deck":
+			_build_deck()
 
 	if has_bed():
 		_cargo_area = Area3D.new()
@@ -394,6 +425,7 @@ func _build() -> void:
 		add_child(_cargo_area)
 
 	VehicleModel.dress(self)
+	set_ramps(ramps_down)
 
 	# Spec: most vehicles carry a winch, many carry a crane.
 	var gear: Variant = spec.get("rig", null)
@@ -448,6 +480,63 @@ func _build_stake_bed() -> void:
 		for side in [-1.0, 1.0]:
 			_collider(Vector3(0.18, wall_height, 0.18),
 				Vector3(side * (bed_half_width + 0.09), bed_floor + wall_height * 0.5, z))
+
+## A low, flat deck for carrying a machine: a kerb down each side to keep
+## its wheels on, a headboard, and a pair of ramps at the back that fold down
+## to the ground to drive up and stand on end as a gate for the road.
+const RAMP_LENGTH := 2.8
+const RAMP_WIDTH := 0.9
+
+func _build_deck() -> void:
+	for side in [-1.0, 1.0]:
+		_collider(Vector3(0.14, wall_height, bed_length),
+			Vector3(side * (bed_half_width + 0.07), bed_floor + wall_height * 0.5, bed_mid_z))
+	_collider(Vector3(bed_half_width * 2.0 + 0.28, headboard_height, 0.3),
+		Vector3(0, bed_floor + headboard_height * 0.5, bed_front - 0.15))
+	for x in ramp_xs():
+		var up := _collider(Vector3(RAMP_WIDTH, RAMP_LENGTH, 0.14),
+			Vector3(x, bed_floor + RAMP_LENGTH * 0.5, bed_back + 0.07))
+		_ramps_up.append(up)
+		var flat := _collider(Vector3(RAMP_WIDTH, 0.14, RAMP_LENGTH), Vector3.ZERO)
+		flat.transform = ramp_down_transform(x)
+		flat.disabled = true
+		_ramps_flat.append(flat)
+
+## Across the deck, where each ramp sits: under the wheels of the widest
+## machine it carries.
+func ramp_xs() -> Array[float]:
+	var x := bed_half_width - RAMP_WIDTH * 0.5
+	return [-x, x]
+
+## A lowered ramp: hinged on the deck's back edge, its foot on the ground.
+func ramp_down_transform(x: float) -> Transform3D:
+	var ground := -(wheel_radius - _lowest_wheel_y() + SAG)
+	var drop := bed_floor - ground
+	var angle := asin(clampf(drop / RAMP_LENGTH, 0.0, 1.0))
+	var basis := Basis(Vector3.RIGHT, angle)
+	var hinge := Vector3(x, bed_floor - 0.07, bed_back)
+	return Transform3D(basis, hinge + basis * Vector3(0, 0, RAMP_LENGTH * 0.5))
+
+## Down to drive on or off; up to go. Returns whether they are now down.
+func toggle_ramps() -> bool:
+	set_ramps(not ramps_down)
+	return ramps_down
+
+func set_ramps(down: bool) -> void:
+	if bed_kind != &"deck":
+		return
+	ramps_down = down
+	for cs in _ramps_up:
+		cs.disabled = down
+	for cs in _ramps_flat:
+		cs.disabled = not down
+	var xs := ramp_xs()
+	for i in ramp_meshes.size():
+		if down:
+			var t := ramp_down_transform(xs[i])
+			ramp_meshes[i].transform = Transform3D(t.basis, t.origin - t.basis * Vector3(0, 0, RAMP_LENGTH * 0.5))
+		else:
+			ramp_meshes[i].transform = Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(xs[i], bed_floor, bed_back + 0.07))
 
 func stake_positions() -> Array[float]:
 	var out: Array[float] = []
@@ -956,8 +1045,10 @@ func _engine_note() -> void:
 		_engine_sound.volume_db = -80.0
 		return
 	var speed := linear_velocity.length()
-	_engine_sound.volume_db = Sfx.sfx_db() - 8.0 + absf(input_throttle) * 3.0
-	_engine_sound.pitch_scale = clampf(0.65 + speed / 16.0 + absf(input_throttle) * 0.25, 0.5, 2.4)
+	# A rumble that deepens and swells under load rather than a whine that
+	# climbs: the pitch moves over a narrow range, the volume a little.
+	_engine_sound.volume_db = Sfx.sfx_db() - 10.0 + absf(input_throttle) * 2.5
+	_engine_sound.pitch_scale = clampf(0.8 + speed / 40.0 + absf(input_throttle) * 0.15, 0.75, 1.6)
 
 # --- Lifted by a crane ------------------------------------------------------------
 
@@ -1385,7 +1476,8 @@ func _drive_wheels() -> void:
 		# It shifts for the speed being asked for, not flat-out's.
 		_auto_gear(speed, full * clampf(absf(throttle), 0.3, 1.0))
 	# Pull goes up as the gear comes down; the gear's own top speed caps it.
-	var ratio: float = gears[clampi(gear, 0, gears.size() - 1)] if not gears.is_empty() else 1.0
+	var box := gear_ratios()
+	var ratio: float = box[clampi(gear, 0, box.size() - 1)] if not box.is_empty() else 1.0
 	var pull: float = pow(1.0 / maxf(0.05, ratio), GEAR_TORQUE_EXP)
 	if not manual:
 		# The automatic only brings the low gears' extra pull to bear going
@@ -1395,6 +1487,9 @@ func _drive_wheels() -> void:
 		# (Past a few degrees: pulling away squats the tail and lifts the
 		# nose a little, which is not a hill.)
 		pull = lerpf(1.0, pull, clampf((uphill - 0.08) / 0.22, 0.0, 1.0))
+	# An overdrive always pulls less: that is the price of its speed.
+	if ratio > 1.0:
+		pull = minf(pull, pow(1.0 / ratio, GEAR_TORQUE_EXP))
 	var skid := input_brake and not standing and absf(speed) > 2.5
 	if skid != _skidding:
 		_skidding = skid
@@ -1457,7 +1552,7 @@ func _still() -> bool:
 	return not unloading()
 
 func _clamp_motion() -> void:
-	var ceiling := max_speed * speed_scale() * 1.4 * (1.0 + Terrain.BRIDGE_SPEED_BONUS)
+	var ceiling := max_speed * speed_scale() * top_ratio() * 1.25 * (1.0 + Terrain.BRIDGE_SPEED_BONUS)
 	if linear_velocity.length() > ceiling:
 		linear_velocity = linear_velocity.normalized() * ceiling
 	if angular_velocity.length() > 3.5:

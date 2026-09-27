@@ -494,7 +494,9 @@ func _drag_to(mouse: Vector2) -> void:
 			var perm := Plot.oriented_size(Vector3i(0, 1, 2) + Vector3i.ONE, rot) - Vector3i.ONE
 			var own: int = perm[axis_i]
 			var was_steps := size[own] * Plot.SUB - trim[own]
-			var now_steps := clampi(was_steps + pull, (limits[0] as Vector3i)[own] * Plot.SUB, (limits[1] as Vector3i)[own] * Plot.SUB)
+			# Fine pieces go down to a single fine step: a wall a hand thick.
+			var least := 1 if fine else (limits[0] as Vector3i)[own] * Plot.SUB
+			var now_steps := clampi(was_steps + pull, least, (limits[1] as Vector3i)[own] * Plot.SUB)
 			steps = now_steps - was_steps
 			var new_size := size
 			var new_trim := trim
@@ -536,12 +538,11 @@ func _drag_to(mouse: Vector2) -> void:
 	edit_error = plot.edit(selected, cell, rot, size, lift, trim)
 	_refresh_gizmo_box()
 
-## Moves the selection box with the building without rebuilding the handles
-## being dragged.
+## Moves the selection box and the knobs with the building without rebuilding
+## the handles being dragged.
 func _refresh_gizmo_box() -> void:
 	var box := _record_box(selected_record())
-	_gizmo._box.global_position = box[0]
-	(_gizmo._box.mesh as BoxMesh).size = (box[1] as Vector3) * 2.0 + Vector3.ONE * 0.06
+	_gizmo.follow(box[0], box[1])
 
 func remove_selected() -> void:
 	if not editing():

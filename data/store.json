@@ -92,6 +92,10 @@
             {
               "kind": "unlock",
               "target": "pad_loader"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_low_loader"
             }
           ]
         },
@@ -178,7 +182,7 @@
             },
             {
               "kind": "upgrade",
-              "target": "engine"
+              "target": "transmission"
             },
             {
               "kind": "upgrade",

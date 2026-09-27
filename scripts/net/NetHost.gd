@@ -170,9 +170,9 @@ func _guest_build(ev: Dictionary) -> String:
 			if def == null:
 				return "unknown building"
 			var sz: Array = ev.get("size", [])
-			var tr: Array = ev.get("trim", [0, 0, 0])
+			var tr: Array = ev.get("trim", [def.trim.x, def.trim.y, def.trim.z])
 			var trim := Vector3i(int(tr[0]), int(tr[1]), int(tr[2]))
-			if sz.size() == 3 and (Vector3i(int(sz[0]), int(sz[1]), int(sz[2])) != def.size or trim != Vector3i.ZERO):
+			if sz.size() == 3 and (Vector3i(int(sz[0]), int(sz[1]), int(sz[2])) != def.size or trim != def.trim):
 				def = Plot.resized(def, Vector3i(int(sz[0]), int(sz[1]), int(sz[2])), trim)
 			var c: Array = ev.cell
 			var r: Array = ev.rot
@@ -364,7 +364,7 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 			return s
 		"v":
 			var v := thing as Hauler
-			var s := {"tub": v._tub_angle, "held": v.held}
+			var s := {"tub": v._tub_angle, "held": v.held, "ramps": v.ramps_down}
 			if v.rig != null:
 				var r := v.rig
 				s.rig = {"j": r.joints.duplicate(), "op": r.operating, "out": r.outriggers_down, "cs": String(r.claw_state),

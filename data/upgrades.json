@@ -78,36 +78,32 @@
       ]
     },
     {
-      "id": "engine",
-      "display_name": "Engine",
+      "id": "transmission",
+      "display_name": "Transmission",
       "levels": [
         {
           "level": 1,
           "cost": 0,
-          "label": "Stock Engine",
-          "engine": 1.0,
-          "top_speed": 1.0
+          "label": "Stock Gearbox",
+          "overdrive": 0
         },
         {
           "level": 2,
-          "cost": 2100,
-          "label": "Tuned Engine",
-          "engine": 1.2,
-          "top_speed": 1.05
+          "cost": 2400,
+          "label": "Close-Ratio Box",
+          "overdrive": 1
         },
         {
           "level": 3,
-          "cost": 11000,
-          "label": "Turbo Diesel",
-          "engine": 1.45,
-          "top_speed": 1.1
+          "cost": 12500,
+          "label": "Overdrive Box",
+          "overdrive": 2
         },
         {
           "level": 4,
-          "cost": 57000,
-          "label": "Big Block",
-          "engine": 1.8,
-          "top_speed": 1.16
+          "cost": 62000,
+          "label": "Six-Speed Road Box",
+          "overdrive": 3
         }
       ]
     },
@@ -148,21 +144,21 @@
         {
           "level": 1,
           "cost": 0,
-          "hole_scale": 1.0,
+          "hole_scale": 0.7,
           "rate_scale": 1.0,
           "label": "Bench Planker"
         },
         {
           "level": 2,
-          "cost": 1300,
-          "hole_scale": 1.35,
+          "cost": 1700,
+          "hole_scale": 1.0,
           "rate_scale": 1.4,
           "label": "Mill Planker"
         },
         {
           "level": 3,
-          "cost": 3700,
-          "hole_scale": 1.7,
+          "cost": 4800,
+          "hole_scale": 1.35,
           "rate_scale": 1.85,
           "label": "Headrig Planker"
         }
@@ -175,21 +171,21 @@
         {
           "level": 1,
           "cost": 0,
-          "hole_scale": 1.0,
+          "hole_scale": 0.7,
           "rate_scale": 1.0,
           "label": "Drum Sander"
         },
         {
           "level": 2,
-          "cost": 1800,
-          "hole_scale": 1.35,
+          "cost": 2300,
+          "hole_scale": 1.0,
           "rate_scale": 1.4,
           "label": "Wide-Belt Sander"
         },
         {
           "level": 3,
-          "cost": 5300,
-          "hole_scale": 1.7,
+          "cost": 6900,
+          "hole_scale": 1.35,
           "rate_scale": 1.85,
           "label": "Twin-Head Sander"
         }
@@ -208,14 +204,14 @@
         },
         {
           "level": 2,
-          "cost": 2900,
+          "cost": 3800,
           "hole_scale": 1.35,
           "rate_scale": 1.4,
           "label": "Cone Crusher"
         },
         {
           "level": 3,
-          "cost": 8900,
+          "cost": 11600,
           "hole_scale": 1.7,
           "rate_scale": 1.85,
           "label": "Gyratory Crusher"
@@ -229,21 +225,21 @@
         {
           "level": 1,
           "cost": 0,
-          "hole_scale": 1.0,
+          "hole_scale": 0.5,
           "rate_scale": 1.0,
           "label": "Bloomery"
         },
         {
           "level": 2,
-          "cost": 4400,
-          "hole_scale": 1.35,
+          "cost": 5700,
+          "hole_scale": 0.8,
           "rate_scale": 1.4,
           "label": "Cupola"
         },
         {
           "level": 3,
-          "cost": 15000,
-          "hole_scale": 1.7,
+          "cost": 19500,
+          "hole_scale": 1.2,
           "rate_scale": 1.85,
           "label": "Induction Smelter"
         }
@@ -256,21 +252,21 @@
         {
           "level": 1,
           "cost": 0,
-          "hole_scale": 1.0,
+          "hole_scale": 0.5,
           "rate_scale": 1.0,
           "label": "Bench Refiner"
         },
         {
           "level": 2,
-          "cost": 17000,
-          "hole_scale": 1.35,
+          "cost": 22100,
+          "hole_scale": 0.8,
           "rate_scale": 1.4,
           "label": "Electrolytic Refiner"
         },
         {
           "level": 3,
-          "cost": 64000,
-          "hole_scale": 1.7,
+          "cost": 83200,
+          "hole_scale": 1.2,
           "rate_scale": 1.85,
           "label": "Zone Refiner"
         }
@@ -289,14 +285,14 @@
         },
         {
           "level": 2,
-          "cost": 21000,
+          "cost": 27300,
           "hole_scale": 1.45,
           "rate_scale": 1.4,
           "label": "Power Bench"
         },
         {
           "level": 3,
-          "cost": 84000,
+          "cost": 109200,
           "hole_scale": 2.0,
           "rate_scale": 1.9,
           "label": "Assembly Line"
@@ -310,21 +306,21 @@
         {
           "level": 1,
           "cost": 0,
-          "hole_scale": 1.0,
+          "hole_scale": 0.5,
           "rate_scale": 1.0,
           "label": "Tumbler"
         },
         {
           "level": 2,
-          "cost": 5300,
-          "hole_scale": 1.35,
+          "cost": 6900,
+          "hole_scale": 0.8,
           "rate_scale": 1.4,
           "label": "Vibratory Polisher"
         },
         {
           "level": 3,
-          "cost": 19000,
-          "hole_scale": 1.7,
+          "cost": 24700,
+          "hole_scale": 1.2,
           "rate_scale": 1.85,
           "label": "Diamond Lap"
         }
@@ -337,21 +333,21 @@
         {
           "level": 1,
           "cost": 0,
-          "hole_scale": 1.0,
+          "hole_scale": 0.5,
           "rate_scale": 1.0,
           "label": "Lapidary Wheel"
         },
         {
           "level": 2,
-          "cost": 9200,
-          "hole_scale": 1.35,
+          "cost": 12000,
+          "hole_scale": 0.8,
           "rate_scale": 1.4,
           "label": "Faceting Rig"
         },
         {
           "level": 3,
-          "cost": 33000,
-          "hole_scale": 1.7,
+          "cost": 42900,
+          "hole_scale": 1.2,
           "rate_scale": 1.85,
           "label": "Laser Cutter"
         }

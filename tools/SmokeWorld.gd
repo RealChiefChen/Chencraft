@@ -269,6 +269,24 @@ func _check_spread() -> void:
 			_require(false, "cavern %d cannot be reached from any cave mouth" % i)
 			break
 
+## Nothing grows on a bridge.
+func _check_bridges_clear() -> void:
+	var on := 0
+	for f in world.tree_fields:
+		var spots: Array = []
+		for n in f.alive:
+			if is_instance_valid(n):
+				spots.append(n.global_position)
+		for note in f.dormant:
+			spots.append(f.to_global(note.position))
+		for p in spots:
+			for b in world.terrain.bridges:
+				var cl := Geometry3D.get_closest_point_to_segment(p, b.a, b.b)
+				if Vector2(cl.x - p.x, cl.z - p.z).length() < 8.0:
+					on += 1
+	print("trees on bridges: %d" % on)
+	_require(on == 0, "%d trees stand on bridges" % on)
+
 ## Every road lies on its ground: under the carriageway the land is at the
 ## road's own level (bridges, water and the joins between roads aside).
 func _check_roads() -> void:
@@ -355,6 +373,7 @@ func _report() -> void:
 	var avg := total / float(samples.size())
 	# Slow, so after the frames are counted.
 	_check_roads()
+	_check_bridges_clear()
 	print("\n--- world smoke test ---")
 	print("frames            %d" % frames)
 	print("avg frame         %.2f ms (budget 16.67)" % avg)

@@ -13,8 +13,9 @@ extends Node3D
 ## giant glowcaps grow; magma caves under the burnt east; and the abyss, the
 ## deep passage under the sea. Each has its own ores, colours, light and look.
 ##
-## Geometry: a cavern is a faceted, lumpy ellipsoid with a flat floor - the big
-## ones a hundred metres and more across - and a tunnel is a broad, low tube
+## Geometry: a cavern is a faceted, lumpy ellipsoid with a flat floor, pushed
+## out into bays and side lobes so no two are the same shape - the big ones a
+## couple of hundred metres across - and a tunnel is a broad, low tube
 ## along a smooth curve with a flat floor, both drawn and collided on the
 ## inside only. Where a tunnel meets a cavern the two are made to fit exactly:
 ## the tube's end ring is slid onto the cavern's wall, point by point, and the
@@ -64,6 +65,8 @@ const WIDEN := 1.6
 const MAX_TUNNEL := 8.5
 const RING_STEP := 2.5
 const GRID := 48.0
+## Furthest a cavern's wall bulges out past its ellipsoid, as a multiple.
+const BUMP_MAX := 1.75
 
 static var active: CaveNetwork
 
@@ -155,26 +158,26 @@ func _plan_zone(zone: Dictionary, zi: int) -> Array:
 		# Caverns, not rooms: the small ones are the size of a barn, the
 		# big ones you could lose a village in.
 		var roll := _rng.randf()
-		var rx := _rng.randf_range(22.0, 32.0)
+		var rx := _rng.randf_range(30.0, 44.0)
 		if roll < 0.25:
-			rx = _rng.randf_range(60.0, 90.0)
+			rx = _rng.randf_range(85.0, 120.0)
 		elif roll < 0.7:
-			rx = _rng.randf_range(36.0, 55.0)
+			rx = _rng.randf_range(50.0, 75.0)
 		# Smaller islands have less room under them.
-		rx = minf(rx, radius * 0.22)
-		var rz := rx * _rng.randf_range(0.75, 1.25)
-		var ry := minf(34.0, rx * _rng.randf_range(0.38, 0.5))
+		rx = minf(rx, radius * 0.28)
+		var rz := rx * _rng.randf_range(0.55, 1.45)
+		var ry := minf(40.0, minf(rx, rz) * _rng.randf_range(0.4, 0.55))
 		var reach := maxf(rx, rz)
 		var clear := true
 		for other in mine:
 			var o: Dictionary = rooms[other]
-			if Vector2(o.centre.x, o.centre.z).distance_to(p) < reach + maxf(o.rx, o.rz) + 60.0:
+			if Vector2(o.centre.x, o.centre.z).distance_to(p) < (reach + maxf(o.rx, o.rz)) * 1.4 + 50.0:
 				clear = false
 				break
 		if not clear:
 			continue
 		var floor_y := _rng.randf_range(-110.0, -15.0)
-		var ceiling := _lowest_ground(Vector3(p.x, 0, p.y), reach) - COVER - ry * 1.6
+		var ceiling := _lowest_ground(Vector3(p.x, 0, p.y), reach * BUMP_MAX) - COVER - ry * 1.6
 		floor_y = minf(floor_y, ceiling)
 		if floor_y < -170.0:
 			continue
@@ -311,12 +314,18 @@ func _relax_depths(tree: Array) -> void:
 			var excess := absf(dy) - allowed
 			var up: Dictionary = a if dy < 0.0 else b     # the higher one comes down
 			var down: Dictionary = b if dy < 0.0 else a
-			if up.entrance == null:
-				_set_floor(up, float(up.floor) - excess * (0.5 if down.entrance == null else 1.0))
+			# A cavern with a way in, or with tunnels dug already, stays put:
+			# moving it would leave them hanging.
+			var up_fixed: bool = up.entrance != null or not (up.links as Array).is_empty()
+			var down_fixed: bool = down.entrance != null or not (down.links as Array).is_empty()
+			if up_fixed and down_fixed:
+				continue
+			if not up_fixed:
+				_set_floor(up, float(up.floor) - excess * (0.5 if not down_fixed else 1.0))
 				moved = true
-			if down.entrance == null:
-				var limit := _lowest_ground(down.centre, maxf(down.rx, down.rz)) - COVER - float(down.ry) * 1.6
-				_set_floor(down, minf(limit, float(down.floor) + excess * (0.5 if up.entrance == null else 1.0)))
+			if not down_fixed:
+				var limit := _lowest_ground(down.centre, maxf(down.rx, down.rz) * BUMP_MAX) - COVER - float(down.ry) * 1.6
+				_set_floor(down, minf(limit, float(down.floor) + excess * (0.5 if not up_fixed else 1.0)))
 				moved = true
 		if not moved:
 			break
@@ -417,7 +426,7 @@ func _aim(from: Dictionary, to: Dictionary, off: float) -> Variant:
 	if off == 0.0:
 		return null
 	var d := Vector3(to.centre.x - from.centre.x, 0.0, to.centre.z - from.centre.z).normalized()
-	var p: Vector3 = (from.centre as Vector3) + d.rotated(Vector3.UP, off) * (maxf(float(from.rx), float(from.rz)) + 30.0)
+	var p: Vector3 = (from.centre as Vector3) + d.rotated(Vector3.UP, off) * (maxf(float(from.rx), float(from.rz)) * BUMP_MAX + 30.0)
 	return Vector3(p.x, float(from.floor) + 3.0, p.z)
 
 ## Would a mouth at `at` (of radius r) overlap one already opened in cavern `ri`?
@@ -445,7 +454,7 @@ func _mouth(room: Dictionary, toward: Vector3, r: float) -> Vector3:
 	var dir := Vector3(toward.x - room.centre.x, 0.0, toward.z - room.centre.z).normalized()
 	var side := Vector3.UP.cross(dir).normalized()
 	var base := Vector3(room.centre.x, float(room.floor) - 0.03 + r * FLOOR_CUT, room.centre.z)
-	var far := maxf(float(room.rx), float(room.rz)) * 1.4 + 4.0
+	var far := maxf(float(room.rx), float(room.rz)) * BUMP_MAX * 1.1 + 4.0
 	var reach := 0.0
 	for s in section(r):
 		var o := base + side * s.x + Vector3.UP * s.y
@@ -480,9 +489,14 @@ static func _outline_scale(poly: PackedVector2Array, v: Vector2) -> float:
 	return best
 
 ## The lumpiness of a cavern's wall in a direction (a unit vector in the
-## cavern's own frame): the same noise its mesh is built from.
+## cavern's own frame): the same noise its mesh is built from. Broad lobes
+## push the sides out into bays - hardly at all up in the roof, so the cover
+## over it holds - with smaller lumps over everything.
 func _bump(room: Dictionary, v: Vector3) -> float:
-	return 1.0 + 0.16 * _noise.get_noise_3d(v.x * 2.0 + float(room.index), v.y * 2.0, v.z * 2.0)
+	var seed_at := float(room.index) * 7.3
+	var lobe := maxf(0.0, _noise.get_noise_3d(v.x * 0.75 + seed_at, v.y * 0.75 + 40.0, v.z * 0.75))
+	lobe = minf(lobe * 1.2, 0.62) * (1.0 - 0.8 * absf(v.y))
+	return 1.0 + lobe + 0.1 * _noise.get_noise_3d(v.x * 2.0 + float(room.index), v.y * 2.0, v.z * 2.0)
 
 ## Inside the cavern's wall (its floor aside)?
 func _inside_wall(room: Dictionary, p: Vector3) -> bool:
@@ -519,7 +533,7 @@ func _side_exit(from: Dictionary, to: Dictionary) -> Variant:
 	var side := Vector3(dir.z, 0.0, -dir.x)
 	if toward.dot(side) < 0.0:
 		side = -side
-	var reach := maxf(float(from.rx), float(from.rz)) + 40.0
+	var reach := maxf(float(from.rx), float(from.rz)) * BUMP_MAX + 40.0
 	var p: Vector3 = from.centre + side * reach + dir * 6.0
 	return Vector3(p.x, float(from.floor) - 4.0, p.z)
 
@@ -632,7 +646,7 @@ func _near_rooms(p: Vector3) -> Array:
 	var out: Array = []
 	for i in rooms.size():
 		var room: Dictionary = rooms[i]
-		var reach := maxf(room.rx, room.rz) + 80.0
+		var reach := maxf(room.rx, room.rz) * BUMP_MAX + 80.0
 		if absf(room.centre.x - p.x) < reach and absf(room.centre.z - p.z) < reach:
 			out.append(i)
 	return out
@@ -641,7 +655,10 @@ func _in_room(room: Dictionary, p: Vector3, margin: float) -> bool:
 	var local: Vector3 = (p - (room.centre as Vector3)).rotated(Vector3.UP, -float(room.yaw))
 	var q := Vector3(local.x / (float(room.rx) + margin), local.y / (float(room.ry) + margin),
 		local.z / (float(room.rz) + margin))
-	return q.length() <= 1.0 and p.y >= float(room.floor) - margin
+	var length := q.length()
+	if p.y < float(room.floor) - margin:
+		return false
+	return length <= 1.0 or length <= _bump(room, q / length)
 
 # --- Queries -------------------------------------------------------------------
 
@@ -669,7 +686,7 @@ func _index_rooms() -> void:
 	_room_cells.clear()
 	for i in rooms.size():
 		var room: Dictionary = rooms[i]
-		var reach := maxf(room.rx, room.rz) + 2.0
+		var reach := maxf(room.rx, room.rz) * BUMP_MAX + 2.0
 		var lo := _cell(room.centre - Vector3(reach, 0, reach))
 		var hi := _cell(room.centre + Vector3(reach, 0, reach))
 		for x in range(lo.x, hi.x + 1):
@@ -701,6 +718,52 @@ func kind_at(p: Vector3) -> int:
 			return int(t.kind_a) if hit[1] < pts.size() / 2 else int(t.kind_b)
 	return -1
 
+## A random spot on a cavern's wall, from knee height to well up the side,
+## and the way back into the cavern from it: [point, inward]. Null where it
+## would land in a tunnel's mouth or the way in.
+func wall_point(room: Dictionary, rng: RandomNumberGenerator) -> Variant:
+	var a := rng.randf() * TAU
+	var dir := Vector3(cos(a), 0.0, sin(a))
+	var from := Vector3(room.centre.x, float(room.floor) + rng.randf_range(1.0, float(room.ry) * 0.9), room.centre.z)
+	if not _inside_wall(room, from):
+		return null
+	var far := maxf(float(room.rx), float(room.rz)) * BUMP_MAX * 1.1 + 4.0
+	var hit := _wall_hit(room, from, dir, 0.0, far)
+	if hit >= far - 0.1:
+		return null
+	var p := from + dir * hit
+	for ti in room.links:
+		var mouth := _tube_end(ti, int(room.index))
+		var d: Vector3 = p - (mouth.origin as Vector3)
+		var r := float(tunnels[ti].radius)
+		if d.length() < r * WIDEN + 6.0:
+			return null
+	if room.entrance != null:
+		var e: Dictionary = room.entrance
+		var ed: Vector3 = e.dir
+		var local: Vector3 = Transform3D(Basis(Vector3(ed.z, 0.0, -ed.x), Vector3.UP, ed), e.entrance).affine_inverse() * p
+		if absf(local.x) < Cave.SHAFT_WIDTH * 0.5 + 5.0 and local.z < Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH + 8.0:
+			return null
+	# Inward: square to the wall, from the wall's slope either side.
+	var probe := 1.5
+	var up_hit := _wall_hit(room, from + Vector3.UP * probe, dir, 0.0, far)
+	var side := Vector3(-dir.z, 0.0, dir.x)
+	var side_hit := _wall_hit(room, from + side * probe, dir, 0.0, far)
+	var q_up := from + Vector3.UP * probe + dir * up_hit
+	var q_side := from + side * probe + dir * side_hit
+	var n := (q_up - p).cross(q_side - p).normalized()
+	if n.dot(-dir) < 0.0:
+		n = -n
+	if n.dot(-dir) < 0.3:
+		n = -dir
+	return [p, n]
+
+static func _basis_along(axis: Vector3, spin: float) -> Basis:
+	var ref := Vector3.RIGHT if absf(axis.dot(Vector3.RIGHT)) < 0.9 else Vector3.FORWARD
+	var x := ref.cross(axis).normalized()
+	var z := x.cross(axis).normalized()
+	return Basis(x, axis, z) * Basis(Vector3.UP, spin)
+
 ## A random spot on a cavern's floor, for its ore and its mushrooms.
 func floor_point(room: Dictionary, rng: RandomNumberGenerator) -> Vector3:
 	var a := rng.randf() * TAU
@@ -725,6 +788,9 @@ func _ready() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
 	mat.roughness = 1.0
+	# Both sides drawn: where a tunnel's end stands proud of a bulging wall,
+	# its outside shows as rock rather than a see-through gap.
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	for i in rooms.size():
 		_emit(body, mat, _room_mesh(i), "Cavern%d" % i)
 		_dress_room(i)
@@ -757,7 +823,7 @@ func _emit(body: StaticBody3D, mat: Material, buf: Buf, label: String) -> void:
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.visibility_range_end = 420.0
+	mi.visibility_range_end = 900.0
 	add_child(mi)
 	var cs := CollisionShape3D.new()
 	var shape := ConcavePolygonShape3D.new()
@@ -833,7 +899,7 @@ func _room_mesh(ri: int) -> Buf:
 	var room: Dictionary = rooms[ri]
 	var out := Buf.new()
 	var size := maxf(float(room.rx), float(room.rz))
-	var level := 3 if size < 40.0 else 4
+	var level := 3 if size < 30.0 else (4 if size < 70.0 else 5)
 	var ico := _icosphere(level)
 	var basis := Basis(Vector3.UP, float(room.yaw))
 	var c: Vector3 = room.centre
@@ -967,8 +1033,10 @@ func _tunnel_mesh(ti: int) -> Buf:
 			ring.append(pts[k] + (frame[0] as Vector3) * sp.x + (frame[1] as Vector3) * sp.y)
 		rings.append(ring)
 	if pts.size() >= 2:
-		_fit_to_wall(rings[0], rooms[int(t.a)], (pts[1] - pts[0]).normalized())
-		_fit_to_wall(rings[last], rooms[int(t.b)], (pts[last - 1] - pts[last]).normalized())
+		var out_a := (pts[1] - pts[0]).normalized()
+		var out_b := (pts[last - 1] - pts[last]).normalized()
+		_fit_to_wall(rings[0], rooms[int(t.a)], out_a)
+		_fit_to_wall(rings[last], rooms[int(t.b)], out_b)
 	for k in rings.size() - 1:
 		var kind: int = int(t.kind_a) if k < rings.size() / 2 else int(t.kind_b)
 		var axis := (pts[k] + pts[k + 1]) * 0.5
@@ -990,7 +1058,7 @@ func _tunnel_mesh(ti: int) -> Buf:
 ## Slides each point of an end ring back along the tunnel (`out` points away
 ## from the cavern) to where the cavern's wall is, a hand's width inside it.
 func _fit_to_wall(ring: Array, room: Dictionary, out: Vector3) -> void:
-	var reach := maxf(float(room.rx), float(room.rz)) * 1.2 + 4.0
+	var reach := maxf(float(room.rx), float(room.rz)) * BUMP_MAX * 1.1 + 4.0
 	for j in ring.size():
 		var p: Vector3 = ring[j]
 		if _inside_wall(room, p + out * 3.0):
@@ -1024,52 +1092,60 @@ func _dress_room(ri: int) -> void:
 	var count := int(size * 0.8) + 3
 	var floor_y: float = room.floor
 	var top: float = room.centre.y + float(room.ry) * 0.85
-	# Bigger caverns, bigger formations: columns and spires to scale.
-	var grand := clampf(size / 18.0, 1.0, 4.0)
-	for i in count:
-		var p := floor_point(room, rng)
-		if i % 3 == 0 and kind != Kind.FUNGAL and kind != Kind.MAGMA:
-			var tall := rng.randf_range(2.5, 6.0) * grand
-			g.prism(6, rng.randf_range(0.8, 1.6) * grand, 0.0, tall, Transform3D(Basis(Vector3.UP, rng.randf()), p),
-				(pal[0] as Color).lightened(0.08))
+	# Formations grow out of the walls, never the floor - the floor is left
+	# clear to drive and work on. Kept close to the rock: a big cavern gets
+	# more of them, not bigger ones.
+	var grand := clampf(size / 40.0, 1.0, 2.0)
+	var placed := 0
+	var tries := 0
+	while placed < count and tries < count * 4:
+		tries += 1
+		var spot: Variant = wall_point(room, rng)
+		if spot == null:
 			continue
+		placed += 1
+		var p: Vector3 = spot[0]
+		var inward: Vector3 = spot[1]
+		var i := placed
+		# Out of the wall, tipped a little up or down, spun about its own axis.
+		var tip := Vector3.UP if rng.randf() < 0.5 else Vector3.DOWN
+		var axis := (inward + tip * rng.randf_range(0.1, 0.5)).normalized()
+		var out := _basis_along(axis, rng.randf() * TAU)
+		var flat := Basis.looking_at(Vector3(inward.x, 0.0, inward.z).normalized(), Vector3.UP)
 		match kind:
 			Kind.CRYSTAL, Kind.ABYSS:
 				var color: Color = [Color(0.7, 0.45, 1.0), Color(0.45, 0.9, 1.0), Color(1.0, 0.55, 0.9)][i % 3] \
 					if kind == Kind.CRYSTAL else Color(0.3, 0.6, 1.0)
 				for k in 3:
-					var tilt := Basis(Vector3.FORWARD, rng.randf_range(-0.5, 0.5)) * Basis(Vector3.RIGHT, rng.randf_range(-0.5, 0.5))
-					g.prism(6, rng.randf_range(0.2, 0.55), 0.0, rng.randf_range(1.0, 3.2),
-						Transform3D(tilt, p + Vector3(rng.randf_range(-0.8, 0.8), 0, rng.randf_range(-0.8, 0.8))), color, true)
+					var fan := _basis_along((axis + Vector3(rng.randf_range(-0.35, 0.35), rng.randf_range(-0.35, 0.35),
+						rng.randf_range(-0.35, 0.35))).normalized(), rng.randf() * TAU)
+					g.prism(6, rng.randf_range(0.15, 0.4), 0.0, rng.randf_range(0.6, 1.8) * grand,
+						Transform3D(fan, p - axis * 0.3), color, true)
 			Kind.ICE:
-				var drop := rng.randf_range(1.0, 3.5)
-				g.prism(5, rng.randf_range(0.2, 0.5), 0.0, drop, Transform3D(Basis(Vector3.RIGHT, PI), Vector3(p.x, top, p.z)),
-					Color(0.8, 0.92, 1.0), i % 4 == 0)
-				if i % 3 == 0:
-					g.prism(6, rng.randf_range(0.6, 1.2), 0.3, rng.randf_range(1.5, 4.0), Transform3D(Basis(), p), Color(0.7, 0.86, 0.98))
+				g.prism(5, rng.randf_range(0.25, 0.5) * grand, 0.0, rng.randf_range(0.8, 2.0) * grand,
+					Transform3D(out, p - axis * 0.3), Color(0.8, 0.92, 1.0), i % 4 == 0)
 			Kind.DESERT:
-				g.box(Vector3(rng.randf_range(2.0, 4.0), rng.randf_range(0.3, 0.8), rng.randf_range(2.0, 4.0)),
-					Transform3D(Basis(Vector3.UP, rng.randf() * TAU), p + Vector3(0, 0.1, 0)), (pal[1] as Color).lightened(0.05))
-				if i % 4 == 0:
-					g.prism(6, rng.randf_range(0.7, 1.1), rng.randf_range(0.6, 1.0), top - floor_y,
-						Transform3D(Basis(), p), (pal[0] as Color).lightened(0.06))
+				# Sandstone ledges, lying along the wall.
+				g.box(Vector3(rng.randf_range(2.0, 4.5), rng.randf_range(0.3, 0.7), rng.randf_range(0.6, 1.2)) * grand,
+					Transform3D(flat, p), (pal[0] as Color).lightened(0.06))
 			Kind.FUNGAL:
-				var stem := rng.randf_range(0.4, 1.4)
-				g.prism(6, 0.08, 0.06, stem, Transform3D(Basis(), p), Color(0.85, 0.82, 0.7))
-				g.prism(8, rng.randf_range(0.25, 0.6), 0.05, 0.25, Transform3D(Basis(), p + Vector3(0, stem, 0)),
+				# Bracket fungus: flat glowing shelves on the rock.
+				var shelf := rng.randf_range(0.3, 0.7) * grand
+				g.prism(8, shelf, shelf * 0.2, 0.18, Transform3D(Basis(), p + inward * shelf * 0.4),
 					[Color(0.4, 1.0, 0.6), Color(0.3, 0.9, 1.0), Color(0.9, 0.5, 1.0)][i % 3], true)
 			Kind.MAGMA:
 				if i % 2 == 0:
-					g.prism(6, rng.randf_range(0.5, 0.9), rng.randf_range(0.4, 0.8), rng.randf_range(1.5, 5.0),
-						Transform3D(Basis(), p), Color(0.14, 0.12, 0.12))
+					g.prism(6, rng.randf_range(0.4, 0.7) * grand, 0.0, rng.randf_range(0.8, 2.0) * grand,
+						Transform3D(out, p - axis * 0.3), Color(0.14, 0.12, 0.12))
 				else:
-					g.box(Vector3(rng.randf_range(1.5, 3.5), 0.1, rng.randf_range(1.5, 3.5)),
-						Transform3D(Basis(Vector3.UP, rng.randf() * TAU), p + Vector3(0, 0.03, 0)), Color(1.0, 0.42, 0.1), true)
+					# A glowing seam in the rock.
+					g.box(Vector3(rng.randf_range(1.5, 3.5), 0.12, 0.1) * grand,
+						Transform3D(flat * Basis(Vector3.FORWARD, rng.randf_range(-0.6, 0.6)),
+						p + inward * 0.05), Color(1.0, 0.42, 0.1), true)
 			_:
-				# River caves: stalagmites, and stalactites dripping over them.
-				var h := rng.randf_range(0.8, 2.8)
-				g.prism(5, rng.randf_range(0.3, 0.7), 0.0, h, Transform3D(Basis(Vector3.UP, rng.randf()), p), (pal[0] as Color).lightened(0.1))
-				g.prism(5, rng.randf_range(0.3, 0.6), 0.0, h * 0.8, Transform3D(Basis(Vector3.RIGHT, PI), Vector3(p.x, top, p.z)), (pal[0] as Color).lightened(0.05))
+				# River caves: short, stubby knuckles of flowstone.
+				g.prism(5, rng.randf_range(0.3, 0.6) * grand, 0.0, rng.randf_range(0.6, 1.6) * grand,
+					Transform3D(out, p - axis * 0.3), (pal[0] as Color).lightened(0.1))
 	if not g.is_empty():
 		var mi := g.instance("CaveDressing", false)
 		mi.visibility_range_end = 320.0

@@ -70,6 +70,7 @@ func show_on(p_centre: Vector3, p_half: Vector3, p_mode: Mode) -> void:
 		(h.node as Node).queue_free()
 	handles.clear()
 	_rings.mesh = null
+	_rings.position = Vector3.ZERO
 	match mode:
 		Mode.MOVE, Mode.SCALE:
 			for axis in 3:
@@ -92,6 +93,23 @@ func show_on(p_centre: Vector3, p_half: Vector3, p_mode: Mode) -> void:
 					handles.append({"node": _ball(at, _ring_materials[axis]), "axis": axis, "sign": sign, "point": at})
 			_rings.mesh = im
 	_hover = -1
+
+## Mid-drag: the knobs (and rings) go with the building to where it now is,
+## sized to it, while each handle's `point` - what the drag is measured from -
+## stays where the drag began.
+func follow(p_centre: Vector3, p_half: Vector3) -> void:
+	_box.global_position = p_centre
+	(_box.mesh as BoxMesh).size = p_half * 2.0 + Vector3.ONE * 0.06
+	match mode:
+		Mode.MOVE, Mode.SCALE:
+			for h in handles:
+				var axis: int = h.axis
+				(h.node as Node3D).global_position = p_centre + (AXES[axis] as Vector3) * (p_half[axis] + 0.55) * float(h.sign)
+		Mode.ROTATE:
+			var shift := p_centre - centre
+			_rings.global_position = shift
+			for h in handles:
+				(h.node as Node3D).global_position = (h.point as Vector3) + shift
 
 func hide_all() -> void:
 	visible = false

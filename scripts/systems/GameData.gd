@@ -110,7 +110,9 @@ func _read(file_name: String) -> Dictionary:
 ## price is worked back through what the machines keep of the volume:
 ##   wood   log (raw)  -> sanded log (pre)  -> sanded plank (final)
 ##   metal  ore (raw)  -> smelted bar (pre) -> refined bar (final)
-##   gem    rough (raw)-> polished (pre)    -> cut jewel (final)
+##   gem    rough (raw)-> polished (pre), OR -> cut jewel (final): one or
+##          the other, never both - some stones are worth more polished, some
+##          cut, and the table says which.
 func _apply_materials(table: Array) -> void:
 	materials.clear()
 	material_of.clear()
@@ -145,8 +147,9 @@ func _apply_materials(table: Array) -> void:
 				final_def.finish_value = {&"refined": fin / pre}
 			"gem":
 				raw_def.finish_value = {&"polished": pre / raw}
-				final_def.finish_value = {&"polished": CARRIED_FINISH}
-				final_def.value_per_m3 = fin / (cut_yield * CARRIED_FINISH)
+				# A cut jewel is priced on its own: it was never polished.
+				final_def.finish_value = {}
+				final_def.value_per_m3 = fin / cut_yield
 			_:
 				load_errors.append("material '%s' has no path" % id)
 
@@ -162,7 +165,7 @@ static func stage_names(path: String) -> Array:
 		"metal":
 			return ["Ore", "Smelted", "Refined"]
 		"gem":
-			return ["Rough", "Polished", "Cut"]
+			return ["Rough", "Polished", "Cut (instead)"]
 	return ["Raw", "Pre", "Final"]
 
 ## Cross-checks every reference between the tables, so a typo in a data file

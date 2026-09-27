@@ -44,6 +44,8 @@ static func dress(v: Hauler) -> void:
 			_stake_bed(v, g)
 		&"tub":
 			_tub(v)
+		&"deck":
+			_deck(v, g)
 	var gear: Variant = v.spec.get("rig", null)
 	if gear is Dictionary and bool(gear.get("mast", false)):
 		_mast(v, g, Hauler._vec(gear.get("head", [0, 3, -1])))
@@ -275,6 +277,33 @@ static func _walled_bed(v: Hauler, g: Greeble) -> void:
 	v._tailgate_mesh = gate.instance("Tailgate")
 	v._tailgate_mesh.position = Vector3(0, v.bed_floor, v.bed_back + 0.12)
 	v.add_child(v._tailgate_mesh)
+
+## A low-loader's deck: timber boards on steel, a kerb each side, a
+## headboard, and the two ramps, each its own node so it can fold.
+static func _deck(v: Hauler, g: Greeble) -> void:
+	var boards := maxi(2, int(v.bed_length / 0.5))
+	for i in boards:
+		var z := v.bed_front + (float(i) + 0.5) * v.bed_length / float(boards)
+		g.block(Vector3(v.bed_half_width * 2.0, 0.05, v.bed_length / float(boards) - 0.04), Vector3(0, v.bed_floor + 0.025, z), WOOD)
+	for side in [-1.0, 1.0]:
+		g.block(Vector3(0.14, v.wall_height, v.bed_length), Vector3(side * (v.bed_half_width + 0.07), v.bed_floor + v.wall_height * 0.5, v.bed_mid_z), AMBER)
+	var across := v.bed_half_width * 2.0 + 0.28
+	g.block(Vector3(across, v.headboard_height, 0.3), Vector3(0, v.bed_floor + v.headboard_height * 0.5, v.bed_front - 0.15), v.paint.darkened(0.2))
+	g.block(Vector3(across + 0.04, 0.08, 0.34), Vector3(0, v.bed_floor + v.headboard_height - 0.04, v.bed_front - 0.15), STEEL)
+	v.ramp_meshes.clear()
+	for x in v.ramp_xs():
+		var ramp := Greeble.new()
+		ramp.layer_step = LAYER
+		ramp.block(Vector3(Hauler.RAMP_WIDTH, 0.12, Hauler.RAMP_LENGTH), Vector3(0, 0, Hauler.RAMP_LENGTH * 0.5), STEEL.darkened(0.15))
+		var rungs := int(Hauler.RAMP_LENGTH / 0.3)
+		for k in rungs:
+			ramp.block(Vector3(Hauler.RAMP_WIDTH - 0.08, 0.04, 0.06), Vector3(0, 0.08, 0.15 + float(k) * 0.3), STEEL)
+		for sx in [-1.0, 1.0]:
+			ramp.block(Vector3(0.06, 0.16, Hauler.RAMP_LENGTH), Vector3(sx * (Hauler.RAMP_WIDTH * 0.5 - 0.03), 0.02, Hauler.RAMP_LENGTH * 0.5), DARK)
+		var mi := ramp.instance("Ramp")
+		mi.position = Vector3(x, v.bed_floor, v.bed_back)
+		v.add_child(mi)
+		v.ramp_meshes.append(mi)
 
 ## Bolsters across the deck and tall steel stakes, with a big cab guard - a
 ## bed for whole trunks, open at the back.

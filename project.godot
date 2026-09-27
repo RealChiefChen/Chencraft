@@ -4,8 +4,8 @@ config_version=5
 [application]
 config/name="Pinecraft"
 config/description="Single-player 3D sandbox/tycoon: chop, process, sell, build, automate."
-config/version="0.2.1"
-config/release_date="2026-09-27 11:00 EDT"
+config/version="0.2.2"
+config/release_date="2026-09-27 11:40 EDT"
 run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 boot_splash/bg_color=Color(0.055, 0.075, 0.065, 1)

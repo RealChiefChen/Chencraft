@@ -269,6 +269,11 @@ func from_dict(d: Dictionary) -> void:
 	reset()
 	for k in d.get("levels", {}):
 		levels[StringName(k)] = int(d["levels"][k])
+	# Saves from when engines were upgraded: the same level of gearbox.
+	if levels.has(&"engine"):
+		if GameData.upgrade_tracks.has(&"transmission"):
+			levels[&"transmission"] = maxi(int(levels.get(&"transmission", 1)), int(levels[&"engine"]))
+		levels.erase(&"engine")
 	# What reset() gave is everything buildable from the start, including
 	# pieces added since the save was made; the save only adds to it.
 	var ub: Array = d.get("unlocked", [])

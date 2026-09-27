@@ -124,7 +124,7 @@
       "id": "sawmill",
       "display_name": "Planker",
       "kind": "inline",
-      "cost": 510,
+      "cost": 660,
       "size": [
         2,
         3,
@@ -137,7 +137,7 @@
       "id": "sander",
       "display_name": "Sander",
       "kind": "inline",
-      "cost": 710,
+      "cost": 920,
       "size": [
         2,
         3,
@@ -150,7 +150,7 @@
       "id": "furnace",
       "display_name": "Smelter",
       "kind": "inline",
-      "cost": 1600,
+      "cost": 2080,
       "size": [
         2,
         3,
@@ -163,7 +163,7 @@
       "id": "refiner",
       "display_name": "Refiner",
       "kind": "inline",
-      "cost": 5300,
+      "cost": 6890,
       "size": [
         2,
         3,
@@ -176,7 +176,7 @@
       "id": "gem_polisher",
       "display_name": "Gem Polisher",
       "kind": "inline",
-      "cost": 1900,
+      "cost": 2470,
       "size": [
         2,
         3,
@@ -189,7 +189,7 @@
       "id": "gem_cutter",
       "display_name": "Gem Cutter",
       "kind": "inline",
-      "cost": 3100,
+      "cost": 4030,
       "size": [
         2,
         3,
@@ -202,7 +202,7 @@
       "id": "workbench",
       "display_name": "Workbench",
       "kind": "machine",
-      "cost": 6600,
+      "cost": 8580,
       "size": [
         4,
         3,
@@ -229,7 +229,7 @@
       "id": "crusher",
       "display_name": "Crusher",
       "kind": "inline",
-      "cost": 1100,
+      "cost": 1430,
       "size": [
         2,
         3,
@@ -270,6 +270,7 @@
         2,
         1
       ],
+      "trim": [0, 0, 3],
       "cost": 30,
       "kind": "schematic",
       "blurb": "A plan. Fill it with material and it turns solid."
@@ -467,6 +468,19 @@
         8
       ],
       "blurb": "Spawns your dump trailer. Brings it back when it is lost."
+    },
+    {
+      "id": "pad_low_loader",
+      "display_name": "Low-Loader Pad",
+      "kind": "pad",
+      "vehicle": "low_loader",
+      "cost": 16000,
+      "size": [
+        4,
+        1,
+        10
+      ],
+      "blurb": "Spawns your low-loader. Brings it back when it is lost."
     },
     {
       "id": "pad_loader",
@@ -809,7 +823,7 @@
         1.0
       ],
       "belt_speed": 3.0,
-      "max_piece": 0.4,
+      "max_piece": 0.28,
       "color": [
         0.3,
         0.32,
@@ -877,8 +891,7 @@
       "display_name": "Gem Polisher",
       "mode": "sand",
       "accepts": [
-        "gem",
-        "jewel"
+        "gem"
       ],
       "tunnel": [
         0.8,

@@ -1796,8 +1796,9 @@
       "raw_item": "gem_quartz",
       "final_item": "jewel_quartz",
       "raw": 220,
-      "pre": 390,
-      "final": 520
+      "pre": 470,
+      "final": 400,
+      "note": "Worth more polished"
     },
     {
       "id": "obsidian",
@@ -1805,8 +1806,8 @@
       "raw_item": "gem_obsidian",
       "final_item": "jewel_obsidian",
       "raw": 450,
-      "pre": 820,
-      "final": 600,
+      "pre": 900,
+      "final": 650,
       "note": "Brittle: cutting chips it, sell it polished"
     },
     {
@@ -1815,8 +1816,8 @@
       "raw_item": "gem_jade",
       "final_item": "jewel_jade",
       "raw": 680,
-      "pre": 1800,
-      "final": 1900,
+      "pre": 1900,
+      "final": 1500,
       "note": "All the value is in the polish"
     },
     {
@@ -1825,8 +1826,9 @@
       "raw_item": "gem_amethyst",
       "final_item": "jewel_amethyst",
       "raw": 900,
-      "pre": 1200,
-      "final": 2400
+      "pre": 1500,
+      "final": 2200,
+      "note": "Worth more cut"
     },
     {
       "id": "emerald",
@@ -1834,8 +1836,9 @@
       "raw_item": "gem_emerald",
       "final_item": "jewel_emerald",
       "raw": 2000,
-      "pre": 2200,
-      "final": 6400
+      "pre": 3900,
+      "final": 5600,
+      "note": "Worth more cut"
     },
     {
       "id": "ruby",
@@ -1843,8 +1846,9 @@
       "raw_item": "gem_ruby",
       "final_item": "jewel_ruby",
       "raw": 2200,
-      "pre": 3200,
-      "final": 7100
+      "pre": 4600,
+      "final": 6200,
+      "note": "Worth more cut"
     },
     {
       "id": "diamond",
@@ -1852,9 +1856,9 @@
       "raw_item": "gem_diamond",
       "final_item": "jewel_diamond",
       "raw": 3800,
-      "pre": 3800,
-      "final": 16000,
-      "note": "Polish does nothing; the cut is everything"
+      "pre": 5600,
+      "final": 12500,
+      "note": "Polish does little; the cut is everything"
     },
     {
       "id": "glowcap",
@@ -1872,9 +1876,9 @@
       "raw_item": "gem_sapphire",
       "final_item": "jewel_sapphire",
       "raw": 2100,
-      "pre": 2600,
-      "final": 6800,
-      "note": "Ice caves only"
+      "pre": 5400,
+      "final": 4700,
+      "note": "Ice caves only; its colour shows best polished"
     }
   ]
 }

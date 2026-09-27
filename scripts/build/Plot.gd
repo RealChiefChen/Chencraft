@@ -350,7 +350,7 @@ static func size_limits(def: BuildingDef) -> Array:
 ## `def` at another size. The price stays the same: resizing never costs.
 static func resized(def: BuildingDef, size: Vector3i, trim: Vector3i = Vector3i.ZERO) -> BuildingDef:
 	var base := GameData.building(def.id)
-	if base == null or (size == base.size and trim == Vector3i.ZERO):
+	if base == null or (size == base.size and trim == base.trim):
 		return def if base == null or def.tier != 1 else base
 	var out: BuildingDef = base.duplicate()
 	out.size = size
@@ -655,7 +655,7 @@ func to_dict() -> Dictionary:
 			var sz: Vector3i = (rec.def as BuildingDef).size
 			entry["size"] = [sz.x, sz.y, sz.z]
 		var tr: Vector3i = (rec.def as BuildingDef).trim
-		if tr != Vector3i.ZERO:
+		if base == null or tr != base.trim:
 			entry["trim"] = [tr.x, tr.y, tr.z]
 		if (rec.def as BuildingDef).tier != 1:
 			entry["tier"] = (rec.def as BuildingDef).tier
@@ -686,7 +686,7 @@ func from_dict(d: Dictionary) -> void:
 			orientation = Vector3i(int(r[0]), int(r[1]), int(r[2]))
 		if entry.has("size") or entry.has("trim"):
 			var sz: Array = entry.get("size", [def.size.x, def.size.y, def.size.z])
-			var tr: Array = entry.get("trim", [0, 0, 0])
+			var tr: Array = entry.get("trim", [def.trim.x, def.trim.y, def.trim.z])
 			def = resized(def, Vector3i(int(sz[0]), int(sz[1]), int(sz[2])), Vector3i(int(tr[0]), int(tr[1]), int(tr[2])))
 		var node := place(def, cell, orientation, false, float(entry.get("lift", 0.0)))
 		if node != null and entry.has("state") and node.has_method("from_dict"):

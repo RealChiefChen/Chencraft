@@ -173,7 +173,20 @@ func price_of(item_id: StringName, dims: Dictionary = {}) -> int:
 	if def == null:
 		return 0
 	var d := dims if not dims.is_empty() else def.default_dims()
-	return maxi(1, int(round(def.base_value_of(d) * price_multiplier(item_id) * PRICE_SCALE)))
+	return maxi(1, int(round(def.base_value_of(d) * size_bonus(def, d) * price_multiplier(item_id) * PRICE_SCALE)))
+
+## Big pieces sell for more per cubic metre: +25% for each doubling past the
+## item's usual size, up to +75%. Smaller pieces pay the plain rate.
+static func size_bonus(def: ItemDef, dims: Dictionary) -> float:
+	if def.fixed_value > 0:
+		return 1.0
+	var usual := Solid.volume(def.default_dims())
+	if usual <= 0.0:
+		return 1.0
+	var ratio := Solid.volume(dims) / usual
+	if ratio <= 1.0:
+		return 1.0
+	return 1.0 + 0.25 * minf(log(ratio) / log(2.0), 3.0)
 
 ## Rate per cubic metre, for the market board.
 func rate_of(item_id: StringName) -> float:

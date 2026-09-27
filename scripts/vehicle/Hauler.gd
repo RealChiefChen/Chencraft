@@ -263,10 +263,25 @@ func grip_scale() -> float:
 
 ## Tyres bought since the wheels went on: new rubber on every wheel.
 func _refresh_grip() -> void:
-	for body in wheel_bodies:
-		var pm := body.physics_material_override as PhysicsMaterial
-		if pm != null:
-			pm.friction = tyre_grip * grip_scale()
+	for i in wheel_bodies.size():
+		var old := wheel_bodies[i].physics_material_override as PhysicsMaterial
+		if old == null:
+			continue
+		var slip := 1.0
+		if _skidding:
+			# The brake locks them and they let go: the back most of all,
+			# so it steps out and slides rather than stopping dead.
+			slip = HANDBRAKE_FRONT if _is_front(i) else HANDBRAKE_REAR
+		# A fresh material each time: the physics reads it when it is set,
+		# not when one already set is changed.
+		var pm := old.duplicate() as PhysicsMaterial
+		pm.friction = tyre_grip * grip_scale() * slip
+		wheel_bodies[i].physics_material_override = pm
+
+## Braking hard at speed, the tyres give: this much of their grip is left.
+static var HANDBRAKE_REAR: float = Balance.num("vehicles.handbrake_rear_grip", 0.12)
+static var HANDBRAKE_FRONT: float = Balance.num("vehicles.handbrake_front_grip", 0.22)
+var _skidding: bool = false
 
 ## Recover, unless it was done less than a second ago or the truck is down on
 ## its outriggers. Returns "" or why not.
@@ -1309,8 +1324,13 @@ func _drive_wheels() -> void:
 		# (Past a few degrees: pulling away squats the tail and lifts the
 		# nose a little, which is not a hill.)
 		pull = lerpf(1.0, pull, clampf((uphill - 0.08) / 0.22, 0.0, 1.0))
+	var skid := input_brake and not standing and absf(speed) > 2.5
+	if skid != _skidding:
+		_skidding = skid
+		_refresh_grip()
 	if standing or input_brake:
-		torque = _brake_torque()
+		# At speed the brake locks the wheels, and a locked tyre slides.
+		torque = _brake_torque() * (8.0 if skid else 1.0)
 	elif absf(throttle) > 0.05:
 		# Reverse is a low gear of its own.
 		var top: float = full * ratio if throttle > 0.0 else max_speed * 0.5

@@ -121,6 +121,7 @@ func _run_all() -> void:
 	await _test(&"a driven truck's settled load is fixed as it lies", test_load_fixed_while_driven)
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
 	await _test(&"vehicles bump into each other", test_vehicles_collide)
+	await _test(&"a hard brake at speed slides", test_handbrake_slide)
 	await _test(&"a piece off the rack can be thrown", test_throw)
 	await _test(&"the player walks up a step but not a wall", test_step_up)
 	await _test(&"a loader's attachment is picked at its pad", test_loader_pad_attachment)
@@ -4777,6 +4778,36 @@ func test_throw() -> void:
 	var flat := Vector2(log_piece.global_position.x - from.x, log_piece.global_position.z - from.z).length()
 	check(flat > 3.0, "the piece only went %.1f m" % flat)
 	p.queue_free()
+	done()
+
+func test_handbrake_slide() -> void:
+	# The same stop twice: tyres that let go under the brake carry the truck
+	# further than tyres that do not.
+	var runs := []
+	for grip in [1.0, Hauler.HANDBRAKE_REAR]:
+		_setup(false)
+		var saved_rear := Hauler.HANDBRAKE_REAR
+		var saved_front := Hauler.HANDBRAKE_FRONT
+		Hauler.HANDBRAKE_REAR = grip
+		Hauler.HANDBRAKE_FRONT = 1.0 if grip >= 1.0 else saved_front
+		var truck := Hauler.new()
+		truck.setup(manager, 0, &"pickup")
+		world.add_child(truck)
+		truck.global_position = Vector3(0, truck.spawn_height(), 0)
+		await step(60)
+		truck.autopilot = true
+		truck.input_throttle = 1.0
+		await step(130)
+		var at := truck.global_position
+		check(truck.linear_velocity.length() > 6.0, "the truck is not going fast enough to brake from (%.1f m/s)" % truck.linear_velocity.length())
+		truck.input_throttle = 0.0
+		truck.input_brake = true
+		await step(240)
+		runs.append(truck.global_position.distance_to(at))
+		check(grip >= 1.0 or truck._skidding == false or truck.linear_velocity.length() < 2.5, "still skidding at a stop")
+		Hauler.HANDBRAKE_REAR = saved_rear
+		Hauler.HANDBRAKE_FRONT = saved_front
+	check(runs[1] > runs[0] * 1.1, "the brake does not slide (%.1f m vs %.1f m)" % [runs[1], runs[0]])
 	done()
 
 func test_vehicles_collide() -> void:

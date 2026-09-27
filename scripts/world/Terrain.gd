@@ -84,7 +84,7 @@ var _road_core := PackedByteArray()
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 23
+const GENERATOR_VERSION := 24
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -783,10 +783,10 @@ func _feature_at(x: float, z: float) -> Array:
 				var gap: float = float(f.get("gap", 0.0))
 				var across := absf(off.rotated(-gap).y)
 				var along := off.rotated(-gap).x
-				if along > 0.0 and across < 9.0:
+				if along > 0.0 and across < float(f.get("gorge", 9.0)):
 					return [1.0, Biome.WOODLAND, floor_h]
 				var t := (d - r) / (r * 1.6)
-				var ridge := floor_h + 46.0 * sin(clampf(t, 0.0, 1.0) * PI * 0.5)
+				var ridge := floor_h + float(f.get("ridge", 46.0)) * sin(clampf(t, 0.0, 1.0) * PI * 0.5)
 				var w := 1.0 - smoothstep(0.7, 1.0, t)
 				return [w, Biome.MOUNTAIN if t < 0.8 else Biome.WOODLAND, ridge]
 			"pit":

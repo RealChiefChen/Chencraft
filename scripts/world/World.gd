@@ -81,8 +81,9 @@ var showcase: Showcase
 
 ## The islands: a big home island in the middle; the cold north, the desert
 ## east and the wet west; a scorched isle in the south-east where something
-## fell out of the sky; and Hollow Isle in the south-west, which no road or
-## bridge reaches - only the deep tunnel under the sea.
+## fell out of the sky; and Hollow Isle in the south-west, reached by a road
+## over two bridges and a stepping-stone islet (and the deep tunnel under the
+## sea).
 const ISLANDS := [
 	{"name": "Home Island", "centre": Vector2(0, 0), "radius": 1220.0},
 	{"name": "Frostreach", "centre": Vector2(0, -1850), "radius": 403.0},
@@ -90,6 +91,7 @@ const ISLANDS := [
 	{"name": "Mirewood", "centre": Vector2(-1850, 220), "radius": 403.0},
 	{"name": "Crater Isle", "centre": Vector2(1150, 1150), "radius": 247.0},
 	{"name": "Hollow Isle", "centre": Vector2(-1450, 1450), "radius": 262.0},
+	{"name": "Stepping Stone", "centre": Vector2(-1060, 1060), "radius": 150.0},
 ]
 ## One big region per kind of country: the home island's woods round the plot,
 ## a mountain range to the north-east, a desert to the south-west, a swamp
@@ -106,9 +108,10 @@ const REGIONS := [
 	{"name": "Mirewood", "centre": Vector2(-1900, 320), "biome": Terrain.Biome.SWAMP},
 	{"name": "Mirewood Hills", "centre": Vector2(-1760, 60), "biome": Terrain.Biome.WOODLAND, "scale": 1.3},
 	{"name": "Crater Isle", "centre": Vector2(1150, 1150), "biome": Terrain.Biome.WOODLAND},
-	{"name": "Hollow Isle", "centre": Vector2(-1450, 1450), "biome": Terrain.Biome.TAIGA},
+	# Rolling woodland, not taiga crags: easy going for a loaded truck.
+	{"name": "Hollow Isle", "centre": Vector2(-1450, 1450), "biome": Terrain.Biome.WOODLAND, "scale": 1.4},
 ]
-## Places that are there to be found: no road goes to them.
+## Places that are there to be found (the valley has a road now; the crater has none).
 const HIDDEN_VALLEY := "Hidden Valley"
 const STAR_CRATER := "Star Crater"
 var decor: Decor
@@ -485,6 +488,10 @@ func _build_terrain() -> void:
 		# West.
 		{"bridge": true, "route": _arterial(PI, [Vector3(-500, 0, 60), Vector3(-1150, 0, 160),
 			Vector3(-1850, 0, 220)])},
+		# South-west from the desert, over the stepping stone to Hollow Isle and
+		# in through the gorge to the Hidden Valley.
+		{"bridge": true, "route": [Vector3(-640, 0, 680), Vector3(-900, 0, 900), Vector3(-1060, 0, 1060),
+			Vector3(-1250, 0, 1250), Vector3(-1395, 0, 1405), Vector3(-1445, 0, 1455)]},
 		# South-east, a gravel track with fords.
 		{"ford": true, "style": "gravel", "route": _arterial(PI * 0.25, [Vector3(500, 0, 520),
 			Vector3(1150, 0, 1150)])},
@@ -500,8 +507,10 @@ func _build_terrain() -> void:
 	# And the low, sheltered valley round home that the plot sits in.
 	terrain.features = [
 		{"name": "Home Valley", "kind": "basin", "centre": Vector2(-20, 60), "radius": 330.0},
-		{"name": HIDDEN_VALLEY, "kind": "valley", "centre": Vector2(-1470, 1480), "radius": 45.0,
-			"gap": PI * 0.5, "floor": 16.0},
+		# Its gorge faces home, wide enough for a truck and a trailer, and the
+		# road runs in through it.
+		{"name": HIDDEN_VALLEY, "kind": "valley", "centre": Vector2(-1470, 1480), "radius": 55.0,
+			"gap": -PI * 0.25, "floor": 12.0, "gorge": 16.0, "ridge": 28.0},
 		{"name": STAR_CRATER, "kind": "crater", "centre": Vector2(1160, 1170), "radius": 48.0,
 			"rim": 30.0, "floor": 8.0},
 		# The quarry: an open pit a good 26 m deep, a haul road spiralling
@@ -734,8 +743,8 @@ func _build_forest() -> void:
 			"start": 0.45, "pitch": [0.6, 1.0], "length": [0.18, 0.28],
 			"foliage": 2.5, "crown": [0.0, 0.0], "style": &"ball", "weight": 0.2},
 
-		# Only in the Hidden Valley: walled in by a ridge on the far side of
-		# Mirewood, one gorge in and no road. The best timber on the map.
+		# Only in the Hidden Valley on Hollow Isle: walled in by a ridge, one
+		# gorge in. The best timber on the map.
 		{"name": "Mahogany", "item": &"wood_mahogany", "site": HIDDEN_VALLEY,
 			"biomes": [Terrain.Biome.WOODLAND],
 			"leaf": Color(0.16, 0.36, 0.14), "bark": Color(0.42, 0.20, 0.13), "work": 1600.0,

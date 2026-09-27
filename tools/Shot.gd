@@ -696,3 +696,18 @@ func shot_quarry() -> void:
 	await snap("quarry_above")
 	await look(c + Vector3(0, 3, 0), c + Vector3(40, 18, 60))
 	await snap("quarry_floor")
+
+## Hollow Isle: the road over the stepping stone, and the gorge into the
+## Hidden Valley.
+func shot_hollow() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var t: Terrain = world.terrain
+	var v := Vector3(-1470, 0, 1480)
+	v.y = t.height_at(v.x, v.z)
+	world.player.global_position = v + Vector3(0, 30, 0)
+	for i in 90:
+		await get_tree().process_frame
+	await look(Vector3(-1100, 180, 1150), Vector3(-1350, 0, 1350))
+	await snap("hollow_approach")
+	await look(v + Vector3(140, 60, -140), v)
+	await snap("hollow_valley")

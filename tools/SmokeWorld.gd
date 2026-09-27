@@ -294,6 +294,21 @@ func _check_quarry() -> void:
 	_require(steep < 0.14, "the haul road is %.0f%% steep somewhere" % (steep * 100.0))
 	_require(t.height_at(bottom.x, bottom.z) - floor_h < 2.0, "the haul road does not reach the floor")
 
+## Hollow Isle is reached by road, and the road runs into the Hidden Valley.
+func _check_hollow() -> void:
+	var t: Terrain = world.terrain
+	var valley := Vector3(-1470, 0, 1480)
+	var best := INF
+	var on_isle := 0
+	for rp in t.road_paths:
+		for q in rp.path:
+			var p: Vector3 = q
+			best = minf(best, Vector2(p.x - valley.x, p.z - valley.z).length())
+			if Vector2(p.x + 1450.0, p.z - 1450.0).length() < 250.0:
+				on_isle += 1
+	print("hollow isle: a road comes within %.0f m of the valley floor's middle (%d road points on the isle)" % [best, on_isle])
+	_require(best < 30.0, "no road into the Hidden Valley (nearest %.0f m)" % best)
+
 func _check_bridges_clear() -> void:
 	var on := 0
 	for f in world.tree_fields:
@@ -399,6 +414,7 @@ func _report() -> void:
 	_check_roads()
 	_check_bridges_clear()
 	_check_quarry()
+	_check_hollow()
 	print("\n--- world smoke test ---")
 	print("frames            %d" % frames)
 	print("avg frame         %.2f ms (budget 16.67)" % avg)

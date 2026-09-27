@@ -26,8 +26,9 @@ static func mesh(def: Dictionary) -> ArrayMesh:
 		var sides := [1.0, -1.0] if bool(def.get("twin", false)) else [1.0]
 		g.box(Vector3(0.08, 0.1, 0.06), Transform3D(Basis(), top), head.darkened(0.3))
 		for side in sides:
-			# The blade: a wedge flaring out from the eye to the edge.
-			var blade := Transform3D(Basis(Vector3.FORWARD, -side * PI * 0.5), top + Vector3(side * 0.13, 0, 0))
+			# The blade: a wedge, thick at the eye and thinning to the edge.
+			# The wedge's thin side is its +Y, turned out to face away.
+			var blade := Transform3D(Basis(Vector3.FORWARD, side * PI * 0.5), top + Vector3(side * 0.13, 0, 0))
 			g.wedge(Vector3(0.2, 0.18, 0.035), blade, head)
 			g.box(Vector3(0.02, 0.2, 0.04), Transform3D(Basis(), top + Vector3(side * 0.225, 0, 0)), head.lightened(0.35), glow)
 	return g.commit()

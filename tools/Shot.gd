@@ -251,3 +251,12 @@ func shot_menu() -> void:
 	for i in 10:
 		await get_tree().process_frame
 	await snap("main_controls")
+
+func shot_axe() -> void:
+	var p := world.player
+	PlayerState.give_tool(&"steel_axe", false)
+	p.select_slot(PlayerState.hotbar.find(&"steel_axe"))
+	world.hud.visible = false
+	for i in 20:
+		await get_tree().process_frame
+	await snap("axe")

@@ -1315,7 +1315,7 @@ func test_gem_line() -> void:
 	var cutter := _inline(&"gem_cutter", Vector3(6, 0, 0))
 	await step(3)
 	# Small enough for the cutter's 0.8 x 0.6 mouth.
-	var stone := _feed(sander, &"gem_emerald", Solid.cube(0.12))
+	var stone := _feed(sander, &"gem_emerald", Solid.cube(0.012))
 	var volume := stone.volume()
 	var raw_price := Economy.price_of(stone.item_id, stone.dims)
 	stone = await _through(sander, stone)
@@ -1331,7 +1331,7 @@ func test_gem_line() -> void:
 	check(again != null, "the polished stone never came through the gem cutter")
 	check_eq(again.item_id, &"gem_emerald", "the cutter cut a polished stone")
 	# Rough goes under the cutting head instead.
-	var rough_em := _feed(cutter, &"gem_emerald", Solid.cube(0.12))
+	var rough_em := _feed(cutter, &"gem_emerald", Solid.cube(0.012))
 	var cut := await _through(cutter, rough_em)
 	check(cut != null, "the rough stone never came through the gem cutter")
 	check_eq(cut.item_id, &"jewel_emerald", "the cutter made %s" % cut.item_id)
@@ -1355,7 +1355,7 @@ func test_gem_line() -> void:
 	check(cut_better * 2 >= gems - 1 and cut_better * 2 <= gems + 1,
 		"%d of %d stones are worth more cut" % [cut_better, gems])
 	# The gem cutter leaves ore alone.
-	var ore := _feed(cutter, &"ore_iron", Solid.cube(0.2))
+	var ore := _feed(cutter, &"ore_iron", Solid.cube(0.012))
 	ore = await _through(cutter, ore)
 	check(ore != null, "ore did not ride through the cutter")
 	check_eq(ore.item_id, &"ore_iron", "the cutter changed ore")
@@ -5464,7 +5464,7 @@ func test_full_base() -> void:
 			for m in plot.inline_machines():
 				var wood := m.machine_def.accepts.has(&"wood")
 				var feed: StringName = &"wood_pine" if wood else (&"ingot_iron" if m.machine_def.id == &"refiner" else &"ore_iron")
-				var dims := Solid.cylinder(0.2, 0.17, randf_range(1.2, 2.6)) if wood else Solid.cube(0.25)
+				var dims := Solid.cylinder(0.2, 0.17, randf_range(1.2, 2.6)) if wood else Solid.cube(0.03)
 				# The planker only planks sanded logs.
 				if wood and m.machine_def.id == &"sawmill":
 					dims = Solid.with_finish(dims, &"sanded")

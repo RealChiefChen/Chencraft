@@ -39,9 +39,9 @@ func _ready() -> void:
 		[&"crusher", &"furnace", &"refiner"], Vector2(0.15, 0.4)))
 	# A stone is polished or cut, never both: one lane of each.
 	lines.append(_build_line("POLISH LINE", GEM_FEED, Vector3(0, 0, 0),
-		[&"gem_polisher"], Vector2(0.004, 0.018)))
+		[&"gem_polisher"], Vector2(0.003, 0.01)))
 	lines.append(_build_line("CUT LINE", GEM_FEED, Vector3(LANE_GAP, 0, 0),
-		[&"gem_cutter"], Vector2(0.004, 0.018)))
+		[&"gem_cutter"], Vector2(0.003, 0.01)))
 
 ## A concrete slab to stand it all on, level whatever the land does.
 func _build_slab() -> void:

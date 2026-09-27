@@ -382,7 +382,20 @@ func _in_mouth(item: LooseItem) -> bool:
 func fits_mouth(item: LooseItem) -> bool:
 	var across := item.extent_along(global_transform.basis.x) * 2.0
 	var up := item.extent_along(global_transform.basis.y) * 2.0
-	return across <= hole.x + 0.02 and up <= hole.y + 0.02
+	if across <= hole.x + 0.02 and up <= hole.y + 0.02:
+		return true
+	# A long piece coming in a little crooked is squared up by the mouth's
+	# sides as it enters: what counts is its own cross-section.
+	var long_axis := item.global_transform.basis.y.normalized()
+	if absf(long_axis.dot(global_transform.basis.z)) < cos(0.7):
+		return false
+	var size := Solid.bounds(item.dims)
+	if item.dims.get("shape", Solid.BOX) == Solid.CYLINDER:
+		var d := Solid.max_radius(item.dims) * 2.0
+		return d <= minf(hole.x, hole.y) + 0.02
+	var a := minf(size.x, size.z)
+	var b := maxf(size.x, size.z)
+	return (b <= hole.x + 0.02 and a <= hole.y + 0.02)
 
 ## Takes a piece off the belt into the machine. Returns true if it went in.
 func take(item: LooseItem) -> bool:

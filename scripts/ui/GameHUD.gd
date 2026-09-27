@@ -113,7 +113,7 @@ func setup(p_player: Player, p_plot: Plot, p_manager: LooseItemManager, p_world:
 		if GameData.sold_copy(id, 1):
 			return
 		var def := GameData.building(id)
-		toast("Unlocked %s - find it on the build bar [B]" % (def.display_name if def else String(id)), UITheme.ACCENT))
+		toast("Unlocked %s - find it in the build menu [B, then E]" % (def.display_name if def else String(id)), UITheme.ACCENT))
 	if quests != null:
 		quests.completed.connect(func(quest: Dictionary, reward: int):
 			show_banner("Order filled", "%s  +%s" % [quest.title, UIKit.money(reward)]))
@@ -721,7 +721,7 @@ func _process(delta: float) -> void:
 	_update_hints(building, driving)
 	_build_panel.visible = building
 	# The build bar takes the bottom of the screen; the messages step up over it.
-	var lift := 110.0 if building else 0.0
+	var lift := 60.0 if building else 0.0
 	_toasts.offset_bottom = -18.0 - lift
 	_toasts.offset_top = -330.0 - lift
 	if building:
@@ -911,57 +911,16 @@ func _update_build_bar() -> void:
 		_build_slots.visible = false
 		_build_sig = ""
 		return
-	_build_slots.visible = true
+	# No bar of buildings: the build menu is where things are chosen.
+	_build_slots.visible = false
 	var def := build_system.current()
-	_build_name.text = def.display_name if def != null else "Nothing in hand"
-	_build_blurb.text = def.blurb if def != null else "%s opens the build menu  ·  %s copies the building you aim at" % [
+	_build_name.text = ("%s  ·  %s" % [def.display_name, PlayerState.build_note(def)]) if def != null else "Nothing in hand"
+	_build_blurb.text = ("%s  ·  %s empties your hand" % [def.blurb, Controls.key(&"drop_one")]) if def != null \
+		else "%s opens the build menu  ·  %s copies the building you aim at" % [
 		Controls.key(&"build_menu"), Controls.key(&"pick_block")]
 	var err := build_system.last_error
 	_build_error.text = "" if err == "" or err == "no target" else err[0].to_upper() + err.substr(1)
 	_build_error.visible = _build_error.text != ""
-	var sig := "%d:%d:%d:%s:%s" % [build_system.index, build_system.palette.size(), Economy.money / 10,
-		str(PlayerState.spare), str(def)]
-	if sig == _build_sig:
-		return
-	_build_sig = sig
-	for child in _build_slots.get_children():
-		child.queue_free()
-	var count := build_system.palette.size()
-	if count == 0:
-		return
-	# A page of the palette at a time, with a marker when there is more.
-	var first := build_system.bar_first()
-	if first > 0:
-		_build_slots.add_child(UIKit.label("<", "Header"))
-	for i in range(first, mini(count, first + BuildSystem.BAR_SLOTS)):
-		_build_slots.add_child(_slot(build_system.palette[i], i - first + 1, i == build_system.index))
-	if first + BuildSystem.BAR_SLOTS < count:
-		_build_slots.add_child(UIKit.label(">", "Header"))
-	_ignore_mouse(_build_slots)
-
-func _slot(def: BuildingDef, number: int, selected: bool) -> Control:
-	var card := PanelContainer.new()
-	var style := UITheme.box(Color(0.10, 0.13, 0.11, 0.92) if selected else UITheme.PANEL, 10,
-		Vector4(10, 8, 10, 8), UITheme.ACCENT if selected else UITheme.EDGE, 2 if selected else 1)
-	card.add_theme_stylebox_override("panel", style)
-	card.custom_minimum_size = Vector2(128, 0)
-	var col := UIKit.vbox(2)
-	card.add_child(col)
-	var top := UIKit.hbox(4)
-	top.add_child(UIKit.keycap(str(number), 10))
-	top.add_child(UIKit.spacer())
-	top.add_child(UIKit.label("%dx%dx%d" % [def.size.x, def.size.y, def.size.z], "Small", 11))
-	col.add_child(top)
-	var name_label := UIKit.label(def.display_name, "", 14,
-		UITheme.ACCENT if selected else UITheme.INK)
-	name_label.add_theme_font_override("font", UITheme.font(600))
-	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	name_label.custom_minimum_size.x = 108
-	col.add_child(name_label)
-	var note := PlayerState.build_note(def)
-	col.add_child(UIKit.label(UIKit.money(def.cost) if note.begins_with("$") else note, "", 14,
-		UITheme.GOOD if PlayerState.can_build(def) else UITheme.BAD))
-	return card
 
 func _update_drive() -> void:
 	var truck := player.vehicle as Hauler

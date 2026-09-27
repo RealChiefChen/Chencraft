@@ -35,11 +35,12 @@ const GROUPS := [
 		[[&"primary"], "Place the chosen building"],
 		[[&"secondary"], "Remove the building you aim at (empty-handed: put down what you hold)"],
 		[[&"pick_block"], "Copy the building you aim at: same thing, size and turn"],
+		[[&"drop_one"], "Empty your hand"],
 		[[&"wheel_up"], "Next / previous building"],
 		[[&"rotate_x", &"rotate_y", &"rotate_z"], "Rotate around each axis"],
 		[[&"edit_select"], "Select the building you aim at to edit it (again: done)"],
 		[[&"slot_1", "/", &"slot_3"], "While editing: move, scale or rotate handles"],
-		[[&"primary"], "While editing: aim at a handle, hold and move the mouse to drag it"],
+		[[&"primary"], "While editing: aim at a handle and hold; it follows the crosshair as you look"],
 		[[&"remove_selected"], "While editing: remove it"],
 		[[&"pause"], "Leave build mode"],
 	]},
@@ -123,7 +124,7 @@ static func hints_for(state: String) -> Array:
 	match state:
 		"build":
 			rows = [[[&"build_menu"], "Build menu"], [[&"primary"], "Place"], [[&"secondary"], "Remove"],
-				[[&"pick_block"], "Copy"], [[&"edit_select"], "Edit what you aim at"],
+				[[&"pick_block"], "Copy"], [[&"drop_one"], "Empty hand"], [[&"edit_select"], "Edit what you aim at"],
 				[[&"rotate_x", &"rotate_y", &"rotate_z"], "Rotate"], [[&"sprint", "/", &"lower"], "Up / down"], [[&"build_mode"], "Done"]]
 		"drive":
 			rows = [[[&"move_forward", &"move_back"], "Drive"], [[&"jump"], "Brake"], [[&"unload"], "Unload"],

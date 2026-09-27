@@ -321,8 +321,10 @@ func _build(e: Dictionary) -> Node:
 	if def == null:
 		return null
 	var size := Vector3i(int(e.size[0]), int(e.size[1]), int(e.size[2]))
-	if size != def.size:
-		def = Plot.resized(def, size)
+	var tr: Array = e.get("trim", [0, 0, 0])
+	var trim := Vector3i(int(tr[0]), int(tr[1]), int(tr[2]))
+	if size != def.size or trim != Vector3i.ZERO:
+		def = Plot.resized(def, size, trim)
 	var r: Array = e.rot
 	var node := plot.place(def, Vector2i(int(e.cell[0]), int(e.cell[1])), Vector3i(int(r[0]), int(r[1]), int(r[2])),
 		false, float(e.get("lift", 0.0)))
@@ -433,10 +435,11 @@ func _reshape(id: int, node: Node3D, g: Array) -> Node3D:
 	var rot := Vector3i(int(g[2]), int(g[3]), int(g[4]))
 	var size := Vector3i(int(g[5]), int(g[6]), int(g[7]))
 	var lift := float(g[8])
+	var trim := Vector3i(int(g[9]), int(g[10]), int(g[11])) if g.size() > 11 else Vector3i.ZERO
 	if rec.cell == cell and rec.rot == rot and (rec.def as BuildingDef).size == size \
-			and is_equal_approx(float(rec.get("lift", 0.0)), lift):
+			and (rec.def as BuildingDef).trim == trim and is_equal_approx(float(rec.get("lift", 0.0)), lift):
 		return node
-	plot.edit(index, cell, rot, size, lift)
+	plot.edit(index, cell, rot, size, lift, trim)
 	var fresh: Node3D = plot.placed[index].node
 	if fresh != null and fresh != node:
 		_solid_picture(fresh)

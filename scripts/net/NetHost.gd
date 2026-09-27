@@ -154,8 +154,10 @@ func _guest_build(ev: Dictionary) -> String:
 			if def == null:
 				return "unknown building"
 			var sz: Array = ev.get("size", [])
-			if sz.size() == 3 and Vector3i(int(sz[0]), int(sz[1]), int(sz[2])) != def.size:
-				def = Plot.resized(def, Vector3i(int(sz[0]), int(sz[1]), int(sz[2])))
+			var tr: Array = ev.get("trim", [0, 0, 0])
+			var trim := Vector3i(int(tr[0]), int(tr[1]), int(tr[2]))
+			if sz.size() == 3 and (Vector3i(int(sz[0]), int(sz[1]), int(sz[2])) != def.size or trim != Vector3i.ZERO):
+				def = Plot.resized(def, Vector3i(int(sz[0]), int(sz[1]), int(sz[2])), trim)
 			var c: Array = ev.cell
 			var r: Array = ev.rot
 			var cell := Vector2i(int(c[0]), int(c[1]))
@@ -175,8 +177,9 @@ func _guest_build(ev: Dictionary) -> String:
 			var c: Array = ev.cell
 			var r: Array = ev.rot
 			var sz: Array = ev.size
+			var tr: Array = ev.get("trim", [0, 0, 0])
 			return plot.edit(plot.placed.find(rec), Vector2i(int(c[0]), int(c[1])), Vector3i(int(r[0]), int(r[1]), int(r[2])),
-				Vector3i(int(sz[0]), int(sz[1]), int(sz[2])), float(ev.get("lift", 0.0)))
+				Vector3i(int(sz[0]), int(sz[1]), int(sz[2])), float(ev.get("lift", 0.0)), Vector3i(int(tr[0]), int(tr[1]), int(tr[2])))
 	return ""
 
 ## A truck a guest is driving was recovered here: recover it on their machine,
@@ -292,6 +295,7 @@ func _spawn_entry(id: int, thing: Variant, kind: String) -> Dictionary:
 			e.def = String(def.id)
 			e.tier = def.tier
 			e.size = [def.size.x, def.size.y, def.size.z]
+			e.trim = [def.trim.x, def.trim.y, def.trim.z]
 			e.cell = [rec.cell.x, rec.cell.y]
 			var r: Vector3i = rec.rot
 			e.rot = [r.x, r.y, r.z]
@@ -332,7 +336,7 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 			var r: Vector3i = rec.rot
 			# Where it stands and how big: a move or resize shows up here.
 			var s := {"g": [rec.cell.x, rec.cell.y, r.x, r.y, r.z, def.size.x, def.size.y, def.size.z,
-				float(rec.get("lift", 0.0))]}
+				float(rec.get("lift", 0.0)), def.trim.x, def.trim.y, def.trim.z]}
 			var run: Variant = node.get("running")
 			if run != null:
 				s.run = bool(run)

@@ -176,12 +176,27 @@ func world_to_cell(world_pos: Vector3) -> Vector2i:
 
 ## Where a building whose corner is on grid step `cell` stands: the middle of
 ## its footprint, on the pad.
-func cell_to_world(cell: Vector2i, size: Vector3i, rot: Variant) -> Vector3:
-	var fp := oriented_size(size, _as_rot(rot))
+func cell_to_world(cell: Vector2i, size: Vector3i, rot: Variant, trim: Vector3i = Vector3i.ZERO) -> Vector3:
+	var fp := oriented_extent(Vector3(size) * CELL - Vector3(trim) * SNAP, _as_rot(rot))
 	return to_global(Vector3(
-		float(cell.x) * SNAP + float(fp.x) * CELL * 0.5,
+		float(cell.x) * SNAP + fp.x * 0.5,
 		0.0,
-		float(cell.y) * SNAP + float(fp.z) * CELL * 0.5))
+		float(cell.y) * SNAP + fp.z * 0.5))
+
+## A size in metres after the same quarter turns as `oriented_size`.
+static func oriented_extent(v: Vector3, rot: Vector3i) -> Vector3:
+	var out := v
+	for i in posmod(rot.x, 4):
+		out = Vector3(out.x, out.z, out.y)
+	for i in posmod(rot.y, 4):
+		out = Vector3(out.z, out.y, out.x)
+	for i in posmod(rot.z, 4):
+		out = Vector3(out.y, out.x, out.z)
+	return out
+
+## Whether a building can be sized to the fine grid rather than whole metres.
+static func fine_scalable(def: BuildingDef) -> bool:
+	return def.kind == &"schematic" or (def.kind == &"conveyor" and (def.belt == &"straight" or def.belt == &"align"))
 
 ## A footprint after quarter turns about each axis. Rotation is in 90 degree
 ## steps per axis, so a rotated box still occupies whole cells and the
@@ -301,7 +316,7 @@ func _spawn_node(def: BuildingDef, cell: Vector2i, orientation: Vector3i, lift: 
 	var node := _instantiate(def)
 	if node == null:
 		return null
-	node.position = to_local(cell_to_world(cell, def.size, orientation)) + Vector3(0, lift, 0)
+	node.position = to_local(cell_to_world(cell, def.size, orientation, def.trim)) + Vector3(0, lift, 0)
 	node.basis = orientation_basis(orientation)
 	add_child(node)
 	# The models speak for themselves now; a name over each is optional.
@@ -333,17 +348,18 @@ static func size_limits(def: BuildingDef) -> Array:
 	return []
 
 ## `def` at another size. The price stays the same: resizing never costs.
-static func resized(def: BuildingDef, size: Vector3i) -> BuildingDef:
+static func resized(def: BuildingDef, size: Vector3i, trim: Vector3i = Vector3i.ZERO) -> BuildingDef:
 	var base := GameData.building(def.id)
-	if base == null or size == base.size:
+	if base == null or (size == base.size and trim == Vector3i.ZERO):
 		return def if base == null or def.tier != 1 else base
 	var out: BuildingDef = base.duplicate()
 	out.size = size
+	out.trim = trim.clamp(Vector3i.ZERO, Vector3i.ONE * (SUB - 1)) if fine_scalable(base) else Vector3i.ZERO
 	out.tier = def.tier
 	out.display_name = def.display_name
 	if base.kind == &"conveyor" and base.rise > 0.0:
 		# A ramp keeps its slope: longer, it climbs higher, and stands taller.
-		out.rise = base.rise * float(size.z) / float(base.size.z)
+		out.rise = base.rise * out.extent().z / base.extent().z
 		out.size.y = maxi(base.size.y, int(ceil(out.rise)) + 1)
 	# Resizing is free: a building costs its price at any size.
 	out.cost = base.cost
@@ -352,12 +368,13 @@ static func resized(def: BuildingDef, size: Vector3i) -> BuildingDef:
 ## Moves, turns, resizes or lifts a building that is already placed. Returns
 ## "" or why not; on failure nothing changes. What the building was holding
 ## (a bin's stock, a belt's running state) comes with it.
-func edit(index: int, cell: Vector2i, rot: Vector3i, size: Vector3i, lift: float) -> String:
+func edit(index: int, cell: Vector2i, rot: Vector3i, size: Vector3i, lift: float,
+		trim: Vector3i = Vector3i.ZERO) -> String:
 	if index < 0 or index >= placed.size():
 		return "nothing selected"
 	var rec: Dictionary = placed[index]
 	var def: BuildingDef = rec.def
-	var new_def := def if size == def.size else resized(def, size)
+	var new_def := def if size == def.size and trim == def.trim else resized(def, size, trim)
 	var err := placement_error(new_def, cell, rot, false, index)
 	if err != "":
 		return err
@@ -462,10 +479,10 @@ func _instantiate(def: BuildingDef) -> Node3D:
 					c = ConveyorAlign.new()
 				_:
 					c = Conveyor.new()
-			c.length = float(def.size.z) * CELL
+			c.length = def.extent().z
 			# A borderless belt runs right to the edge of its grid square, so
 			# two laid side by side make one wide deck with no gap.
-			c.width = float(def.size.x) * CELL * (0.9 if def.railed else 1.0)
+			c.width = def.extent().x * (0.9 if def.railed else 1.0)
 			if def.belt == &"bend":
 				c.width = 0.9
 			c.speed = def.speed
@@ -637,6 +654,9 @@ func to_dict() -> Dictionary:
 		if base != null and (rec.def as BuildingDef).size != base.size:
 			var sz: Vector3i = (rec.def as BuildingDef).size
 			entry["size"] = [sz.x, sz.y, sz.z]
+		var tr: Vector3i = (rec.def as BuildingDef).trim
+		if tr != Vector3i.ZERO:
+			entry["trim"] = [tr.x, tr.y, tr.z]
 		if (rec.def as BuildingDef).tier != 1:
 			entry["tier"] = (rec.def as BuildingDef).tier
 		if float(rec.get("lift", 0.0)) != 0.0:
@@ -664,9 +684,10 @@ func from_dict(d: Dictionary) -> void:
 		if entry.has("rot"):
 			var r: Array = entry["rot"]
 			orientation = Vector3i(int(r[0]), int(r[1]), int(r[2]))
-		if entry.has("size"):
-			var sz: Array = entry["size"]
-			def = resized(def, Vector3i(int(sz[0]), int(sz[1]), int(sz[2])))
+		if entry.has("size") or entry.has("trim"):
+			var sz: Array = entry.get("size", [def.size.x, def.size.y, def.size.z])
+			var tr: Array = entry.get("trim", [0, 0, 0])
+			def = resized(def, Vector3i(int(sz[0]), int(sz[1]), int(sz[2])), Vector3i(int(tr[0]), int(tr[1]), int(tr[2])))
 		var node := place(def, cell, orientation, false, float(entry.get("lift", 0.0)))
 		if node != null and entry.has("state") and node.has_method("from_dict"):
 			# Deferred: the node's _ready must run before its state is restored.

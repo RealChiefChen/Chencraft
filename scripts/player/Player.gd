@@ -394,13 +394,15 @@ func _on_key(event: InputEvent) -> void:
 		if Controls.pressed(event, &"build_menu"):
 			build_system.toggle_menu()
 			return
-	# The number row picks off the build bar, or the hotbar on foot.
+	# The number row picks off the hotbar on foot; in build mode the build
+	# menu is where things are chosen, and Q empties your hand.
 	var slot := Controls.slot_pressed(event)
 	if slot >= 0:
-		if building:
-			build_system.select_slot(slot)
-		elif not driving():
+		if not building and not driving():
 			select_slot(slot)
+		return
+	if building and Controls.pressed(event, &"drop_one"):
+		build_system.clear_choice()
 		return
 	if Controls.pressed(event, &"build_mode"):
 		if build_system != null:

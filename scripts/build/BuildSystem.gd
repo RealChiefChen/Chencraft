@@ -59,9 +59,6 @@ var _drag: Dictionary = {}
 ## Where a handle drag has got to on screen: it starts at the crosshair and
 ## follows the mouse from there.
 var _cursor: Vector2 = Vector2.ZERO
-## Mouse look is held off for a moment after a handle is let go.
-var _quiet_until_ms: int = 0
-const QUIET_AFTER_DRAG_MS := 120
 
 func setup(p_plot: Plot, p_camera: Camera3D, p_player: Node3D) -> void:
 	plot = p_plot
@@ -169,9 +166,12 @@ func clear_choice() -> void:
 	selection_changed.emit(null)
 
 ## Takes `def` in hand - a palette entry, or a copy of something placed.
+## It comes upright, facing the way the last one did: a tip onto its side is
+## for the building it was given to, not everything after it.
 func choose(def: BuildingDef) -> void:
 	_picked = null
 	index = -1
+	rot = Vector3i(0, rot.y, 0)
 	if def == null:
 		selection_changed.emit(null)
 		return
@@ -338,6 +338,8 @@ func _process(delta: float) -> void:
 			deselect()
 		elif _drag.is_empty():
 			_gizmo.hover(_gizmo.pick(camera, _centre()))
+		else:
+			_drag_to(_centre())
 		return
 	_update_ghost()
 
@@ -387,9 +389,8 @@ func selected_record() -> Dictionary:
 ## The world box a record occupies.
 func _record_box(rec: Dictionary) -> Array:
 	var def: BuildingDef = rec.def
-	var fp := Plot.oriented_size(def.size, rec.rot)
-	var size := Vector3(float(fp.x), float(fp.y), float(fp.z)) * Plot.CELL
-	var base := plot.cell_to_world(rec.cell, def.size, rec.rot)
+	var size := Plot.oriented_extent(def.extent(), rec.rot)
+	var base := plot.cell_to_world(rec.cell, def.size, rec.rot, def.trim)
 	return [base + Vector3(0, size.y * 0.5 + float(rec.get("lift", 0.0)), 0), size * 0.5]
 
 func _refresh_gizmo() -> void:
@@ -403,8 +404,8 @@ func _refresh_gizmo() -> void:
 	_gizmo.show_on(box[0], box[1], mode)
 
 ## Mouse input while editing. Returns true when it was used. The mouse stays
-## captured: the crosshair picks a handle, and while a handle is held the
-## mouse drags it (the view holds still) - otherwise the mouse looks about.
+## captured and always looks about: the crosshair picks a handle, and while
+## one is held it follows the crosshair, the camera turning with it.
 func edit_input(event: InputEvent) -> bool:
 	if not editing():
 		return false
@@ -417,24 +418,12 @@ func edit_input(event: InputEvent) -> bool:
 				_cursor = _centre()
 				_press(_cursor)
 			else:
-				if not _drag.is_empty():
-					# The mouse moved all through the drag without turning the
-					# view; what the system hands over as it is let go (a
-					# catch-up of all that motion, on some platforms) must not
-					# swing the camera round.
-					_quiet_until_ms = Time.get_ticks_msec() + QUIET_AFTER_DRAG_MS
 				_drag = {}
 				_refresh_gizmo()
 			return true
 		return false
-	if event is InputEventMouseMotion and Time.get_ticks_msec() < _quiet_until_ms:
-		return true
-	if event is InputEventMouseMotion and not _drag.is_empty():
-		var mm := event as InputEventMouseMotion
-		var view := get_viewport().get_visible_rect().size
-		_cursor = (_cursor + mm.relative).clamp(Vector2.ZERO, view)
-		_drag_to(_cursor)
-		return true
+	# The mouse keeps looking about through a drag: the crosshair is the hand,
+	# and the handle follows it (see _process).
 	return false
 
 ## The crosshair, in screen space.
@@ -452,6 +441,7 @@ func _press(mouse: Vector2) -> void:
 		var h: Dictionary = _gizmo.handles[handle]
 		var axis: Vector3 = BuildGizmo.AXES[h.axis]
 		_drag = {"handle": h, "cell": rec.cell, "rot": rec.rot, "size": (rec.def as BuildingDef).size,
+			"trim": (rec.def as BuildingDef).trim,
 			"lift": float(rec.get("lift", 0.0)), "centre": _gizmo.centre,
 			"t0": BuildGizmo.along_axis(h.point, axis, ray[0], ray[1]), "steps": 0}
 		return
@@ -480,6 +470,7 @@ func _drag_to(mouse: Vector2) -> void:
 	var cell: Vector2i = d.cell
 	var rot: Vector3i = d.rot
 	var size: Vector3i = d.size
+	var trim: Vector3i = d.trim
 	var lift: float = d.lift
 	match edit_mode:
 		BuildGizmo.Mode.MOVE:
@@ -495,17 +486,25 @@ func _drag_to(mouse: Vector2) -> void:
 			if limits.is_empty():
 				return
 			var grow: float = (BuildGizmo.along_axis(h.point, axis, ray[0], ray[1]) - float(d.t0)) * float(h.sign)
-			steps = int(round(grow / Plot.CELL))
+			# Plans and belts size to the fine grid; the rest in whole metres.
+			var fine := Plot.fine_scalable(selected_record().def)
+			var unit := Plot.SNAP if fine else Plot.CELL
+			var pull := int(round(grow / unit)) * (1 if fine else Plot.SUB)
 			# Which of the building's own axes lies along this world axis.
 			var perm := Plot.oriented_size(Vector3i(0, 1, 2) + Vector3i.ONE, rot) - Vector3i.ONE
 			var own: int = perm[axis_i]
+			var was_steps := size[own] * Plot.SUB - trim[own]
+			var now_steps := clampi(was_steps + pull, (limits[0] as Vector3i)[own] * Plot.SUB, (limits[1] as Vector3i)[own] * Plot.SUB)
+			steps = now_steps - was_steps
 			var new_size := size
-			new_size[own] = clampi(size[own] + steps, (limits[0] as Vector3i)[own], (limits[1] as Vector3i)[own])
-			steps = new_size[own] - size[own]
+			var new_trim := trim
+			new_size[own] = ceili(float(now_steps) / float(Plot.SUB))
+			new_trim[own] = new_size[own] * Plot.SUB - now_steps
 			size = new_size
-			# Grown from the minus side, the building's corner cell moves too.
+			trim = new_trim
+			# Grown from the minus side, the building's corner moves too.
 			if h.sign < 0.0 and axis_i != 1:
-				cell += Vector2i(-steps * Plot.SUB, 0) if axis_i == 0 else Vector2i(0, -steps * Plot.SUB)
+				cell += Vector2i(-steps, 0) if axis_i == 0 else Vector2i(0, -steps)
 		BuildGizmo.Mode.ROTATE:
 			var start: Vector3 = h.point
 			var angle := BuildGizmo.angle_about(d.centre, axis, start, ray[0], ray[1])
@@ -523,16 +522,18 @@ func _drag_to(mouse: Vector2) -> void:
 	d.steps = steps
 	var rec := selected_record()
 	if rec.cell == cell and rec.rot == rot and (rec.def as BuildingDef).size == size \
-			and is_equal_approx(float(rec.get("lift", 0.0)), lift):
+			and (rec.def as BuildingDef).trim == trim and is_equal_approx(float(rec.get("lift", 0.0)), lift):
 		return
 	if _guest():
-		var new_def: BuildingDef = rec.def if size == (rec.def as BuildingDef).size else Plot.resized(rec.def, size)
+		var same: bool = size == (rec.def as BuildingDef).size and trim == (rec.def as BuildingDef).trim
+		var new_def: BuildingDef = rec.def if same else Plot.resized(rec.def, size, trim)
 		edit_error = plot.placement_error(new_def, cell, rot, false, selected)
 		if edit_error == "":
 			_ask_host({"op": "edit", "id": _net_id(rec.node), "cell": [cell.x, cell.y],
-				"rot": [rot.x, rot.y, rot.z], "size": [size.x, size.y, size.z], "lift": lift})
+				"rot": [rot.x, rot.y, rot.z], "size": [size.x, size.y, size.z], "lift": lift,
+				"trim": [trim.x, trim.y, trim.z]})
 		return
-	edit_error = plot.edit(selected, cell, rot, size, lift)
+	edit_error = plot.edit(selected, cell, rot, size, lift, trim)
 	_refresh_gizmo_box()
 
 ## Moves the selection box with the building without rebuilding the handles
@@ -600,8 +601,8 @@ func _update_ghost() -> void:
 	target_cell = Vector2i(cursor.x - fp.x * Plot.SUB / 2, cursor.y - fp.z * Plot.SUB / 2)
 	has_target = true
 
-	var size := Vector3(float(fp.x), float(def.size.y), float(fp.z)) * Plot.CELL
-	var base := plot.cell_to_world(target_cell, def.size, rot)
+	var size := Plot.oriented_extent(def.extent(), rot)
+	var base := plot.cell_to_world(target_cell, def.size, rot, def.trim)
 	(_ghost.mesh as BoxMesh).size = size
 	_ghost.global_position = base + Vector3(0, size.y * 0.5, 0)
 	_ghost.rotation = Vector3.ZERO
@@ -627,7 +628,8 @@ func try_place() -> bool:
 		if plot.placement_error(def, target_cell, rot) != "":
 			return false
 		_ask_host({"op": "place", "def": String(def.id), "tier": def.tier,
-			"size": [def.size.x, def.size.y, def.size.z], "cell": [target_cell.x, target_cell.y],
+			"size": [def.size.x, def.size.y, def.size.z], "trim": [def.trim.x, def.trim.y, def.trim.z],
+			"cell": [target_cell.x, target_cell.y],
 			"rot": [rot.x, rot.y, rot.z]})
 		return true
 	var node := plot.place(def, target_cell, rot)

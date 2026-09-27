@@ -28,6 +28,12 @@ extends Resource
 @export var tier: int = 1
 ## Taken out of the game for now: not sold, not in the build bar.
 @export var hidden: bool = false
+## How far short of whole cells it is, in fine grid steps along each of its
+## own axes: plans and belts can be sized to the fine grid, not just metres.
+@export var trim: Vector3i = Vector3i.ZERO
+## A plan's shape: "box", or "wedge" - a ramp, a right triangular prism
+## rising toward its front (-Z).
+@export var shape: StringName = &"box"
 
 static func from_dict(d: Dictionary) -> BuildingDef:
 	var b := BuildingDef.new()
@@ -46,8 +52,17 @@ static func from_dict(d: Dictionary) -> BuildingDef:
 	b.belt = StringName(d.get("belt", "straight"))
 	b.turn = float(d.get("turn", -1.0))
 	b.hidden = bool(d.get("hidden", false))
+	b.shape = StringName(d.get("shape", "box"))
 	b.vehicle = StringName(d.get("vehicle", "hauler" if b.kind == &"pad" else ""))
 	return b
 
 func footprint_world(cell_size: float) -> Vector3:
-	return Vector3(float(size.x), float(size.y), float(size.z)) * cell_size
+	return Vector3(float(size.x), float(size.y), float(size.z)) * cell_size - Vector3(trim) * Plot.SNAP * (cell_size / Plot.CELL)
+
+## Its real size in metres, fine trim and all.
+func extent() -> Vector3:
+	return footprint_world(Plot.CELL)
+
+## Its size in fine grid steps along each of its own axes.
+func steps() -> Vector3i:
+	return size * Plot.SUB - trim

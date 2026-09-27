@@ -274,6 +274,19 @@
       "blurb": "A plan. Fill it with material and it turns solid."
     },
     {
+      "id": "schematic_ramp",
+      "display_name": "Plan: Ramp",
+      "size": [
+        2,
+        1,
+        3
+      ],
+      "cost": 15,
+      "kind": "schematic",
+      "shape": "wedge",
+      "blurb": "A ramp: a wedge rising toward its front. Fill it with material and it turns solid."
+    },
+    {
       "id": "vehicle_pad",
       "display_name": "Hauler Pad",
       "kind": "pad",

@@ -57,7 +57,38 @@ static var MATERIAL_SHARE: float = Balance.num("build.material_share", 0.1)
 
 ## How much material this shape takes to finish.
 func capacity_m3() -> float:
-	return _size.x * _size.y * _size.z * MATERIAL_SHARE
+	return _size.x * _size.y * _size.z * MATERIAL_SHARE * (0.5 if _wedge() else 1.0)
+
+func _wedge() -> bool:
+	return def != null and def.shape == &"wedge"
+
+## The shape's outline mesh at `size`: a box, or a ramp high at its front.
+func _mesh_for(size: Vector3) -> Mesh:
+	if _wedge():
+		var p := PrismMesh.new()
+		# The triangle is drawn across X and pushed out along Z; turned a
+		# quarter (see _mesh_basis) it runs along Z, high at -Z.
+		p.size = Vector3(size.z, size.y, size.x)
+		p.left_to_right = 1.0
+		return p
+	var b := BoxMesh.new()
+	b.size = size
+	return b
+
+func _mesh_basis() -> Basis:
+	return Basis(Vector3.UP, PI * 0.5) if _wedge() else Basis()
+
+func _collision_shape(size: Vector3) -> Shape3D:
+	if _wedge():
+		var h := size * 0.5
+		var c := ConvexPolygonShape3D.new()
+		c.points = PackedVector3Array([
+			Vector3(-h.x, -h.y, -h.z), Vector3(h.x, -h.y, -h.z), Vector3(-h.x, -h.y, h.z), Vector3(h.x, -h.y, h.z),
+			Vector3(-h.x, h.y, -h.z), Vector3(h.x, h.y, -h.z)])
+		return c
+	var box := BoxShape3D.new()
+	box.size = size
+	return box
 
 func remaining_m3() -> float:
 	return maxf(0.0, capacity_m3() - filled_m3)
@@ -176,9 +207,7 @@ func _build() -> void:
 	_body.collision_layer = Layers.MACHINE
 	_body.collision_mask = Layers.MASK_MACHINE
 	_shape = CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = _size
-	_shape.shape = box
+	_shape.shape = _collision_shape(_size)
 	_shape.position = Vector3(0, _size.y * 0.5, 0)
 	_shape.disabled = true        # a plan does not collide
 	_body.add_child(_shape)
@@ -186,10 +215,8 @@ func _build() -> void:
 
 	# The outline of what is planned.
 	_ghost = MeshInstance3D.new()
-	var gm := BoxMesh.new()
-	gm.size = _size
-	_ghost.mesh = gm
-	_ghost.position = Vector3(0, _size.y * 0.5, 0)
+	_ghost.mesh = _mesh_for(_size)
+	_ghost.transform = Transform3D(_mesh_basis(), Vector3(0, _size.y * 0.5, 0))
 	var gmat := StandardMaterial3D.new()
 	gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	gmat.albedo_color = Color(0.55, 0.75, 1.0, 0.22)
@@ -199,7 +226,7 @@ func _build() -> void:
 
 	# How full it is, drawn as the material rising inside the outline.
 	_fill = MeshInstance3D.new()
-	_fill.mesh = BoxMesh.new()
+	_fill.mesh = _mesh_for(_size)
 	_fill.visible = false
 	add_child(_fill)
 
@@ -222,8 +249,8 @@ func _refresh() -> void:
 		return
 	_fill.visible = true
 	var height: float = _size.y * fraction
-	(_fill.mesh as BoxMesh).size = Vector3(_size.x, height, _size.z)
-	_fill.position = Vector3(0, height * 0.5, 0)
+	_fill.mesh = _mesh_for(Vector3(_size.x, height, _size.z))
+	_fill.transform = Transform3D(_mesh_basis(), Vector3(0, height * 0.5, 0))
 	_apply_material(_fill, fraction)
 
 func _apply_material(mesh: MeshInstance3D, fraction: float) -> void:

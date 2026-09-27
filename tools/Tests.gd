@@ -124,6 +124,8 @@ func _run_all() -> void:
 	await _test(&"a piece off the rack can be thrown", test_throw)
 	await _test(&"the player walks up a step but not a wall", test_step_up)
 	await _test(&"a loader's attachment is picked at its pad", test_loader_pad_attachment)
+	await _test(&"plans and belts size to the fine grid", test_fine_scaling)
+	await _test(&"a ramp plan fills into a solid wedge", test_ramp_plan)
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
@@ -4606,6 +4608,60 @@ func test_load_fixed_while_driven() -> void:
 ## Spec: trucks with a hitch tow trailers. A trailer is hooked on at the
 ## ball, follows the truck round corners by itself, brakes when it brakes,
 ## stays upright, and stands on its leg once let go.
+func test_ramp_plan() -> void:
+	_setup()
+	var def := GameData.building(&"schematic_ramp")
+	check(def != null and def.shape == &"wedge", "no ramp plan")
+	var ramp := plot.place(def, Vector2i(0, 0), Vector3i.ZERO, false) as Schematic
+	await step(2)
+	var e := def.extent()
+	check(is_equal_approx(ramp.capacity_m3(), e.x * e.y * e.z * Schematic.MATERIAL_SHARE * 0.5), "a ramp takes a box's worth")
+	var piece := spawn(&"wood_pine", ramp.global_position + Vector3(0, 3, 0), Solid.cube(ramp.capacity_m3() + 0.01))
+	await step(2)
+	check(piece != null and ramp.accept_item(piece), "the ramp would not take wood")
+	check(ramp.solid, "the ramp is not solid when full")
+	await step(3)
+	var space := world.get_world_3d().direct_space_state
+	var heights := []
+	for dz in [-e.z * 0.4, e.z * 0.4]:
+		var top: Vector3 = ramp.global_position + ramp.global_transform.basis.z * dz + Vector3(0, 5, 0)
+		var q := PhysicsRayQueryParameters3D.create(top, top + Vector3.DOWN * 10.0, Layers.MACHINE)
+		var hit := space.intersect_ray(q)
+		heights.append(float(hit.position.y) if not hit.is_empty() else -99.0)
+	check(heights[0] > heights[1] + 0.3, "the ramp is not high at its front (%.2f vs %.2f)" % heights)
+	done()
+
+func test_fine_scaling() -> void:
+	_setup()
+	var schem: BuildingDef = null
+	for d: BuildingDef in GameData.buildings.values():
+		if d.kind == &"schematic" and not d.hidden:
+			schem = d
+			break
+	check(schem != null and Plot.fine_scalable(schem), "no plan to size")
+	var node := plot.place(schem, Vector2i(0, 0), Vector3i.ZERO, false) as Schematic
+	await step(2)
+	var index := plot.placed.size() - 1
+	# 1.75 m wide: two cells, one fine step short.
+	check_eq(plot.edit(index, Vector2i(0, 0), Vector3i.ZERO, Vector3i(2, 1, 1), 0.0, Vector3i(1, 0, 0)), "", "fine resize refused")
+	await step(2)
+	var def: BuildingDef = plot.placed[index].def
+	check(is_equal_approx(def.extent().x, 2.0 - Plot.SNAP), "the plan is %.2f m wide, not %.2f" % [def.extent().x, 2.0 - Plot.SNAP])
+	var saved := plot.to_dict()
+	plot.from_dict(saved)
+	await step(2)
+	var back: BuildingDef = plot.placed[plot.placed.size() - 1].def
+	check_eq(back.trim, Vector3i(1, 0, 0), "the fine size did not come back from the save")
+	# A belt too.
+	var belt := plot.place(GameData.building(&"conveyor"), Vector2i(0, 16), Vector3i.ZERO, false) as Conveyor
+	await step(2)
+	var bi := plot.placed.size() - 1
+	check_eq(plot.edit(bi, Vector2i(0, 16), Vector3i.ZERO, Vector3i(1, 1, 4), 0.0, Vector3i(0, 0, 2)), "", "belt resize refused")
+	await step(2)
+	var nb := plot.placed[bi].node as Conveyor
+	check(nb != null and is_equal_approx(nb.length, 4.0 - 2.0 * Plot.SNAP), "the belt is %.2f m long" % (nb.length if nb != null else -1.0))
+	done()
+
 func test_loader_pad_attachment() -> void:
 	_setup()
 	plot.vehicle_host = world

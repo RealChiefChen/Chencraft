@@ -462,7 +462,8 @@ func _on_driving_key(event: InputEvent) -> bool:
 ## Puts a rig's outriggers out, locking the truck where it stands, or brings
 ## them in.
 func toggle_outriggers(r: VehicleRig) -> String:
-	if r.operating or r.folding:
+	if not r.has_crane():
+		return "only a crane truck has outriggers"	if r.operating or r.folding:
 		return "the crane is working on them - stow it first [R]"
 	r.set_outriggers(not r.outriggers_down)
 	return "outriggers down - the truck is locked in place" if r.outriggers_down else "outriggers up"

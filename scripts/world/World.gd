@@ -2050,8 +2050,8 @@ func handle_key(p: Player, event: InputEvent) -> void:
 			_tell(p, p.hook_winch(wv.rig))
 	elif Controls.pressed(event, &"outriggers") and not p.driving():
 		var ov := vehicle_at_hand(10.0, p)
-		if ov == null or ov.rig == null or _distance_to(ov, p) > 10.0:
-			_tell(p, "stand by a truck with outriggers to put them out")
+		if ov == null or ov.rig == null or not ov.rig.has_crane() or _distance_to(ov, p) > 10.0:
+			_tell(p, "stand by a crane truck to put its outriggers out")
 		else:
 			_tell(p, p.toggle_outriggers(ov.rig))
 	elif Controls.pressed(event, &"recover"):

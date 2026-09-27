@@ -5185,6 +5185,16 @@ func test_recover_limits() -> void:
 	truck.rig.set_outriggers(true)
 	check(truck.try_recover() != "", "recovering was allowed on the outriggers")
 	truck.rig.set_outriggers(false)
+	# Only a crane truck has outriggers: a dump truck stays on its wheels.
+	var dump := Hauler.new()
+	dump.setup(manager, 0, &"dump_truck")
+	world.add_child(dump)
+	dump.global_position = Vector3(8, 2, 0)
+	await step(3)
+	if dump.rig != null:
+		dump.rig.set_outriggers(true)
+		check(not dump.rig.outriggers_down and not dump.freeze, "a truck with no crane put outriggers out")
+		check(Player.new().toggle_outriggers(dump.rig).contains("crane"), "O on a truck with no crane should say why")
 	done()
 
 func test_crane_from_trailer() -> void:

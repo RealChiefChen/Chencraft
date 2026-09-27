@@ -826,13 +826,13 @@ func _work_crane(delta: float) -> void:
 
 # --- Outriggers ------------------------------------------------------------------
 
-## Outriggers out: the truck stands on them, locked where it is - an anchor
-## for the winch, or a steady base for the crane. Working the crane puts them
+## Outriggers out (crane trucks only): the truck stands on them, locked where
+## it is - an anchor for the winch, or a steady base for the crane. Working the crane puts them
 ## down too; stowing it leaves them as they were set.
 var outriggers_down: bool = false
 
 func set_outriggers(on: bool) -> void:
-	outriggers_down = on
+	outriggers_down = on and has_crane()
 	_apply_plant()
 
 func planted() -> bool:
@@ -891,7 +891,10 @@ const CRANE_DARK := Color(0.2, 0.2, 0.22)
 func _build() -> void:
 	_cable = _line_mesh(Color(0.14, 0.14, 0.16))
 	var paint := _mat(CRANE_YELLOW, 0.3)
+	if not has_crane():
+		return
 	# Outrigger legs, out to each side at front and back, shown while down.
+	# Only a crane truck has them.
 	if vehicle != null and vehicle.get("body_size") != null:
 		var size: Vector3 = vehicle.get("body_size")
 		for zf in [-0.35, 0.35]:
@@ -912,8 +915,6 @@ func _build() -> void:
 				foot.position = Vector3(side * 0.6, -0.45, 0)
 				leg.add_child(foot)
 				_outriggers.append(leg)
-	if not has_crane():
-		return
 	_column = _box_part(paint, "CraneColumn")
 	_boom = _box_part(paint, "CraneBoom")
 	_tele = _box_part(_mat(CRANE_YELLOW.lightened(0.25), 0.4), "CraneTelescope")

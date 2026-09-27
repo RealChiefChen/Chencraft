@@ -14,7 +14,7 @@ const TIPS := [
 	"Planks fill a log order too, cubic metre for cubic metre.",
 	"In the crane you move the log: W/S away from / toward the camera, A/D left / right.",
 	"Hold the right mouse button in the crane for fine control.",
-	"Outriggers [O] lock a truck in place for the winch.",
+	"Outriggers [O] lock a crane truck in place for the crane or winch.",
 	"Nights are dark - your headlamp comes on by itself.",
 ]
 

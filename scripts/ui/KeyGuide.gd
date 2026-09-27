@@ -54,7 +54,7 @@ const GROUPS := [
 		[[&"recover"], "Recover (set it back on its wheels) - once a second, not on outriggers"],
 		[[&"winch_hook"], "Winch: hook on what you aim at, or unhook (from the seat)"],
 		[[&"winch_in", "/", &"winch_out"], "Winch: reel in / let out"],
-		[[&"outriggers"], "Outriggers out or in: locks the truck where it stands (seated or standing by it)"],
+		[[&"outriggers"], "Outriggers out or in (crane trucks): locks the truck where it stands (seated or standing by it)"],
 		[[&"crane"], "Crane: operator mode (outriggers down) or fold it away"],
 		[[&"move_forward", &"move_back"], "Crane: log away from / toward the camera"],
 		[[&"move_left", &"move_right"], "Crane: log left / right of the camera"],

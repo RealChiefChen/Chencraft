@@ -270,6 +270,30 @@ func _check_spread() -> void:
 			break
 
 ## Nothing grows on a bridge.
+## The quarry is a deep pit, and its haul road goes all the way down at a
+## grade a loaded truck can take.
+func _check_quarry() -> void:
+	var t: Terrain = world.terrain
+	var c := World.QUARRY_CENTRE
+	var floor_h := t.height_at(c.x, c.z)
+	var rim_h := t.height_at(c.x, c.z + World.QUARRY_RADIUS + 20.0)
+	var steep := 0.0
+	var road := World.quarry_haul_road()
+	var last: Vector3 = road[1]
+	last.y = t.height_at(last.x, last.z)
+	for i in range(2, road.size()):
+		var p: Vector3 = road[i]
+		p.y = t.height_at(p.x, p.z)
+		var run := Vector2(p.x - last.x, p.z - last.z).length()
+		steep = maxf(steep, absf(p.y - last.y) / maxf(0.1, run))
+		last = p
+	var bottom: Vector3 = road[road.size() - 1]
+	print("quarry: %.0f m deep (rim %.0f, floor %.0f), haul road steepest %.0f%%, ends %.1f m above the floor" % [
+		rim_h - floor_h, rim_h, floor_h, steep * 100.0, t.height_at(bottom.x, bottom.z) - floor_h])
+	_require(rim_h - floor_h > 20.0, "the quarry is only %.0f m deep" % (rim_h - floor_h))
+	_require(steep < 0.14, "the haul road is %.0f%% steep somewhere" % (steep * 100.0))
+	_require(t.height_at(bottom.x, bottom.z) - floor_h < 2.0, "the haul road does not reach the floor")
+
 func _check_bridges_clear() -> void:
 	var on := 0
 	for f in world.tree_fields:
@@ -374,6 +398,7 @@ func _report() -> void:
 	# Slow, so after the frames are counted.
 	_check_roads()
 	_check_bridges_clear()
+	_check_quarry()
 	print("\n--- world smoke test ---")
 	print("frames            %d" % frames)
 	print("avg frame         %.2f ms (budget 16.67)" % avg)

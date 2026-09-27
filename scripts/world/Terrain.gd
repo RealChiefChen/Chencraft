@@ -84,7 +84,7 @@ var _road_core := PackedByteArray()
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 22
+const GENERATOR_VERSION := 23
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -789,6 +789,8 @@ func _feature_at(x: float, z: float) -> Array:
 				var ridge := floor_h + 46.0 * sin(clampf(t, 0.0, 1.0) * PI * 0.5)
 				var w := 1.0 - smoothstep(0.7, 1.0, t)
 				return [w, Biome.MOUNTAIN if t < 0.8 else Biome.WOODLAND, ridge]
+			"pit":
+				return _pit_at(f, off, d)
 			"crater":
 				var rim_h: float = float(f.get("rim", 9.0))
 				var floor_c: float = float(f.get("floor", 2.0))
@@ -797,6 +799,61 @@ func _feature_at(x: float, z: float) -> Array:
 				var t2 := (d - r) / (r * 1.2)
 				return [1.0 - smoothstep(0.3, 1.0, t2), Biome.MOUNTAIN, rim_h * (1.0 - t2 * 0.8)]
 	return []
+
+## An open-pit quarry: a deep round pit with a haul road spiralling down its
+## wall to a flat floor - benches of road with steep rock between, as a real
+## pit is worked. {rim, floor, radius, inner, road, turns, entry (radians)}
+func _pit_at(f: Dictionary, off: Vector2, d: float) -> Array:
+	var rim: float = float(f.get("rim", 30.0))
+	var bottom: float = float(f.get("floor", 4.0))
+	var top_r: float = float(f.radius)
+	var in_r: float = float(f.get("inner", 24.0))
+	var road: float = float(f.get("road", 14.0))
+	var turns: float = float(f.get("turns", 2.0))
+	var entry: float = float(f.get("entry", PI * 0.5))
+	var depth := rim - bottom
+	if d >= top_r:
+		# Round the rim: level with it, easing out into the country.
+		var t := smoothstep(top_r, top_r + 36.0, d)
+		return [1.0 - t, Biome.MOUNTAIN if d < top_r + 8.0 else Biome.WOODLAND, rim]
+	if d <= in_r:
+		return [1.0, Biome.MOUNTAIN, bottom]
+	# The road's centre line: radius and height for s, 0 at the rim to 1 on the
+	# floor, going round `turns` times.
+	var span := top_r - in_r - road
+	var phi := atan2(off.y, off.x)
+	var base := fposmod(phi - entry, TAU) / TAU / turns
+	# Each wrap of the road at this bearing, outermost (highest) first; the
+	# rim above them all, the floor below.
+	var rings: Array = [[top_r + road * 0.5, rim]]
+	var k := 0
+	while k <= int(ceil(turns)):
+		var sk := base + float(k) / turns
+		if sk <= 1.0:
+			rings.append([top_r - road * 0.5 - span * sk, rim - depth * sk])
+		k += 1
+	rings.append([in_r - road * 0.5, bottom])
+	for i in rings.size():
+		var ring: Array = rings[i]
+		if absf(d - float(ring[0])) <= road * 0.5:
+			return [1.0, Biome.MOUNTAIN, float(ring[1])]
+	# Between two wraps: the rock wall from the one below up to the one above.
+	for i in rings.size() - 1:
+		var outer: Array = rings[i]
+		var inner: Array = rings[i + 1]
+		var r_out := float(outer[0]) - road * 0.5
+		var r_in := float(inner[0]) + road * 0.5
+		if d <= r_out and d >= r_in:
+			var t := smoothstep(r_in, r_out, d)
+			return [1.0, Biome.MOUNTAIN, lerpf(float(inner[1]), float(outer[1]), t)]
+	return [1.0, Biome.MOUNTAIN, bottom]
+
+## Inside a quarry pit (plus `pad` metres round it)?
+func _in_pit(x: float, z: float, pad: float = 0.0) -> bool:
+	for f in features:
+		if String(f.kind) == "pit" and Vector2(x, z).distance_to(f.centre) < float(f.radius) + pad:
+			return true
+	return false
 
 ## Nothing grows in a crater.
 func _in_crater(x: float, z: float) -> bool:
@@ -1362,6 +1419,9 @@ func _route_on(a: Vector3, b: Vector3, lo: Vector2, nx: int, nz: int, grade: flo
 			var near_ends := Vector2(x - a.x, z - a.z).length() < 60.0 or Vector2(x - b.x, z - b.z).length() < 60.0
 			if _in_build_site(x, z) and not near_ends:
 				weight += 3.0
+			# Never through a quarry pit: its haul road is its own.
+			if _in_pit(x, z, 8.0):
+				weight += 800.0
 			# Not along another road: a way that runs beside one is a road
 			# too many, and two carriageways side by side fight over the land.
 			if not near_ends and _beside_road(x, z):

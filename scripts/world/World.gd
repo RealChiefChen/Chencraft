@@ -16,6 +16,8 @@ const STORE_POSITION := Vector3(185, 0, 52)
 const DEALER_POSITION := Vector3(125, 0, 105)
 const WORKS_POSITION := Vector3(232, 0, 100)
 const QUARRY_CENTRE := Vector3(-10, 0, -430)
+const QUARRY_RADIUS := 90.0
+const QUARRY_FLOOR_RADIUS := 24.0
 ## Where the demo lines stand when they are switched on (Settings > Debug).
 const SHOWCASE_POSITION := Vector3(28, 0, 188)
 const SHOWCASE_GROUND := 2.0
@@ -416,6 +418,22 @@ static func ring_point(angle: float) -> Vector3:
 
 ## Waypoints for a road leaving the ring at `angle`: straight out, square to
 ## the ring, before it is routed on to `onward`.
+## The haul road into the quarry: from the rim on the south side, twice round
+## the pit's wall to its floor - the same line the pit's benches are cut along.
+static func quarry_haul_road() -> Array:
+	var c := Vector2(QUARRY_CENTRE.x, QUARRY_CENTRE.z)
+	var road := 14.0
+	var turns := 2.0
+	var span := QUARRY_RADIUS - QUARRY_FLOOR_RADIUS - road
+	var out: Array = [Vector3(c.x, 0, c.y + QUARRY_RADIUS + 14.0)]
+	var steps := 64
+	for i in steps + 1:
+		var sv := float(i) / float(steps)
+		var a := PI * 0.5 + TAU * turns * sv
+		var r := QUARRY_RADIUS - road * 0.5 - span * sv
+		out.append(Vector3(c.x + cos(a) * r, 0, c.y + sin(a) * r))
+	return out
+
 static func _arterial(angle: float, onward: Array) -> Array:
 	var at := ring_point(angle)
 	var normal := Vector2(cos(angle) / RING_RADII.x, sin(angle) / RING_RADII.y).normalized()
@@ -453,12 +471,16 @@ func _build_terrain() -> void:
 		ring.append(ring_point(TAU * float(i % RING_POINTS) / float(RING_POINTS)))
 	terrain.roads = [
 		ring,
+		# The quarry's haul road, spiralling down the pit wall to the floor,
+		# and the lane in to its top from the north road.
+		quarry_haul_road(),
+		{"route": [Vector3(-140, 0, -330), QUARRY_CENTRE + Vector3(0, 0, QUARRY_RADIUS + 14.0)]},
 		[Vector3(0, 0, 50), Vector3(0, 0, 86), ring_point(PI * 0.5)],
 		# East, past the store, to the far coast.
 		{"bridge": true, "route": _arterial(0.0, [Vector3(260, 0, 15), Vector3(1000, 0, 180),
 			Vector3(1850, 0, 120)])},
 		# North, past the quarry, up into the high country.
-		{"bridge": true, "route": _arterial(-PI * 0.5, [Vector3(0, 0, -240), Vector3(-90, 0, -440),
+		{"bridge": true, "route": _arterial(-PI * 0.5, [Vector3(0, 0, -240), Vector3(-140, 0, -330), Vector3(-150, 0, -470),
 			Vector3(-60, 0, -1150), Vector3(0, 0, -1850)])},
 		# West.
 		{"bridge": true, "route": _arterial(PI, [Vector3(-500, 0, 60), Vector3(-1150, 0, 160),
@@ -482,6 +504,10 @@ func _build_terrain() -> void:
 			"gap": PI * 0.5, "floor": 16.0},
 		{"name": STAR_CRATER, "kind": "crater", "centre": Vector2(1160, 1170), "radius": 48.0,
 			"rim": 30.0, "floor": 8.0},
+		# The quarry: an open pit a good 26 m deep, a haul road spiralling
+		# twice round its wall from the rim on the road side down to the floor.
+		{"name": "Quarry", "kind": "pit", "centre": Vector2(QUARRY_CENTRE.x, QUARRY_CENTRE.z), "radius": QUARRY_RADIUS,
+			"rim": 30.0, "floor": 4.0, "inner": QUARRY_FLOOR_RADIUS, "road": 14.0, "turns": 2.0, "entry": PI * 0.5},
 	]
 	# Everything that has to stand on the level, and all of it above the water
 	# line so a levelled site is never under the sheet.
@@ -495,7 +521,6 @@ func _build_terrain() -> void:
 	terrain.reserve_site(Vector3(STORE_POSITION.x, NAN, STORE_POSITION.z), 20.0)
 	terrain.reserve_site(Vector3(DEALER_POSITION.x, NAN, DEALER_POSITION.z), 17.0)
 	terrain.reserve_site(Vector3(WORKS_POSITION.x, NAN, WORKS_POSITION.z), 17.0)
-	terrain.reserve_site(Vector3(QUARRY_CENTRE.x, NAN, QUARRY_CENTRE.z), 34.0)
 	terrain.driveways = [
 		{"name": "Sell Yard", "centre": DEPOT_POSITION, "radius": 14.0,
 			"door": DEPOT_POSITION + Vector3(-8.0, 0, 0)},
@@ -505,7 +530,6 @@ func _build_terrain() -> void:
 			"door": DEALER_POSITION + Vector3(0, 0, -11.0)},
 		{"name": "Machine Works", "centre": WORKS_POSITION, "radius": 17.0,
 			"door": WORKS_POSITION + Vector3(0, 0, -11.0)},
-		{"name": "Quarry", "centre": QUARRY_CENTRE, "radius": 34.0, "door": null},
 	]
 	# Kept clear for the demo lines, whether or not they are switched on.
 	terrain.reserve_site(Vector3(SHOWCASE_POSITION.x, SHOWCASE_GROUND, SHOWCASE_POSITION.z - 4.0), 30.0)
@@ -1089,7 +1113,7 @@ func _build_quarry() -> void:
 		field.refill_seconds = 8.0
 		# Its own corner of the map, so mining is a trip.
 		field.setup([kind], _build_rock,
-			_on_ground(ResourceField.rect(QUARRY_CENTRE, Vector2(26.0, 30.0))), _rng.randi())
+			_on_ground(ResourceField.rect(QUARRY_CENTRE, Vector2(30.0, 30.0))), _rng.randi())
 		add_child(field)
 		field.prefill()
 		rock_fields.append(field)

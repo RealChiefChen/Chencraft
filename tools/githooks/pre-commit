@@ -9,6 +9,11 @@ f=scripts/core/BuildInfo.gd
 [ -f "$f" ] || exit 0
 cur=$(sed -n 's/^const NUMBER := "\(.*\)"/\1/p' "$f")
 [ -z "$cur" ] && exit 0
+# A version set by hand in project.godot counts too: count on from the higher.
+hand=$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot 2>/dev/null)
+if [ -n "$hand" ]; then
+	cur=$(printf '%s\n%s\n' "$cur" "$hand" | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
+fi
 major=${cur%%.*}
 rest=${cur#*.}
 minor=${rest%%.*}

@@ -1868,19 +1868,6 @@ func _update_winch_reticle() -> void:
 			hit = {}
 	winch_reticle.show_for(r, hit)
 
-func _near_cave_mouth(p: Vector3, r: float) -> bool:
-	for cave in terrain.caves:
-		var e: Vector3 = cave.entrance
-		if Vector2(p.x - e.x, p.z - e.z).length() < r:
-			return true
-	if network != null:
-		for c in network.entrances:
-			if is_instance_valid(c) and Vector2(p.x - c.global_position.x, p.z - c.global_position.z).length() < r:
-				return true
-		if network.contains(p, 30.0):
-			return true
-	return false
-
 ## Underground the sky goes away: ambient light and the sun fade, the haze
 ## turns dark, and a lamp on the player's hat comes on. The caves' own lamps
 ## and crystals are then what you see by.
@@ -1888,12 +1875,6 @@ func _update_underground(delta: float) -> void:
 	var eye := player.camera.global_position
 	var target := network.depth_factor(eye) if network != null else 0.0
 	underground = move_toward(underground, target, delta * 1.5)
-	# The ground hides what is behind hills (see Terrain._build_occluders),
-	# but not from inside the caves or near a way into them: there the
-	# ground is not solid.
-	var occlude := underground < 0.01 and not _near_cave_mouth(eye, 70.0)
-	if get_viewport().use_occlusion_culling != occlude:
-		get_viewport().use_occlusion_culling = occlude
 	# Underground the ambient light is the cave's own - dim and cool - rather
 	# than the sky's; the lamps and crystals do the rest.
 	if underground > 0.02:

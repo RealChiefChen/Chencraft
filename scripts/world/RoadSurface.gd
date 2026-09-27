@@ -213,7 +213,7 @@ static func material(dirt: bool) -> StandardMaterial3D:
 		return _materials[key]
 	var w := 64
 	var h := 256
-	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 91 if dirt else 17
 	for y in h:

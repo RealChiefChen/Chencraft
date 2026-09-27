@@ -149,6 +149,7 @@ func _run_all() -> void:
 	await _test(&"the carry rack does not block the crosshair", test_rack_not_aimed)
 	await _test(&"the plot is flat and road-free to its corners", test_plot_clear)
 	await _test(&"save slots: several games, and the old save moves in", test_save_slots)
+	await _test(&"the lumberjack is posed from what you do, and third person still aims true", test_avatar)
 	await _test(&"per-plot cap is enforced", test_cap)
 	await _test(&"full automated base stays in budget", test_full_base)
 
@@ -5464,6 +5465,48 @@ func test_rack_not_aimed() -> void:
 	cam.look_at(behind.global_position, Vector3.UP)
 	var hit := player.aim_hit()
 	check(hit.is_empty() or hit.collider != billet, "the crosshair stopped on what is on the rack")
+	player.queue_free()
+	done()
+
+func test_avatar() -> void:
+	_setup(false)
+	var player := _make_player()
+	world.add_child(player)
+	player.global_position = Vector3(0, 0.1, 0)
+	await step(5)
+	var av := player.avatar
+	check(av != null and av.ready_to_draw(), "the player model did not load")
+	if av == null or not av.ready_to_draw():
+		player.queue_free()
+		done()
+		return
+	check_eq(av._part.size(), 6, "the model should have six pivots")
+	player.third_person = false
+	await step(2)
+	check_eq(av._meshes[0].cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY,
+		"in first person only his shadow should be drawn")
+	check(player.eye().is_equal_approx(player.camera.global_position), "in first person the eye is the camera")
+	# A gesture plays and ends.
+	av.play(&"pick_up")
+	check_eq(av.gesture(), &"pick_up", "a gesture should start")
+	await step(60)
+	check_eq(av.gesture(), &"", "a gesture should end")
+	check(not av.GESTURES.has(&"nonsense"), "unknown gestures are ignored")
+	av.play(&"nonsense")
+	check_eq(av.gesture(), &"", "an unknown gesture should not play")
+	# Third person: the camera goes behind him, he is drawn, and the
+	# crosshair still picks what it covers, with reach counted from him.
+	player.third_person = true
+	var block := spawn(&"ore_iron", Vector3(0, 1.4, -2.5), Solid.cube(0.4))
+	await step(10)
+	check_eq(av._meshes[0].cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "in third person he should be drawn")
+	var head := player.global_position + Vector3(0, 1.65, 0)
+	check(player.camera.global_position.distance_to(head) > 1.5, "the third-person camera should sit back from him")
+	player.camera.look_at(block.global_position, Vector3.UP)
+	check(player.eye().distance_to(head) < 1.0, "reach should be counted from his head, not the camera")
+	var hit := player.aim_hit()
+	check(not hit.is_empty() and hit.collider == block, "the crosshair should still pick what it covers in third person")
+	player.third_person = false
 	player.queue_free()
 	done()
 

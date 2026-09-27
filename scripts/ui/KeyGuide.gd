@@ -78,6 +78,7 @@ const GROUPS := [
 		[[&"market"], "Market prices"],
 		[[&"upgrades"], "Upgrades and land"],
 		[[&"help"], "This list"],
+		[[&"camera_view"], "First / third person view (see yourself work)"],
 		[[&"toggle_hints"], "Show or hide key hints and the crane / winch banner"],
 		[[&"quick_save"], "Quick save"],
 		[[&"quick_load"], "Quick load"],

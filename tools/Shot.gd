@@ -270,3 +270,130 @@ func shot_minimap() -> void:
 	for i in 30:
 		await get_tree().process_frame
 	await snap("minimap")
+
+## The lumberjack in third person, in one pose after another.
+func _pose_cam(p: Player, side: float = 1.0, dist: float = 2.6) -> void:
+	var at := p.global_position + Vector3(0, 0.95, 0)
+	var f := -p.global_transform.basis.z
+	var r := p.global_transform.basis.x
+	var cam := p.camera
+	cam.top_level = true
+	cam.global_transform = Transform3D(Basis(), at + f * dist + r * dist * 0.55 * side + Vector3(0, 0.35, 0)).looking_at(at, Vector3.UP)
+
+func _frames(n: int) -> void:
+	for i in n:
+		await get_tree().process_frame
+
+## Plays a gesture and waits until it is `share` of the way through.
+func _gesture_at(p: Player, kind: StringName, share: float) -> void:
+	# Slowed right down, so a slow frame here does not skip the moment.
+	p.avatar.play(kind)
+	Engine.time_scale = clampf(p.avatar._g_len * 0.4, 0.12, 1.0)
+	while p.avatar._gesture == kind and p.avatar._g_t < p.avatar._g_len * share:
+		await get_tree().process_frame
+	for i in 3:
+		await get_tree().process_frame
+	Engine.time_scale = 1.0
+
+func _stand(p: Player) -> Vector3:
+	world.hud.visible = false
+	var at := world.plot.global_position + Vector3(4, 0, 10)
+	at.y = world.terrain.height_at(at.x, at.z) + 0.2
+	p.global_position = at
+	p.third_person = true
+	for i in 30:
+		await get_tree().physics_frame
+	return at
+
+func shot_avatar() -> void:
+	var p := world.player
+	await _stand(p)
+	_pose_cam(p)
+	await _frames(10)
+	await snap("av_idle")
+	await _gesture_at(p, &"stroke", 0.5)
+	await snap("av_stroke")
+	await _gesture_at(p, &"stretch", 0.5)
+	await snap("av_stretch")
+	await _gesture_at(p, &"scratch", 0.5)
+	await snap("av_scratch")
+	PlayerState.give_tool(&"steel_axe", false)
+	p.select_slot(PlayerState.hotbar.find(&"steel_axe"))
+	await _frames(20)
+	await snap("av_tool")
+	await _gesture_at(p, &"swing", 0.36)
+	await snap("av_swing_up")
+	await _gesture_at(p, &"swing", 0.6)
+	await snap("av_swing_down")
+	p.select_slot(p.selected_slot)
+	await _frames(20)
+	await _gesture_at(p, &"pick_up", 0.5)
+	await snap("av_pick_up")
+	await _gesture_at(p, &"throw", 0.34)
+	await snap("av_throw")
+	await _gesture_at(p, &"use", 0.5)
+	await snap("av_use")
+	await _gesture_at(p, &"drop", 0.5)
+	await snap("av_drop")
+	Input.action_press("move_forward")
+	for i in 40:
+		await get_tree().physics_frame
+		_pose_cam(p)
+	await snap("av_walk")
+	Input.action_release("move_forward")
+	p.velocity.y = p.jump_velocity
+	for i in 16:
+		await get_tree().physics_frame
+		_pose_cam(p)
+	await snap("av_jump")
+
+func shot_avatar_drive() -> void:
+	var p := world.player
+	var at := await _stand(p)
+	world.build_system.set_active(true)
+	await _frames(10)
+	_pose_cam(p, -1.0, 3.0)
+	await _frames(2)
+	await snap("av_build")
+	await _gesture_at(p, &"place", 0.3)
+	await snap("av_place")
+	world.build_system.set_active(false)
+	await _frames(5)
+	var v := Hauler.new()
+	v.setup(world.manager, 0, StringName(args.get("vehicle", "quad")))
+	world.add_child(v)
+	v.global_position = at + Vector3(6, v.spawn_height(), 0)
+	for i in 40:
+		await get_tree().physics_frame
+	world.drive(v)
+	for i in 20:
+		await get_tree().physics_frame
+	var vb := v.global_transform.basis
+	var cam := p.camera
+	cam.top_level = true
+	Input.action_press("move_right")
+	await _frames(30)
+	cam.global_transform = Transform3D(Basis(), v.global_position + vb.x * 3.5 + Vector3(0, 1.4, 0) - vb.z * 1.5).looking_at(v.global_position + Vector3(0, 0.6, 0), Vector3.UP)
+	await _frames(3)
+	await snap("av_drive")
+	Input.action_release("move_right")
+	cam.global_transform = Transform3D(Basis(), v.global_position - vb.z * 3.5 + Vector3(0, 1.5, 0)).looking_at(v.global_position + Vector3(0, 0.6, 0), Vector3.UP)
+	await _frames(3)
+	await snap("av_drive_front")
+
+func shot_views() -> void:
+	var p := world.player
+	await _stand(p)
+	world.hud.visible = true
+	p.camera.top_level = false
+	p.camera.rotation.x = -0.15
+	p.set_third_person(true)
+	PlayerState.give_tool(&"steel_axe", false)
+	p.select_slot(PlayerState.hotbar.find(&"steel_axe"))
+	await _frames(30)
+	await snap("view_third")
+	p.set_third_person(false)
+	p.camera.rotation.x = -0.9
+	await _frames(30)
+	await snap("view_first_down")
+	Settings.set_value(&"third_person", false)

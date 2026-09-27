@@ -304,6 +304,33 @@
       ]
     },
     {
+      "id": "gem_polisher",
+      "display_name": "Gem Polisher",
+      "levels": [
+        {
+          "level": 1,
+          "cost": 0,
+          "hole_scale": 1.0,
+          "rate_scale": 1.0,
+          "label": "Tumbler"
+        },
+        {
+          "level": 2,
+          "cost": 3000,
+          "hole_scale": 1.35,
+          "rate_scale": 1.4,
+          "label": "Vibratory Polisher"
+        },
+        {
+          "level": 3,
+          "cost": 7000,
+          "hole_scale": 1.7,
+          "rate_scale": 1.85,
+          "label": "Diamond Lap"
+        }
+      ]
+    },
+    {
       "id": "gem_cutter",
       "display_name": "Gem Cutter",
       "levels": [

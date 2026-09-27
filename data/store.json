@@ -141,6 +141,11 @@
             },
             {
               "kind": "tier",
+              "target": "gem_polisher",
+              "tier": 1
+            },
+            {
+              "kind": "tier",
               "target": "gem_cutter",
               "tier": 1
             }
@@ -321,6 +326,16 @@
             {
               "kind": "tier",
               "target": "sander",
+              "tier": 3
+            },
+            {
+              "kind": "tier",
+              "target": "gem_polisher",
+              "tier": 2
+            },
+            {
+              "kind": "tier",
+              "target": "gem_polisher",
               "tier": 3
             },
             {

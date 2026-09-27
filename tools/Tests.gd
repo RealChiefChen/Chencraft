@@ -50,7 +50,7 @@ func _run_all() -> void:
 	await _test(&"the sander finishes wood and adds value", test_sander)
 	await _test(&"crusher, smelter and refiner work ore down the line", test_ore_line)
 	await _test(&"every material is worth its raw, pre and final values", test_material_values)
-	await _test(&"stones are polished in the sander and faceted in the gem cutter", test_gem_line)
+	await _test(&"stones are polished in the gem polisher and faceted in the gem cutter", test_gem_line)
 	await _test(&"islands, bridges and carved places", test_islands)
 	await _test(&"big consolidated biome regions with real relief", test_regions)
 	await _test(&"roads are routed round hills and switch back up mountains", test_road_routing)
@@ -1254,10 +1254,11 @@ func test_material_values() -> void:
 		check(not GameData.material_for(id).is_empty(), "%s has no value path" % id)
 	done()
 
-## Rough stone > sander (polished) > gem cutter (a faceted jewel).
+## Rough stone > gem polisher (polished) > gem cutter (a faceted jewel). The
+## sander is for wood: a stone rides through it untouched.
 func test_gem_line() -> void:
 	_setup()
-	var sander := _inline(&"sander")
+	var sander := _inline(&"gem_polisher")
 	var cutter := _inline(&"gem_cutter", Vector3(6, 0, 0))
 	await step(3)
 	# Small enough for the cutter's 0.8 x 0.6 mouth.
@@ -1265,8 +1266,8 @@ func test_gem_line() -> void:
 	var volume := stone.volume()
 	var raw_price := Economy.price_of(stone.item_id, stone.dims)
 	stone = await _through(sander, stone)
-	check(stone != null, "the stone never came through the sander")
-	check(Solid.has_finish(stone.dims, &"polished"), "the sander did not polish the stone")
+	check(stone != null, "the stone never came through the polisher")
+	check(Solid.has_finish(stone.dims, &"polished"), "the polisher did not polish the stone")
 	check(not Solid.has_finish(stone.dims, &"sanded"), "the stone was sanded like wood")
 	check(stone.display_name().begins_with("Polished"), "a polished stone is called %s" % stone.display_name())
 	var polished_price := Economy.price_of(stone.item_id, stone.dims)
@@ -1305,6 +1306,12 @@ func test_gem_line() -> void:
 		var b := Solid.bounds(lump.dims)
 		check(maxf(b.x, maxf(b.y, b.z)) < mouth, "a quartz lump is too big for the gem cutter")
 	check_near(got, q_volume, 0.001, "crushing quartz lost stone")
+	# The sander is for wood: a stone goes through it as it went in.
+	var wood_sander := _inline(&"sander", Vector3(-6, 0, 0))
+	await step(3)
+	var rough := _feed(wood_sander, &"gem_quartz", Solid.cube(0.1))
+	rough = await _through(wood_sander, rough)
+	check(rough != null and not Solid.has_finish(rough.dims, &"polished"), "the sander polished a stone")
 	done()
 
 ## Spec: a 2.5 km map of islands with bridges between, and places hidden in it.
@@ -1635,8 +1642,8 @@ func test_machine_lines() -> void:
 		"the refiner fell behind the smelter (%d of %d)" % [refiner.total_processed, smelter.total_processed])
 	var sander: InlineMachine = stone.machines[0]
 	var cutter: InlineMachine = stone.machines[1]
-	check(sander.total_processed >= 12, "the sander polished only %d stones" % sander.total_processed)
-	check(cutter.total_processed >= sander.total_processed - 2, "the gem cutter fell behind the sander")
+	check(sander.total_processed >= 12, "the polisher polished only %d stones" % sander.total_processed)
+	check(cutter.total_processed >= sander.total_processed - 2, "the gem cutter fell behind the polisher")
 	check(int(ore.made) > 20 and int(stone.made) > 8, "the lines finished too little (%d, %d)" % [ore.made, stone.made])
 	show.clear_all()
 	check_eq(manager.active_count(), 0, "switching the demo off left pieces behind")

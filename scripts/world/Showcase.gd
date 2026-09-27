@@ -38,7 +38,7 @@ func _ready() -> void:
 	lines.append(_build_line("ORE LINE", ORE_FEED, Vector3(-LANE_GAP * 0.5, 0, 0),
 		[&"crusher", &"furnace", &"refiner"], Vector2(0.15, 0.4)))
 	lines.append(_build_line("STONE LINE", GEM_FEED, Vector3(LANE_GAP * 0.5, 0, 0),
-		[&"sander", &"gem_cutter"], Vector2(0.03, 0.12)))
+		[&"gem_polisher", &"gem_cutter"], Vector2(0.03, 0.12)))
 
 ## A concrete slab to stand it all on, level whatever the land does.
 func _build_slab() -> void:

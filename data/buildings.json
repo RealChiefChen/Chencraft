@@ -173,6 +173,19 @@
       "blurb": "Polishes and purifies metal bars. Refined metal sells for more."
     },
     {
+      "id": "gem_polisher",
+      "display_name": "Gem Polisher",
+      "kind": "inline",
+      "cost": 1400,
+      "size": [
+        2,
+        3,
+        5
+      ],
+      "machine": "gem_polisher",
+      "blurb": "Polishes rough stones and jewels to a shine. Polished stones sell for more, and cut into better jewels."
+    },
+    {
       "id": "gem_cutter",
       "display_name": "Gem Cutter",
       "kind": "inline",
@@ -183,7 +196,7 @@
         5
       ],
       "machine": "gem_cutter",
-      "blurb": "Facets rough stones into jewels. Polish them in the sander first for the best price."
+      "blurb": "Facets rough stones into jewels. Polish them in the gem polisher first for the best price."
     },
     {
       "id": "workbench",
@@ -730,9 +743,7 @@
       "mode": "sand",
       "accepts": [
         "wood",
-        "lumber",
-        "gem",
-        "jewel"
+        "lumber"
       ],
       "tunnel": [
         1.0,
@@ -819,6 +830,26 @@
         0.28,
         0.34,
         0.5
+      ],
+      "effect": "sparks"
+    },
+    {
+      "id": "gem_polisher",
+      "display_name": "Gem Polisher",
+      "mode": "sand",
+      "accepts": [
+        "gem",
+        "jewel"
+      ],
+      "tunnel": [
+        0.8,
+        0.6
+      ],
+      "belt_speed": 3.0,
+      "color": [
+        0.22,
+        0.42,
+        0.52
       ],
       "effect": "sparks"
     },

@@ -44,12 +44,15 @@ signal limb_cut(tree: ChoppableTree, wood_volume: float)
 ## fraction of trunk height. A zero radius leaves the tree bare-topped.
 @export var crown_spread: float = 6.5
 @export var crown_height: float = 0.45
-## How the leaves are drawn: cone (a conifer's tiers), ball (a round
-## broadleaf), puff (a cloud of blossom), palm (fronds from the top only) or
-## bare (a dead snag, or something stranger).
+## How the leaves are drawn: cone (a conifer's drooping tiers), ball (round
+## lumpy clumps), canopy (broad, flatter clumps: oak and the like), puff (a
+## cloud of blossom), palm (fronds from the top only), cap (a giant
+## mushroom) or bare (a dead snag, or something stranger).
 @export var foliage_style: StringName = &"cone"
 ## Bark colour when it is not the wood's own (a birch is white outside).
 @export var bark_color: Color = Color(0, 0, 0, 0)
+## Dark marks up the bark (a birch's).
+@export var bark_marks: bool = false
 ## Leaves (or cracks) that give off light, for the stranger trees.
 @export var leaf_glow: float = 0.0
 ## A second leaf colour mixed through the canopy (blossom, autumn).
@@ -74,6 +77,106 @@ var trunk_cut_height: float = 0.0
 var _trunk_mesh: MeshInstance3D
 var _flare_mesh: MeshInstance3D
 var _crown: MeshInstance3D
+var _marks: Array[MeshInstance3D] = []
+
+## The leaf clumps, fronds and root flare, made in Blender
+## (assets/models/source/trees.blend): low-poly pieces with the light and shade
+## painted into their vertex colours, tinted per tree. Leaves carry no
+## collider, so they are only ever the look; the wood is still cut as before.
+const PIECES := "res://assets/models/trees.glb"
+static var _piece_meshes: Dictionary = {}
+static var _pieces_loaded: bool = false
+
+static func piece(piece_name: String) -> Mesh:
+	if not _pieces_loaded:
+		_pieces_loaded = true
+		var scene := load(PIECES) as PackedScene
+		if scene != null:
+			var root := scene.instantiate()
+			for n in root.find_children("*", "MeshInstance3D", true, false):
+				var near := _brightened((n as MeshInstance3D).mesh)
+				_piece_meshes[String(n.name)] = near
+				var far := _far_piece(String(n.name))
+				if far != null:
+					_far_of[near] = far
+			root.free()
+	return _piece_meshes.get(piece_name, null)
+
+## Past NEAR_RANGE a tree is drawn from these instead: the same shapes in a
+## fraction of the triangles (a leaf clump is 20, not 400).
+static var _far_of: Dictionary = {}
+const NEAR_RANGE := 35.0
+
+static func _far_piece(piece_name: String) -> Mesh:
+	match piece_name:
+		"LeafClump", "CanopyClump", "BlossomClump":
+			return _far_lump()
+		"ConiferTier":
+			return _far_tiers([[1.0, 0.0, 1.0]])
+		"ConiferStack":
+			return _far_tiers([[1.0, 0.0, 0.5], [0.72, 0.3, 0.42], [0.45, 0.56, 0.34], [0.22, 0.78, 0.22]])
+	return null
+
+## Three icosahedron lumps filling the -1..1 box, lighter on top: the near
+## clump's outline in 60 triangles.
+static func _far_lump() -> Mesh:
+	var t := (1.0 + sqrt(5.0)) / 2.0
+	var v: Array[Vector3] = [Vector3(-1, t, 0), Vector3(1, t, 0), Vector3(-1, -t, 0), Vector3(1, -t, 0),
+		Vector3(0, -1, t), Vector3(0, 1, t), Vector3(0, -1, -t), Vector3(0, 1, -t),
+		Vector3(t, 0, -1), Vector3(t, 0, 1), Vector3(-t, 0, -1), Vector3(-t, 0, 1)]
+	var faces := [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2],
+		[10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11],
+		[6, 2, 10], [8, 6, 7], [9, 8, 1]]
+	var lobes := [[Vector3(0, 0.1, 0), 0.72], [Vector3(0.45, -0.2, 0.2), 0.52], [Vector3(-0.4, -0.15, -0.3), 0.52]]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for lobe in lobes:
+		for f in faces:
+			for k in [0, 2, 1]:
+				var p: Vector3 = (v[f[k]] / Vector3(v[f[k]]).length()) * float(lobe[1]) + (lobe[0] as Vector3)
+				var b := 0.62 + 0.38 * clampf(p.y * 0.5 + 0.5, 0.0, 1.0)
+				st.set_color(Color(b, b, b))
+				st.add_vertex(p)
+	st.generate_normals()
+	return st.commit()
+
+## A conifer's tiers as eight-sided skirts: [radius, bottom, height] each.
+static func _far_tiers(tiers: Array) -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for tier in tiers:
+		var r := float(tier[0])
+		var y0 := float(tier[1])
+		var h := float(tier[2])
+		var apex := Vector3(0, y0 + h, 0)
+		var under := Vector3(0, y0 + 0.22 * h, 0)
+		for i in 8:
+			var a0 := TAU * float(i) / 8.0
+			var a1 := TAU * float(i + 1) / 8.0
+			var p0 := Vector3(cos(a0) * r, y0 - 0.05 * h, sin(a0) * r)
+			var p1 := Vector3(cos(a1) * r, y0 - 0.05 * h, sin(a1) * r)
+			for q in [[p0, 0.8], [apex, 1.0], [p1, 0.8], [p1, 0.62], [under, 0.62], [p0, 0.62]]:
+				st.set_color(Color(q[1], q[1], q[1]))
+				st.add_vertex(q[0])
+	st.generate_normals()
+	return st.commit()
+
+## The shade painted into a piece, as a gentle 0.62..1 multiplier on the tint
+## (the file keeps it in linear light, which reads far too dark on its own).
+static func _brightened(mesh: Mesh) -> Mesh:
+	if mesh == null or mesh.get_surface_count() == 0:
+		return mesh
+	var arrays := mesh.surface_get_arrays(0)
+	var c: PackedColorArray = arrays[Mesh.ARRAY_COLOR] if arrays[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+	if c.is_empty():
+		return mesh
+	for i in c.size():
+		var b := 0.62 + 0.38 * pow(clampf(c[i].r, 0.0, 1.0), 1.0 / 2.2)
+		c[i] = Color(b, b, b, 1.0)
+	arrays[Mesh.ARRAY_COLOR] = c
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return out
 var _trunk_shape: CollisionShape3D
 ## While nobody has touched it, the whole tree is drawn as this one mesh -
 ## every part's shape and colour baked together - instead of a dozen and a
@@ -149,13 +252,20 @@ func _build() -> void:
 	_trunk_shape.shape = CylinderShape3D.new()
 	add_child(_trunk_shape)
 
-	_flare_mesh = _add_cylinder(trunk_radius * 1.45, trunk_radius * 1.02, 0.5,
-		Transform3D(Basis(), Vector3(0, 0.25, 0)), bark.darkened(0.15))
+	# The foot of the trunk, with buttress roots, turned a random way.
+	_flare_mesh = _add_piece("RootFlare", Transform3D(
+		Basis(Vector3.UP, _rng.randf_range(0.0, TAU)) * Basis.from_scale(Vector3(trunk_radius, maxf(0.45, trunk_radius * 1.3), trunk_radius)),
+		Vector3.ZERO), bark.darkened(0.12))
+	if _flare_mesh == null:
+		_flare_mesh = _add_cylinder(trunk_radius * 1.45, trunk_radius * 1.02, 0.5,
+			Transform3D(Basis(), Vector3(0, 0.25, 0)), bark.darkened(0.15))
 	_trunk_mesh = _add_cylinder(trunk_radius, trunk_radius * trunk_taper, trunk_height,
 		Transform3D(Basis(), Vector3(0, trunk_height * 0.5, 0)), bark)
+	if bark_marks:
+		_add_marks()
 	if crown_spread > 0.01 and foliage_style != &"bare":
 		_crown = _add_foliage(trunk_radius * crown_spread, trunk_height * crown_height,
-			Transform3D(Basis(), Vector3(0, trunk_height * 1.02, 0)), leaf.darkened(0.05), true)
+			Transform3D(Basis(), Vector3(0, _crown_y(), 0)), leaf.darkened(0.05), true)
 
 	for i in branch_count:
 		var span: float = maxf(0.05, 0.98 - branch_start)
@@ -174,7 +284,12 @@ func _build() -> void:
 		if leaf_accent.a > 0.0 and _rng.randf() < 0.45:
 			tint = leaf_accent
 		var foliage: MeshInstance3D = null
-		if foliage_style != &"bare" and foliage_style != &"palm":
+		if foliage_style == &"cone" and piece("ConiferTier") != null:
+			# A conifer's bough: a drooping tier hung level off the branch,
+			# close in to the trunk, so the tree reads as layers of needles.
+			foliage = _add_foliage(radius * foliage_spread * 1.7, length * 1.1,
+				Transform3D(Basis(), base + dir * length * 0.55 - Vector3(0, length * 0.3, 0)), tint, false)
+		elif foliage_style != &"bare" and foliage_style != &"palm":
 			foliage = _add_foliage(radius * foliage_spread, length * 1.25,
 				Transform3D(Basis(), base + dir * (length + length * 0.35)), tint, false)
 		# Each branch gets its own collider, so the aim ray can say which one
@@ -207,7 +322,33 @@ func _refresh_trunk() -> void:
 	if _crown != null and is_instance_valid(_crown):
 		_crown.visible = _standing and (not branches.is_empty() or foliage_style == &"palm" \
 			or foliage_style == &"cap")
-		_crown.position = Vector3(0, trunk_height * 1.02, 0)
+		_crown.position = Vector3(0, _crown_y(), 0)
+	for m in _marks:
+		m.visible = m.position.y < trunk_height - 0.1
+
+## Where the crown sits: a conifer's stack of tiers comes down over the top of
+## the trunk; anything else sits on top of it.
+func _crown_y() -> float:
+	if foliage_style == &"cone" and piece("ConiferStack") != null:
+		return trunk_height * (1.04 - crown_height * 0.92)
+	return trunk_height * 1.02
+
+## A birch's dark marks: short black dashes round the white bark.
+func _add_marks() -> void:
+	var dash := BoxMesh.new()
+	dash.size = Vector3.ONE
+	for k in int(clampf(trunk_height * 1.6, 6.0, 18.0)):
+		var y := _rng.randf_range(0.6, trunk_height * 0.92)
+		var a := _rng.randf_range(0.0, TAU)
+		var r := radius_at(y)
+		var mi := MeshInstance3D.new()
+		mi.mesh = dash
+		mi.transform = Transform3D(Basis(Vector3.UP, -a) * Basis.from_scale(Vector3(0.05, _rng.randf_range(0.05, 0.11), r * _rng.randf_range(0.9, 1.3))),
+			Vector3(cos(a) * r, y, sin(a) * r))
+		mi.material_override = _mat(Color(0.12, 0.11, 0.10))
+		mi.visibility_range_end = VIEW_RANGE * 0.5
+		add_child(mi)
+		_marks.append(mi)
 
 static var _merged_material: StandardMaterial3D
 ## Merged meshes by species and seed: the same seed grows the same tree, so a
@@ -222,9 +363,13 @@ func _merge() -> void:
 	if leaf_glow > 0.0 or _merged != null:
 		return
 	var key := "%s|%d|%.3f" % [species, _form_seed, trunk_height]
-	var mesh: ArrayMesh = _merged_cache.get(key) if _form_seed != 0 else null
+	var pair: Array = _merged_cache.get(key, []) if _form_seed != 0 else []
 	var parts: Array[MeshInstance3D] = []
-	if mesh != null:
+	var mesh: ArrayMesh
+	var far_mesh: ArrayMesh
+	if not pair.is_empty():
+		mesh = pair[0]
+		far_mesh = pair[1]
 		for child in get_children():
 			if child is MeshInstance3D and (child as MeshInstance3D).visible:
 				parts.append(child)
@@ -232,10 +377,12 @@ func _merge() -> void:
 		mesh = _bake(parts)
 		if mesh == null:
 			return
+		var ignore: Array[MeshInstance3D] = []
+		far_mesh = _bake(ignore, true)
 		if _form_seed != 0:
 			if _merged_cache.size() >= MERGED_CACHE_MAX:
 				_merged_cache.clear()
-			_merged_cache[key] = mesh
+			_merged_cache[key] = [mesh, far_mesh]
 	if _merged_material == null:
 		_merged_material = StandardMaterial3D.new()
 		_merged_material.vertex_color_use_as_albedo = true
@@ -249,17 +396,30 @@ func _merge() -> void:
 	if field_shadows:
 		_merged.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_merged)
+	# Near, every clump in full; further out, the light version.
+	if far_mesh != null:
+		_merged.visibility_range_end = NEAR_RANGE
+		_merged.visibility_range_end_margin = 4.0
+		var far := MeshInstance3D.new()
+		far.name = "MergedFar"
+		far.mesh = far_mesh
+		far.material_override = _merged_material
+		far.visibility_range_begin = NEAR_RANGE
+		far.visibility_range_begin_margin = 4.0
+		far.visibility_range_end = VIEW_RANGE
+		far.cast_shadow = _merged.cast_shadow
+		_merged.add_child(far)
 	for part in parts:
 		part.visible = false
 	_hidden_parts = parts
 
 ## The visible parts baked into one mesh; `parts` gets the top-level ones.
-func _bake(parts: Array[MeshInstance3D]) -> ArrayMesh:
+func _bake(parts: Array[MeshInstance3D], far: bool = false) -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
 	var indices := PackedInt32Array()
-	if not _gather(self, Transform3D(), verts, normals, colors, indices, parts):
+	if not _gather(self, Transform3D(), verts, normals, colors, indices, parts, far):
 		return null
 	if verts.is_empty():
 		return null
@@ -276,16 +436,20 @@ func _bake(parts: Array[MeshInstance3D]) -> ArrayMesh:
 ## Adds the meshes under `node` (drawn through `xform`) to the arrays. Returns
 ## false if some part cannot be baked, in which case nothing is merged.
 func _gather(node: Node, xform: Transform3D, verts: PackedVector3Array, normals: PackedVector3Array,
-		colors: PackedColorArray, indices: PackedInt32Array, top: Array[MeshInstance3D]) -> bool:
+		colors: PackedColorArray, indices: PackedInt32Array, top: Array[MeshInstance3D], far: bool = false) -> bool:
 	for child in node.get_children():
 		var mi := child as MeshInstance3D
 		if mi == null or not mi.visible or mi.mesh == null:
 			continue
+		# Far off, the birch's dashes are too small to see.
+		if far and mi in _marks:
+			continue
+		var source: Mesh = _far_of.get(mi.mesh, mi.mesh) if far else mi.mesh
 		var mat := mi.material_override as StandardMaterial3D
 		if mat == null:
 			return false
 		var at := xform * mi.transform
-		var arrays := mi.mesh.surface_get_arrays(0)
+		var arrays := source.surface_get_arrays(0)
 		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 		var n: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 		var base := verts.size()
@@ -294,17 +458,38 @@ func _gather(node: Node, xform: Transform3D, verts: PackedVector3Array, normals:
 		var c := PackedColorArray()
 		c.resize(v.size())
 		c.fill(mat.albedo_color)
+		# A Blender piece's shading is in its own vertex colours: keep it.
+		var own = arrays[Mesh.ARRAY_COLOR]
+		if mat.vertex_color_use_as_albedo and own != null and (own as PackedColorArray).size() == v.size():
+			for k in v.size():
+				c[k] = mat.albedo_color * (own as PackedColorArray)[k]
 		colors.append_array(c)
 		var idx = arrays[Mesh.ARRAY_INDEX]
+		var own_idx := PackedInt32Array()
 		if idx == null or (idx as PackedInt32Array).is_empty():
 			for k in v.size():
-				indices.append(base + k)
+				own_idx.append(k)
 		else:
-			for k in (idx as PackedInt32Array):
-				indices.append(base + k)
+			own_idx = idx
+		for k in own_idx:
+			indices.append(base + k)
+		# Drawn from both sides (palm fronds): the merged material is not, so
+		# the back is added as its own faces, turned the other way.
+		if mat.cull_mode == BaseMaterial3D.CULL_DISABLED:
+			var back := verts.size()
+			verts.append_array(at * v)
+			var flipped := Transform3D(at.basis, Vector3.ZERO) * n
+			for k in flipped.size():
+				flipped[k] = -flipped[k]
+			normals.append_array(flipped)
+			colors.append_array(c)
+			for k in range(0, own_idx.size() - 2, 3):
+				indices.append(back + own_idx[k])
+				indices.append(back + own_idx[k + 2])
+				indices.append(back + own_idx[k + 1])
 		if node == self:
 			top.append(mi)
-		if not _gather(mi, at, verts, normals, colors, indices, top):
+		if not _gather(mi, at, verts, normals, colors, indices, top, far):
 			return false
 	return true
 
@@ -364,13 +549,19 @@ func _add_cone(radius: float, height: float, xform: Transform3D, color: Color) -
 ## materials rather than one per branch.
 static var _materials: Dictionary = {}
 
-func _mat(color: Color, glow: float = 0.0) -> StandardMaterial3D:
-	var key := "%s|%.2f" % [color.to_html(), glow]
+func _mat(color: Color, glow: float = 0.0, shaded: bool = false, two_sided: bool = false) -> StandardMaterial3D:
+	var key := "%s|%.2f|%d%d" % [color.to_html(), glow, int(shaded), int(two_sided)]
 	if _materials.has(key):
 		return _materials[key]
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.roughness = 0.95
+	# A Blender piece's light and shade is in its vertex colours: the tint
+	# multiplies it.
+	m.vertex_color_use_as_albedo = shaded
+	m.vertex_color_is_srgb = shaded
+	if two_sided:
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	if glow > 0.0:
 		m.emission_enabled = true
 		m.emission = color
@@ -381,9 +572,13 @@ func _mat(color: Color, glow: float = 0.0) -> StandardMaterial3D:
 ## One clump of leaves in the tree's style. `crown` is the top of the tree.
 func _add_foliage(radius: float, height: float, xform: Transform3D, color: Color,
 		crown: bool) -> MeshInstance3D:
-	var mi: MeshInstance3D
+	var mi: MeshInstance3D = _add_clump(radius, height, xform, color, crown)
+	if mi != null:
+		if leaf_glow > 0.0:
+			_glow_all(mi, color)
+		return mi
 	match foliage_style:
-		&"ball":
+		&"ball", &"canopy":
 			mi = _add_ball(radius * 0.85, height * 0.85, xform.translated(Vector3(0, height * 0.2, 0)), color)
 		&"puff":
 			# A few overlapping balls: blossom or a cloud of small leaves.
@@ -416,6 +611,61 @@ func _add_foliage(radius: float, height: float, xform: Transform3D, color: Color
 	if leaf_glow > 0.0:
 		mi.material_override = _mat(color, leaf_glow)
 	return mi
+
+## A clump made from a Blender piece, or null to fall back on primitives.
+func _add_clump(radius: float, height: float, xform: Transform3D, color: Color, crown: bool) -> MeshInstance3D:
+	var turn := Basis(Vector3.UP, _rng.randf_range(0.0, TAU))
+	match foliage_style:
+		&"ball", &"canopy", &"puff":
+			var piece_name: String = {&"ball": "LeafClump", &"canopy": "CanopyClump", &"puff": "BlossomClump"}[foliage_style]
+			var r := radius * 0.85
+			var tall := minf(maxf(height * 0.85, r * (0.95 if foliage_style == &"canopy" else 1.2)), r * 1.35) * 0.5
+			return _add_piece(piece_name, Transform3D(turn * Basis.from_scale(Vector3(r, tall, r)),
+				xform.origin + Vector3(0, height * 0.2, 0)), color)
+		&"palm":
+			if piece("PalmFrond") == null:
+				return null
+			# A knob at the top of the trunk, and fronds arching out of it.
+			var hub := _add_piece("LeafClump", Transform3D(Basis.from_scale(Vector3(trunk_radius * 1.5, trunk_radius * 1.2, trunk_radius * 1.5)),
+				xform.origin), color.darkened(0.25))
+			var reach := maxf(radius, 2.2)
+			var count := 9
+			for k in count:
+				var a := TAU * float(k) / float(count) + _rng.randf_range(-0.2, 0.2)
+				var tilt := _rng.randf_range(-0.15, 0.25)
+				var frond := _add_piece("PalmFrond", Transform3D(
+					Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, tilt) * Basis.from_scale(Vector3(reach * 0.9, reach, reach)),
+					Vector3.ZERO), color if k % 2 == 0 else color.lightened(0.08), true)
+				# Inverse of the hub's scale, so the fronds hang off it at full size.
+				remove_child(frond)
+				hub.add_child(frond)
+				frond.transform = Transform3D(hub.transform.basis.inverse(), Vector3.ZERO) * frond.transform
+			return hub
+		&"cap", &"bare":
+			return null
+		_:
+			var piece_name := "ConiferStack" if crown else "ConiferTier"
+			return _add_piece(piece_name, Transform3D(turn * Basis.from_scale(Vector3(radius, height, radius)), xform.origin), color)
+
+func _add_piece(piece_name: String, xform: Transform3D, color: Color, two_sided: bool = false) -> MeshInstance3D:
+	var mesh := piece(piece_name)
+	if mesh == null:
+		return null
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.transform = xform
+	mi.material_override = _mat(color, 0.0, true, two_sided)
+	mi.visibility_range_end = VIEW_RANGE
+	add_child(mi)
+	return mi
+
+## Glowing leaves (the stranger trees): every part of a clump.
+func _glow_all(mi: MeshInstance3D, color: Color) -> void:
+	var two_sided := mi.material_override != null and (mi.material_override as BaseMaterial3D).cull_mode == BaseMaterial3D.CULL_DISABLED
+	mi.material_override = _mat(color, leaf_glow, true, two_sided)
+	for c in mi.get_children():
+		if c is MeshInstance3D:
+			_glow_all(c as MeshInstance3D, color)
 
 func _add_ball(radius: float, height: float, xform: Transform3D, color: Color) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()

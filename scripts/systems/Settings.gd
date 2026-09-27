@@ -38,7 +38,9 @@ const DEFAULTS := {
 	&"fullscreen": false,
 	&"vsync": true,
 	&"render_scale": 1.0,
+	&"quality": 2,            ## 0 low, 1 medium, 2 high, 3 custom
 	&"shadows": 2,            ## 0 off, 1 low, 2 high
+	&"anti_aliasing": 2,      ## 0 off, 1 FXAA, 2 MSAA 2x
 	&"ambient_occlusion": true,
 	&"bloom": true,
 	&"view_distance": 600.0,
@@ -75,7 +77,9 @@ const NOTES := {
 	&"fullscreen": "true for fullscreen",
 	&"vsync": "true to sync to the monitor",
 	&"render_scale": "3D resolution as a share of the window, 0.5 to 1.0",
+	&"quality": "Graphics preset: 0 low, 1 medium, 2 high, 3 custom (set by changing any video setting)",
 	&"shadows": "0 off, 1 low, 2 high",
+	&"anti_aliasing": "Smoothing of jagged edges: 0 off, 1 FXAA (cheap), 2 MSAA 2x",
 	&"ambient_occlusion": "Screen-space ambient occlusion",
 	&"bloom": "Glow round bright things",
 	&"view_distance": "How far you can see, in metres (150 to 1200)",
@@ -97,6 +101,26 @@ const NOTES := {
 	&"demo_lines": "Debug: automated demo lines south of home",
 }
 
+## The graphics presets: what each sets. Low is for integrated graphics and
+## older cards; High is everything on.
+const PRESETS := [
+	{&"shadows": 1, &"ambient_occlusion": false, &"bloom": false, &"anti_aliasing": 1, &"render_scale": 0.8, &"view_distance": 400.0},
+	{&"shadows": 1, &"ambient_occlusion": false, &"bloom": true, &"anti_aliasing": 1, &"render_scale": 1.0, &"view_distance": 500.0},
+	{&"shadows": 2, &"ambient_occlusion": true, &"bloom": true, &"anti_aliasing": 2, &"render_scale": 1.0, &"view_distance": 600.0},
+]
+const PRESET_KEYS := [&"shadows", &"ambient_occlusion", &"bloom", &"anti_aliasing", &"render_scale", &"view_distance"]
+var _applying_preset: bool = false
+
+## Sets every video setting from a preset (0 low, 1 medium, 2 high).
+func apply_preset(i: int) -> void:
+	if i < 0 or i >= PRESETS.size():
+		return
+	_applying_preset = true
+	for key in PRESETS[i]:
+		set_value(key, PRESETS[i][key], false)
+	_applying_preset = false
+	set_value(&"quality", i)
+
 ## Where the settings live. Tests point this somewhere disposable.
 var path: String = PATH
 var _values: Dictionary = {}
@@ -117,7 +141,11 @@ func set_value(key: StringName, v: Variant, persist: bool = true) -> void:
 	if _values.get(key) == coerced:
 		return
 	_values[key] = coerced
-	if key in [&"fullscreen", &"vsync", &"render_scale", &"ui_scale"]:
+	if key in PRESET_KEYS and not _applying_preset and int(_values.get(&"quality", 2)) != 3:
+		# Changing one video setting by hand makes the preset "custom".
+		_values[&"quality"] = 3
+		changed.emit(&"quality")
+	if key in [&"fullscreen", &"vsync", &"render_scale", &"ui_scale", &"anti_aliasing"]:
 		apply_display()
 	changed.emit(key)
 	if persist:
@@ -247,4 +275,12 @@ func apply_display() -> void:
 	DisplayServer.window_set_vsync_mode(
 		DisplayServer.VSYNC_ENABLED if value(&"vsync") else DisplayServer.VSYNC_DISABLED)
 	window.scaling_3d_scale = clampf(float(value(&"render_scale")), 0.5, 1.0)
+	# Below full resolution, FSR sharpens the upscale (Forward+ and Mobile only).
+	var method := RenderingServer.get_current_rendering_method()
+	if method == "forward_plus" or method == "mobile":
+		window.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if window.scaling_3d_scale < 0.99 \
+			else Viewport.SCALING_3D_MODE_BILINEAR
+	var aa := int(value(&"anti_aliasing"))
+	window.msaa_3d = Viewport.MSAA_2X if aa >= 2 else Viewport.MSAA_DISABLED
+	window.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == 1 else Viewport.SCREEN_SPACE_AA_DISABLED
 	window.content_scale_factor = clampf(float(value(&"ui_scale")), 0.75, 1.5)

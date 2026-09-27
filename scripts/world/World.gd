@@ -597,7 +597,7 @@ func _build_forest() -> void:
 			"radius": [0.40, 0.54], "height": [5.0, 7.0], "taper": 0.74, "branches": [6, 8],
 			# Open trunk, then a broad crown thrown wide.
 			"start": 0.58, "pitch": [0.80, 1.20], "length": [0.28, 0.44],
-			"foliage": 9.5, "crown": [8.5, 0.30]},
+			"foliage": 9.5, "crown": [8.5, 0.30], "style": &"canopy"},
 
 		{"name": "Willow", "item": &"wood_willow",
 			"biomes": [Terrain.Biome.SWAMP],
@@ -605,7 +605,7 @@ func _build_forest() -> void:
 			"radius": [0.34, 0.46], "height": [4.5, 6.5], "taper": 0.70, "branches": [7, 9],
 			# Drooping: branches thrown almost flat and long with it.
 			"start": 0.52, "pitch": [1.05, 1.45], "length": [0.34, 0.52],
-			"foliage": 8.0, "crown": [6.0, 0.26],
+			"foliage": 8.0, "crown": [6.0, 0.26], "style": &"canopy",
 			# Standing in the water, which is where a willow belongs.
 			"wet": 0.7},
 
@@ -615,7 +615,7 @@ func _build_forest() -> void:
 			"radius": [0.46, 0.60], "height": [5.0, 7.0], "taper": 0.82, "branches": [4, 6],
 			# Squat and thick, holding on to a mountainside.
 			"start": 0.48, "pitch": [0.70, 1.10], "length": [0.20, 0.32],
-			"foliage": 6.0, "crown": [4.6, 0.28]},
+			"foliage": 6.0, "crown": [4.6, 0.28], "style": &"canopy"},
 
 		{"name": "Desert Ironwood", "near": 700.0, "item": &"wood_ironwood",
 			"biomes": [Terrain.Biome.DESERT],
@@ -623,7 +623,7 @@ func _build_forest() -> void:
 			"radius": [0.38, 0.50], "height": [3.8, 5.4], "taper": 0.80, "branches": [5, 7],
 			# Low, wide and sparse, the way things grow with no water.
 			"start": 0.40, "pitch": [0.95, 1.35], "length": [0.26, 0.40],
-			"foliage": 5.0, "crown": [0.0, 0.0]},
+			"foliage": 5.0, "crown": [0.0, 0.0], "style": &"canopy"},
 
 		# --- The rest of the forest: every one a tree you would know on sight.
 
@@ -633,7 +633,7 @@ func _build_forest() -> void:
 			"radius": [0.18, 0.26], "height": [7.0, 10.0], "taper": 0.6, "branches": [5, 7],
 			# Slim white trunk, a light rounded head of small leaves.
 			"start": 0.55, "pitch": [0.35, 0.75], "length": [0.14, 0.22],
-			"foliage": 7.0, "crown": [7.0, 0.28], "style": &"ball"},
+			"foliage": 7.0, "crown": [7.0, 0.28], "style": &"ball", "marks": true},
 
 		{"name": "Maple", "near": 360.0, "item": &"wood_maple",
 			"biomes": [Terrain.Biome.WOODLAND],
@@ -708,7 +708,7 @@ func _build_forest() -> void:
 			"radius": [0.5, 0.66], "height": [9.0, 12.0], "taper": 0.7, "branches": [6, 8],
 			# Tall, straight and buttressed, with a broad dark canopy on top.
 			"start": 0.6, "pitch": [0.8, 1.15], "length": [0.2, 0.3],
-			"foliage": 9.0, "crown": [8.0, 0.24], "style": &"ball", "quota": 16},
+			"foliage": 9.0, "crown": [8.0, 0.24], "style": &"canopy", "quota": 16},
 
 		{"name": "Dead Snag", "item": &"wood_pine",
 			"biomes": [Terrain.Biome.MOUNTAIN, Terrain.Biome.DESERT, Terrain.Biome.SWAMP],
@@ -995,6 +995,7 @@ func _build_tree(kind: Dictionary, form_seed: int) -> Node3D:
 	tree.foliage_style = kind.get("style", &"cone")
 	tree.bark_color = kind.get("bark", Color(0, 0, 0, 0))
 	tree.leaf_accent = kind.get("accent", Color(0, 0, 0, 0))
+	tree.bark_marks = bool(kind.get("marks", false))
 	tree.leaf_glow = float(kind.get("glow", 0.0))
 	return tree
 
@@ -1832,6 +1833,19 @@ func _update_winch_reticle() -> void:
 			hit = {}
 	winch_reticle.show_for(r, hit)
 
+func _near_cave_mouth(p: Vector3, r: float) -> bool:
+	for cave in terrain.caves:
+		var e: Vector3 = cave.entrance
+		if Vector2(p.x - e.x, p.z - e.z).length() < r:
+			return true
+	if network != null:
+		for c in network.entrances:
+			if is_instance_valid(c) and Vector2(p.x - c.global_position.x, p.z - c.global_position.z).length() < r:
+				return true
+		if network.contains(p, 30.0):
+			return true
+	return false
+
 ## Underground the sky goes away: ambient light and the sun fade, the haze
 ## turns dark, and a lamp on the player's hat comes on. The caves' own lamps
 ## and crystals are then what you see by.
@@ -1839,6 +1853,12 @@ func _update_underground(delta: float) -> void:
 	var eye := player.camera.global_position
 	var target := network.depth_factor(eye) if network != null else 0.0
 	underground = move_toward(underground, target, delta * 1.5)
+	# The ground hides what is behind hills (see Terrain._build_occluders),
+	# but not from inside the caves or near a way into them: there the
+	# ground is not solid.
+	var occlude := underground < 0.01 and not _near_cave_mouth(eye, 70.0)
+	if get_viewport().use_occlusion_culling != occlude:
+		get_viewport().use_occlusion_culling = occlude
 	# Underground the ambient light is the cave's own - dim and cool - rather
 	# than the sky's; the lamps and crystals do the rest.
 	if underground > 0.02:

@@ -45,7 +45,8 @@ Controls are on the title screen's Controls page and in the in-game journal
 empty hand to drag it, **1-9** for your tools, **E** to use things, **F** to
 get into vehicles, **B** for build mode (then **E** for the build menu),
 **Tab** for the journal, **F2** for first or third person. Every key can be
-rebound in Settings > Controls.
+rebound in Settings > Controls. If the game runs slowly, Settings > Video > Graphics
+quality has Low, Medium and High presets.
 
 Your settings and key bindings are kept in one commented, hand-editable
 config file, `config.cfg` in the game's user folder (on Windows

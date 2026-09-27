@@ -96,15 +96,19 @@ static func piece(piece_name: String) -> Mesh:
 			for n in root.find_children("*", "MeshInstance3D", true, false):
 				var near := _brightened((n as MeshInstance3D).mesh)
 				_piece_meshes[String(n.name)] = near
+				_shared[near] = true
 				var far := _far_piece(String(n.name))
 				if far != null:
 					_far_of[near] = far
+					_shared[far] = true
 			root.free()
 	return _piece_meshes.get(piece_name, null)
 
 ## Past NEAR_RANGE a tree is drawn from these instead: the same shapes in a
 ## fraction of the triangles (a leaf clump is 20, not 400).
 static var _far_of: Dictionary = {}
+## Every shared piece mesh, near and far (see _gather).
+static var _shared: Dictionary = {}
 const NEAR_RANGE := 35.0
 
 static func _far_piece(piece_name: String) -> Mesh:
@@ -418,8 +422,7 @@ func _bake(parts: Array[MeshInstance3D], far: bool = false) -> ArrayMesh:
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
-	var indices := PackedInt32Array()
-	if not _gather(self, Transform3D(), verts, normals, colors, indices, parts, far):
+	if not _gather(self, Transform3D(), verts, normals, colors, parts, far):
 		return null
 	if verts.is_empty():
 		return null
@@ -428,15 +431,88 @@ func _bake(parts: Array[MeshInstance3D], far: bool = false) -> ArrayMesh:
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_COLOR] = colors
-	arrays[Mesh.ARRAY_INDEX] = indices
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
 
+## A mesh as plain triangles (no index): [verts, normals, shade or null].
+## The shared pieces are worked out once and kept; a branch's own cylinder is
+## small enough to do each time.
+static var _flat_cache: Dictionary = {}
+## A shared piece's shade already multiplied by a tint, by piece and colour.
+static var _tint_cache: Dictionary = {}
+const TINT_CACHE_MAX := 3000
+
+static func _flat(mesh: Mesh, keep: bool) -> Array:
+	if keep and _flat_cache.has(mesh):
+		return _flat_cache[mesh]
+	var arrays := mesh.surface_get_arrays(0)
+	var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var n: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var shade = arrays[Mesh.ARRAY_COLOR]
+	var idx = arrays[Mesh.ARRAY_INDEX]
+	var out: Array
+	if idx == null or (idx as PackedInt32Array).is_empty():
+		out = [v, n, shade]
+	else:
+		var fv := PackedVector3Array()
+		var fn := PackedVector3Array()
+		var fc := PackedColorArray()
+		var has_shade: bool = shade != null and (shade as PackedColorArray).size() == v.size()
+		fv.resize((idx as PackedInt32Array).size())
+		fn.resize(fv.size())
+		if has_shade:
+			fc.resize(fv.size())
+		var k := 0
+		for i in (idx as PackedInt32Array):
+			fv[k] = v[i]
+			fn[k] = n[i]
+			if has_shade:
+				fc[k] = (shade as PackedColorArray)[i]
+			k += 1
+		out = [fv, fn, fc if has_shade else null]
+	if keep:
+		# Its back, for the parts drawn from both sides: the same triangles
+		# wound the other way, facing out behind.
+		var bv := PackedVector3Array(out[0])
+		var bn := PackedVector3Array(out[1])
+		for t in range(0, bv.size() - 2, 3):
+			var a := bv[t + 1]
+			bv[t + 1] = bv[t + 2]
+			bv[t + 2] = a
+			var b := bn[t + 1]
+			bn[t + 1] = bn[t + 2]
+			bn[t + 2] = b
+		for t in bn.size():
+			bn[t] = -bn[t]
+		var bc = out[2]
+		if bc != null:
+			bc = PackedColorArray(bc)
+			for t in range(0, bc.size() - 2, 3):
+				var c: Color = bc[t + 1]
+				bc[t + 1] = bc[t + 2]
+				bc[t + 2] = c
+		out.append_array([bv, bn, bc])
+		_flat_cache[mesh] = out
+	return out
+
+static func _tinted(mesh: Mesh, shade: PackedColorArray, tint: Color, back: bool) -> PackedColorArray:
+	var key := "%d|%s|%d" % [mesh.get_instance_id(), tint.to_html(false), int(back)]
+	if _tint_cache.has(key):
+		return _tint_cache[key]
+	var c := PackedColorArray()
+	c.resize(shade.size())
+	for k in shade.size():
+		c[k] = tint * shade[k]
+	if _tint_cache.size() >= TINT_CACHE_MAX:
+		_tint_cache.clear()
+	_tint_cache[key] = c
+	return c
+
 ## Adds the meshes under `node` (drawn through `xform`) to the arrays. Returns
 ## false if some part cannot be baked, in which case nothing is merged.
 func _gather(node: Node, xform: Transform3D, verts: PackedVector3Array, normals: PackedVector3Array,
-		colors: PackedColorArray, indices: PackedInt32Array, top: Array[MeshInstance3D], far: bool = false) -> bool:
+		colors: PackedColorArray, top: Array[MeshInstance3D], far: bool = false) -> bool:
 	for child in node.get_children():
 		var mi := child as MeshInstance3D
 		if mi == null or not mi.visible or mi.mesh == null:
@@ -448,48 +524,30 @@ func _gather(node: Node, xform: Transform3D, verts: PackedVector3Array, normals:
 		var mat := mi.material_override as StandardMaterial3D
 		if mat == null:
 			return false
+		# A shared piece (a leaf clump, a frond, the root flare) is kept worked
+		# out, so a tree is mostly bulk copies rather than a loop per point.
+		var shared := _shared.has(source)
+		var flat := _flat(source, shared)
 		var at := xform * mi.transform
-		var arrays := source.surface_get_arrays(0)
-		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		var n: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
-		var base := verts.size()
-		verts.append_array(at * v)
-		normals.append_array(Transform3D(at.basis, Vector3.ZERO) * n)
-		var c := PackedColorArray()
-		c.resize(v.size())
-		c.fill(mat.albedo_color)
-		# A Blender piece's shading is in its own vertex colours: keep it.
-		var own = arrays[Mesh.ARRAY_COLOR]
-		if mat.vertex_color_use_as_albedo and own != null and (own as PackedColorArray).size() == v.size():
-			for k in v.size():
-				c[k] = mat.albedo_color * (own as PackedColorArray)[k]
-		colors.append_array(c)
-		var idx = arrays[Mesh.ARRAY_INDEX]
-		var own_idx := PackedInt32Array()
-		if idx == null or (idx as PackedInt32Array).is_empty():
-			for k in v.size():
-				own_idx.append(k)
-		else:
-			own_idx = idx
-		for k in own_idx:
-			indices.append(base + k)
-		# Drawn from both sides (palm fronds): the merged material is not, so
-		# the back is added as its own faces, turned the other way.
-		if mat.cull_mode == BaseMaterial3D.CULL_DISABLED:
-			var back := verts.size()
+		var nb := Transform3D(at.basis, Vector3.ZERO)
+		var sides := [false, true] if mat.cull_mode == BaseMaterial3D.CULL_DISABLED and shared else [false]
+		for back in sides:
+			var v: PackedVector3Array = flat[3] if back else flat[0]
+			var n: PackedVector3Array = flat[4] if back else flat[1]
+			var shade = flat[5] if back else flat[2]
 			verts.append_array(at * v)
-			var flipped := Transform3D(at.basis, Vector3.ZERO) * n
-			for k in flipped.size():
-				flipped[k] = -flipped[k]
-			normals.append_array(flipped)
-			colors.append_array(c)
-			for k in range(0, own_idx.size() - 2, 3):
-				indices.append(back + own_idx[k])
-				indices.append(back + own_idx[k + 2])
-				indices.append(back + own_idx[k + 1])
+			normals.append_array(nb * n)
+			# A Blender piece's shading is in its own vertex colours: keep it.
+			if mat.vertex_color_use_as_albedo and shade != null and (shade as PackedColorArray).size() == v.size() and shared:
+				colors.append_array(_tinted(source, shade, mat.albedo_color, back))
+			else:
+				var c := PackedColorArray()
+				c.resize(v.size())
+				c.fill(mat.albedo_color)
+				colors.append_array(c)
 		if node == self:
 			top.append(mi)
-		if not _gather(mi, at, verts, normals, colors, indices, top, far):
+		if not _gather(mi, at, verts, normals, colors, top, far):
 			return false
 	return true
 

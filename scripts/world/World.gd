@@ -2066,6 +2066,9 @@ func handle_key(p: Player, event: InputEvent) -> void:
 			var said := v.try_recover()
 			if said == "":
 				_tell(p, "%s recovered" % v.display_name)
+				# Driven on a guest's machine: it is put right there too.
+				if v.net_follow and net_host != null:
+					net_host.call("recovered", v)
 			else:
 				_tell(p, said)
 

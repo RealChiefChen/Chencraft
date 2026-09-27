@@ -224,6 +224,26 @@ func to_dict() -> Dictionary:
 	return {"money": money, "day": day, "day_time": day_time,
 		"total_earned": total_earned, "items_sold": items_sold}
 
+## A co-op guest told the shared purse and clock by the host: only what
+## has actually changed is announced, so the new-day banner shows once a day.
+func apply_remote(d: Dictionary) -> void:
+	var old_money := money
+	var old_day := day
+	money = int(d.get("money", money))
+	day = int(d.get("day", day))
+	day_time = float(d.get("day_time", day_time))
+	total_earned = int(d.get("total_earned", total_earned))
+	items_sold = int(d.get("items_sold", items_sold))
+	if money != old_money:
+		money_changed.emit(money, money - old_money)
+	if day != old_day:
+		var was_week := (old_day - 1) / WEEK
+		_price_cache.clear()
+		_cached_day = -1
+		day_changed.emit(day)
+		if week() != was_week:
+			week_changed.emit(week())
+
 func from_dict(d: Dictionary) -> void:
 	money = int(d.get("money", 0))
 	day = int(d.get("day", 1))

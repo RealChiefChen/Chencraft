@@ -132,7 +132,7 @@ func on_batch(batch: Array) -> void:
 				var plot: Plot = world.get("plot")
 				if e.has("land") and plot != null and plot.tier != int(e.land):
 					plot._apply_expansion(int(e.land))
-				Economy.from_dict(e.e)
+				Economy.apply_remote(e.e)
 				PlayerState.from_dict(e.p)
 				var quests: Variant = world.get("quests")
 				if quests != null and not (e.q as Dictionary).is_empty():
@@ -147,6 +147,10 @@ func on_batch(batch: Array) -> void:
 					_nodes[_me] = world.get("player")
 			"view":
 				_view(e)
+			"recover":
+				var rv := _nodes.get(int(e.id), null) as Hauler
+				if rv != null and is_instance_valid(rv):
+					rv.move_to(NetHost._unpose(e.x))
 			"warp":
 				var wp: Player = world.get("player")
 				if wp != null:

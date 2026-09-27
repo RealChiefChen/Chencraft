@@ -882,6 +882,12 @@ func net_follow_to(goal: Transform3D, wheels: Array) -> void:
 	_net_wheels = wheels
 	_net_heard = 0.0
 
+## Moved by the host (recovered): held there until the guest's next word.
+func net_hold_at(t: Transform3D) -> void:
+	_net_goal = t
+	_net_wheels = []
+	_net_vel = Vector3.ZERO
+
 func end_net_follow() -> void:
 	if not net_follow:
 		return

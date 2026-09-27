@@ -291,6 +291,25 @@ func _join() -> void:
 	var sits := world.player.global_position.distance_to(truck.global_position) < 4.0
 	_check(sits, "this player rode along in the truck")
 	_check(truck.net_mirror, "the truck was driven here, not on the host")
+	# Recovering it, from the seat: done on the host, and here too.
+	var low := truck.global_position.y
+	var rec_key := InputEventKey.new()
+	for e in InputMap.action_get_events(&"recover"):
+		if e is InputEventKey:
+			rec_key.keycode = (e as InputEventKey).keycode
+			rec_key.physical_keycode = (e as InputEventKey).physical_keycode
+			if rec_key.keycode == KEY_NONE:
+				rec_key.keycode = rec_key.physical_keycode
+			break
+	rec_key.pressed = true
+	client.send_press(rec_key)
+	var rose := 0.0
+	t = 0.0
+	while t < 3.0:
+		await get_tree().physics_frame
+		t += 1.0 / 60.0
+		rose = maxf(rose, truck.global_position.y - low)
+	_check(rose > 0.8, "recovering the truck lifted it here too (%.2f m)" % rose)
 	client.send_press(_key(KEY_F))
 	t = 0.0
 	while world.player.driving() and t < 10.0:

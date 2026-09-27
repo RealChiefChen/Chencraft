@@ -126,6 +126,7 @@ func _run_all() -> void:
 	await _test(&"co-op guests keep their own tools and gear", test_guest_kit)
 	await _test(&"co-op a guest's copy of a world is never saved", test_guest_world_not_saved)
 	await _test(&"respawning a truck puts its driver out, solid", test_respawn_with_driver)
+	await _test(&"co-op the host's clock shows a new day once", test_guest_new_day_once)
 	await _test(&"every balance knob is read by the game", test_balance_file)
 	await _test(&"controls can be rebound and saved", test_controls)
 	await _test(&"build mode opens empty-handed, with a menu and a copy key", test_build_menu_and_pick)
@@ -4680,6 +4681,20 @@ func test_net_address() -> void:
 	check_eq(Net.split_address("10.0.0.2:30000"), ["10.0.0.2", 30000], "an IP with another port")
 	check_eq(Net.split_address("myhost.example.com"), ["myhost.example.com", Net.PORT], "a host name")
 	check_eq(Net.split_address("10.0.0.2:banana"), ["10.0.0.2", Net.PORT], "a junk port falls back")
+	done()
+
+func test_guest_new_day_once() -> void:
+	Economy.from_dict({"money": 100, "day": 3, "day_time": 10.0})
+	var days := [0]
+	var count := func(_d: int): days[0] += 1
+	Economy.day_changed.connect(count)
+	for i in 5:
+		Economy.apply_remote({"money": 100 + i, "day": 3, "day_time": 11.0 + i})
+	check_eq(days[0], 0, "same-day updates announced a new day")
+	Economy.apply_remote({"money": 200, "day": 4, "day_time": 1.0})
+	Economy.apply_remote({"money": 210, "day": 4, "day_time": 2.0})
+	check_eq(days[0], 1, "new days announced")
+	Economy.day_changed.disconnect(count)
 	done()
 
 func test_respawn_with_driver() -> void:

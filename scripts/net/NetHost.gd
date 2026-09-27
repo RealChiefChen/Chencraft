@@ -58,7 +58,7 @@ func on_guest_ready(peer: int, display: String) -> void:
 	# may stand on land bought since the game began.
 	var batch: Array = []
 	var econ := _econ_for(peer, _econ_entry())
-	_econ_hash[peer] = hash([econ.e, econ.p, econ.q, econ.land])
+	_econ_hash[peer] = _econ_sig(econ)
 	batch.append(econ)
 	for entry in _entities():
 		var fresh := not _ids.has(entry[2])
@@ -178,6 +178,15 @@ func _guest_build(ev: Dictionary) -> String:
 			return plot.edit(plot.placed.find(rec), Vector2i(int(c[0]), int(c[1])), Vector3i(int(r[0]), int(r[1]), int(r[2])),
 				Vector3i(int(sz[0]), int(sz[1]), int(sz[2])), float(ev.get("lift", 0.0)))
 	return ""
+
+## A truck a guest is driving was recovered here: recover it on their machine,
+## to the same place.
+func recovered(v: Hauler) -> void:
+	v.net_hold_at(v.global_transform)
+	var guests: Dictionary = world.get("guests")
+	for peer in guests:
+		if guests[peer] == v.driver:
+			_post(peer, {"t": "recover", "id": int(_ids.get(_key_of(v, "v"), -1)), "x": _pose(v.global_transform)})
 
 ## The host moved a guest's player: put the guest there too.
 func _on_warped(peer: int, p: Player) -> void:
@@ -364,6 +373,14 @@ func _econ_entry() -> Dictionary:
 	return {"t": "econ", "e": Economy.to_dict(), "p": PlayerState.to_dict(), "land": plot.tier,
 		"q": quests.call("to_dict") if quests != null else {}}
 
+## What decides whether a guest needs telling again. The clock ticks all the
+## time and runs on the guest's side too, so it only counts every ten seconds.
+static func _econ_sig(econ: Dictionary) -> int:
+	var e: Dictionary = (econ.e as Dictionary).duplicate()
+	var clock := int(float(e.get("day_time", 0.0)) / 10.0)
+	e.erase("day_time")
+	return hash([e, econ.p, econ.q, econ.land, clock])
+
 ## The shared state as one guest sees it: their own tools and gear in place
 ## of the host's.
 func _econ_for(peer: int, econ: Dictionary) -> Dictionary:
@@ -428,7 +445,7 @@ func _physics_process(delta: float) -> void:
 		var econ := _econ_entry()
 		for peer in _ready_peers:
 			var mine := _econ_for(peer, econ)
-			var h := hash([mine.e, mine.p, mine.q, mine.land])
+			var h := _econ_sig(mine)
 			if h != int(_econ_hash.get(peer, 0)):
 				_econ_hash[peer] = h
 				if not _mail.has(peer):

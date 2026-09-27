@@ -970,7 +970,13 @@ func _update_debug() -> void:
 	var lines: Array[String] = []
 	if Settings.flag(&"show_fps") or show_debug:
 		lines.append("%d fps" % Engine.get_frames_per_second())
+	_perf_measure(show_debug)
 	if show_debug:
+		var perf := _perf_sample()
+		lines.append("frame %.1f ms   cpu %.1f ms (scripts %.1f, physics %.1f)   gpu %.1f ms" % [
+			perf.frame_ms, perf.cpu_ms, perf.process_ms, perf.physics_ms, perf.gpu_ms])
+		lines.append("draws %d   objects %d   triangles %dk   nodes %d" % [perf.draws, perf.objects, perf.prims / 1000, perf.nodes])
+		_perf_log(perf)
 		var p := player.global_position
 		lines.append("pos %.0f, %.0f, %.0f   loose %d / %d   buildings %d" % [p.x, p.y, p.z,
 			manager.active_count(), manager.per_plot_cap, plot.placed.size()])
@@ -981,6 +987,73 @@ func _update_debug() -> void:
 	_debug.text = "\n".join(lines)
 	_debug.visible = not lines.is_empty()
 
+
+# --- Performance log -----------------------------------------------------------
+# With the debug readout on (F3), what each frame costs is shown, and every two
+# seconds a line goes into perf_log.txt: in the project folder when run from
+# the editor, otherwise in the user folder. The first lines say what the
+# machine is, so a slow game can be diagnosed from the file alone.
+
+var _perf_on: bool = false
+var _perf_next: float = 0.0
+var _perf_path: String = ""
+
+func _perf_measure(on: bool) -> void:
+	if on == _perf_on:
+		return
+	_perf_on = on
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), on)
+
+func _perf_sample() -> Dictionary:
+	var vp := get_viewport().get_viewport_rid()
+	var process_ms := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	var physics_ms := Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	return {
+		"fps": Engine.get_frames_per_second(),
+		"frame_ms": 1000.0 / maxf(1.0, Engine.get_frames_per_second()),
+		"process_ms": process_ms,
+		"physics_ms": physics_ms,
+		"cpu_ms": RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu() + process_ms,
+		"gpu_ms": RenderingServer.viewport_get_measured_render_time_gpu(vp),
+		"draws": int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
+		"objects": int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)),
+		"prims": int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)),
+		"nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+	}
+
+func _perf_log(perf: Dictionary) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _perf_next:
+		return
+	_perf_next = now + 2.0
+	var first := _perf_path == ""
+	if first:
+		_perf_path = ProjectSettings.globalize_path("res://perf_log.txt") if OS.has_feature("editor") \
+			else ProjectSettings.globalize_path("user://perf_log.txt")
+	var f := FileAccess.open(_perf_path, FileAccess.READ_WRITE if FileAccess.file_exists(_perf_path) else FileAccess.WRITE)
+	if f == null:
+		return
+	f.seek_end()
+	if first:
+		var win := get_window()
+		f.store_line("=== %s   Godot %s   %s" % [Time.get_datetime_string_from_system(), Engine.get_version_info().string,
+			RenderingServer.get_current_rendering_method()])
+		f.store_line("gpu: %s (%s)   driver %s" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_vendor(),
+			" ".join(OS.get_video_adapter_driver_info())])
+		f.store_line("cpu: %s, %d threads   ram %d MB   os %s" % [OS.get_processor_name(), OS.get_processor_count(),
+			int(OS.get_memory_info().get("physical", 0) / 1048576), OS.get_name()])
+		f.store_line("window %dx%d   render scale %.2f   fullscreen %s   vsync %s" % [win.size.x, win.size.y,
+			win.scaling_3d_scale, Settings.flag(&"fullscreen"), Settings.flag(&"vsync")])
+		var keys := [&"quality", &"shadows", &"ambient_occlusion", &"bloom", &"anti_aliasing", &"view_distance", &"minimap", &"show_hints"]
+		var set_bits: Array[String] = []
+		for k in keys:
+			set_bits.append("%s=%s" % [k, Settings.value(k)])
+		f.store_line("settings: " + "  ".join(set_bits))
+	var p := player.global_position
+	f.store_line("%s  fps %3d  frame %5.1f  cpu %5.1f (scripts %4.1f physics %4.1f)  gpu %5.1f  draws %4d  obj %4d  tris %5dk  nodes %d  at %.0f,%.0f,%.0f%s" % [
+		Time.get_time_string_from_system(), perf.fps, perf.frame_ms, perf.cpu_ms, perf.process_ms, perf.physics_ms, perf.gpu_ms,
+		perf.draws, perf.objects, perf.prims / 1000, perf.nodes, p.x, p.y, p.z, "  driving" if player.driving() else ""])
+	f.close()
 
 ## The centre of the screen: a dot, with a ring round it when there is
 ## something here to use.

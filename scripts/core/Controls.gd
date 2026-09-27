@@ -30,6 +30,7 @@ const ACTIONS := [
 	[&"use", "Use: deposit, sell, pay, open", "Hands and tools", ["E"]],
 	[&"drop_one", "Drop one piece", "Hands and tools", ["Q"]],
 	[&"drop_all", "Drop everything / reel in (seated)", "Hands and tools", ["G"]],
+	[&"throw", "Throw: the piece in hand, or the top one off the rack", "Hands and tools", ["V"]],
 	[&"turn_ccw", "Turn held piece / crane log / tip bucket", "Hands and tools", ["Q"]],
 	[&"turn_cw", "Turn held piece / crane log / curl bucket", "Hands and tools", ["E"]],
 	[&"wheel_up", "Closer / previous / zoom in", "Hands and tools", ["WheelUp"]],

@@ -121,6 +121,7 @@ func _run_all() -> void:
 	await _test(&"a driven truck's settled load is fixed as it lies", test_load_fixed_while_driven)
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
 	await _test(&"vehicles bump into each other", test_vehicles_collide)
+	await _test(&"a piece off the rack can be thrown", test_throw)
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
@@ -4603,6 +4604,25 @@ func test_load_fixed_while_driven() -> void:
 ## Spec: trucks with a hitch tow trailers. A trailer is hooked on at the
 ## ball, follows the truck round corners by itself, brakes when it brakes,
 ## stays upright, and stands on its leg once let go.
+func test_throw() -> void:
+	_setup()
+	var p := _make_player()
+	world.add_child(p)
+	await step(3)
+	var log_piece := spawn(&"wood_pine", p.global_position + Vector3(0, 0.5, -1.5), Solid.cylinder(0.08, 0.08, 0.8))
+	await step(2)
+	p.held.append(log_piece)
+	log_piece.set_state(LooseItem.State.HELD)
+	var from := p.global_position
+	check(p.throw_one(), "nothing was thrown")
+	await step(40)
+	check(p.held.is_empty(), "the piece is still on the rack")
+	check(log_piece.state == LooseItem.State.FREE, "the thrown piece is not loose")
+	var flat := Vector2(log_piece.global_position.x - from.x, log_piece.global_position.z - from.z).length()
+	check(flat > 3.0, "the piece only went %.1f m" % flat)
+	p.queue_free()
+	done()
+
 func test_vehicles_collide() -> void:
 	_setup(false)
 	var a := Hauler.new()

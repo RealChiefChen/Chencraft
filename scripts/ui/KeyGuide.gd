@@ -21,6 +21,7 @@ const GROUPS := [
 		[[&"inventory"], "Inventory: put tools on the hotbar"],
 		[[&"drop_one"], "Drop one piece from the rack"],
 		[[&"drop_all"], "Drop everything on the rack"],
+		[[&"throw"], "Throw the piece in hand, or the top one off the rack"],
 		[[&"use"], "Use: deposit, sell, pay, load, talk"],
 		[[&"sprint", &"use"], "Empty a storage bin onto the ground"],
 		[[&"machine_output"], "At a machine: change the size of what it makes"],
@@ -144,7 +145,7 @@ static func hints_for(state: String) -> Array:
 			rows = [[[&"primary"], "Hold to keep hold"], [[&"wheel_up"], "Closer / further"],
 				[[&"sprint"], "+ move/turn keys: turn it"], [[&"secondary"], "Throw"]]
 		"carrying":
-			rows = [[[&"use"], "Deposit / sell"], [[&"drop_one"], "Drop one"], [[&"drop_all"], "Drop all"],
+			rows = [[[&"use"], "Deposit / sell"], [[&"drop_one"], "Drop one"], [[&"throw"], "Throw"], [[&"drop_all"], "Drop all"],
 				[[&"secondary"], "Pick up more"], [[&"build_mode"], "Build"]]
 		_:
 			rows = [[[&"slot_1", "/", &"slot_9"], "Tools"], [[&"primary"], "Drag / use tool"], [[&"secondary"], "Pick up"],

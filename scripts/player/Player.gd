@@ -430,6 +430,11 @@ func _on_key(event: InputEvent) -> void:
 		_drop(1)
 	elif Controls.pressed(event, &"drop_all"):
 		_drop(held.size())
+	elif Controls.pressed(event, &"throw"):
+		if dragged != null:
+			_throw_dragged()
+		else:
+			throw_one()
 
 ## Keys that only mean something with a vehicle under you. Returns true when the
 ## key was used here, so it does not also do its on-foot job.
@@ -1176,6 +1181,23 @@ func _release_dragged() -> void:
 	if is_instance_valid(dragged) and dragged.state == LooseItem.State.CARRIED:
 		dragged.set_state(LooseItem.State.FREE)
 	dragged = null
+
+## Throws the top piece off the rack where the camera looks: a light one
+## flies, a heavy one is more of a heave.
+func throw_one() -> bool:
+	if held.is_empty():
+		return false
+	var item: LooseItem = held.pop_back()
+	carry_changed.emit(held.size(), capacity_m3())
+	if not is_instance_valid(item):
+		return false
+	var aim := -camera.global_transform.basis.z
+	var pos := camera.global_position + aim * 0.9 + Vector3.DOWN * 0.2
+	item.teleport(Transform3D(LooseItem.lying_basis(rotation.y), pos))
+	item.set_state(LooseItem.State.FREE)
+	var speed := throw_impulse * clampf(25.0 / maxf(item.mass, 1.0), 0.3, 1.2)
+	item.linear_velocity = aim * speed + velocity
+	return true
 
 func _throw_dragged() -> void:
 	if dragged == null:

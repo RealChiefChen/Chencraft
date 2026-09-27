@@ -453,6 +453,39 @@ func shot_storeroad() -> void:
 	await look(Vector3(s.x - 60, world.terrain.height_at(s.x - 60, s.z - 60) + 18, s.z - 60), Vector3(s.x, world.terrain.height_at(s.x, s.z), s.z))
 	await snap("storeroad")
 
+## The biggest cavern, from the mouth of one of its tunnels, and that mouth
+## seen from inside the cavern.
+func shot_cavern() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var net: CaveNetwork = world.network
+	var best := 0
+	for i in net.rooms.size():
+		if net.rooms[i].links.size() > 0 and maxf(net.rooms[i].rx, net.rooms[i].rz) > maxf(net.rooms[best].rx, net.rooms[best].rz):
+			best = i
+	var room: Dictionary = net.rooms[best]
+	var end := net._tube_end(room.links[0], best)
+	var o: Vector3 = end.origin
+	var out_dir: Vector3 = end.out
+	var c: Vector3 = room.centre
+	world.player.global_position = o + out_dir * 8.0
+	# A floodlight on the camera, so the rock can be seen at all.
+	var lamp := OmniLight3D.new()
+	lamp.omni_range = 400.0
+	lamp.light_energy = 3.0
+	lamp.omni_attenuation = 0.4
+	world.player.camera.add_child(lamp)
+	await look(o + out_dir * 14.0 + Vector3(0, 2.5, 0), Vector3(c.x, float(room.floor) + 6.0, c.z))
+	await snap("cavern")
+	var toward := Vector3(c.x - o.x, 0, c.z - o.z).normalized()
+	var floor_y := float(room.floor)
+	var eye := Vector3(o.x, floor_y + 9.0, o.z) + toward * 32.0
+	world.player.global_position = eye
+	await look(eye, Vector3(o.x, floor_y + 4.0, o.z))
+	await snap("cavemouth")
+	var low := Vector3(o.x, floor_y + 1.4, o.z) + out_dir * 5.0
+	await look(low, Vector3(o.x, floor_y, o.z) - out_dir * 4.0)
+	await snap("caveseam")
+
 func shot_machinecfg() -> void:
 	var m := world.plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0, false) as InlineMachine
 	await get_tree().process_frame

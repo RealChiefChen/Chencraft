@@ -1584,8 +1584,8 @@ func test_cave_network() -> void:
 	var small := 0
 	for room in net.rooms:
 		below += int(float(room.floor) < Terrain.WATER_LEVEL)
-		big += int(maxf(room.rx, room.rz) >= 18.0)
-		small += int(maxf(room.rx, room.rz) < 10.0)
+		big += int(maxf(room.rx, room.rz) >= 50.0)
+		small += int(maxf(room.rx, room.rz) < 35.0)
 	check(below > net.rooms.size() / 2, "most caverns are above sea level")
 	check(big >= 1 and small >= 1, "the caverns are all one size")
 	# Every tunnel mouth open into its cavern, and every tunnel floored.
@@ -1612,6 +1612,41 @@ func test_cave_network() -> void:
 					blocked += 1
 	check(gaps == 0, "%d places a tunnel has no floor" % gaps)
 	check(blocked == 0, "%d tunnel mouths are walled off" % blocked)
+	# Sealed where tunnel meets cavern: from just either side of every mouth,
+	# every way you look you see rock - no crack through to nothing.
+	var leaks := 0
+	var looks := 0
+	for ti in net.tunnels.size():
+		var t: Dictionary = net.tunnels[ti]
+		var width := float(t.radius) * CaveNetwork.WIDEN
+		for ri in [int(t.a), int(t.b)]:
+			var end := net._tube_end(ti, ri)
+			var o: Vector3 = end.origin
+			var out_dir: Vector3 = end.out
+			var centre: Vector3 = net.rooms[ri].centre
+			centre.y = o.y
+			for eye in [o + (centre - o).normalized() * 5.0 + Vector3(0, 1.6, 0), o + out_dir * 6.0 + Vector3(0, 1.6, 0)]:
+				# Beside a mouth that leaves at a slant, the first can be in the
+				# rock; a look from there says nothing.
+				if eye.distance_to(o) < 5.5 and not net._inside_wall(net.rooms[ri], eye):
+					continue
+				for i in 48:
+					var yaw := TAU * float(i) / 48.0
+					var pitch: float = [-0.3, 0.15, 0.6][i % 3]
+					var dir := Vector3(cos(yaw) * cos(pitch), sin(pitch), sin(yaw) * cos(pitch))
+					var q3 := PhysicsRayQueryParameters3D.create(eye, eye + dir * (width * 2.0 + 260.0))
+					q3.hit_back_faces = false
+					looks += 1
+					if space.intersect_ray(q3).is_empty():
+						leaks += 1
+						var qb := PhysicsRayQueryParameters3D.create(eye, eye + dir * (width * 2.0 + 260.0))
+						qb.hit_back_faces = true
+						var hb := space.intersect_ray(qb)
+	check(leaks == 0, "%d of %d looks round the tunnel mouths see through the rock" % [leaks, looks])
+	var widest := 0.0
+	for t in net.tunnels:
+		widest = maxf(widest, float(t.radius) * CaveNetwork.WIDEN * 2.0)
+	check(widest >= 20.0, "the widest tunnel is only %.0f m across" % widest)
 	# Underground below sea level is dry, and it is dark.
 	var deep: Dictionary = net.rooms[net.rooms.size() - 1]
 	var inside: Vector3 = deep.centre

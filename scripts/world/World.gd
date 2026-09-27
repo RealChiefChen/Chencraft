@@ -17,17 +17,17 @@ const SHOWCASE_GROUND := 2.0
 ## its cave biomes placed under the country that matches them, and how many
 ## surface mouths it gets. Home and Hollow Isle are joined by the deep tunnel.
 const CAVE_ZONES := [
-	{"name": "Home", "centre": Vector2(0, 0), "radius": 1150.0, "rooms": 44, "mouths": 9,
+	{"name": "Home", "centre": Vector2(0, 0), "radius": 1150.0, "rooms": 36, "mouths": 9,
 		"kinds": [[CaveNetwork.Kind.RIVER, Vector2(80, 260)], [CaveNetwork.Kind.RIVER, Vector2(-980, -120)],
 			[CaveNetwork.Kind.CRYSTAL, Vector2(660, -540)], [CaveNetwork.Kind.DESERT, Vector2(-640, 680)],
 			[CaveNetwork.Kind.ICE, Vector2(-320, -820)], [CaveNetwork.Kind.MAGMA, Vector2(900, 500)]]},
-	{"name": "Frostreach", "centre": Vector2(0, -1850), "radius": 380.0, "rooms": 10, "mouths": 2,
+	{"name": "Frostreach", "centre": Vector2(0, -1850), "radius": 380.0, "rooms": 6, "mouths": 2,
 		"kinds": [[CaveNetwork.Kind.ICE, Vector2(0, -1850)]]},
-	{"name": "Sunscar", "centre": Vector2(1850, 120), "radius": 370.0, "rooms": 10, "mouths": 2,
+	{"name": "Sunscar", "centre": Vector2(1850, 120), "radius": 370.0, "rooms": 6, "mouths": 2,
 		"kinds": [[CaveNetwork.Kind.MAGMA, Vector2(1850, 120)]]},
-	{"name": "Mirewood", "centre": Vector2(-1850, 220), "radius": 380.0, "rooms": 10, "mouths": 2,
+	{"name": "Mirewood", "centre": Vector2(-1850, 220), "radius": 380.0, "rooms": 6, "mouths": 2,
 		"kinds": [[CaveNetwork.Kind.FUNGAL, Vector2(-1850, 220)]]},
-	{"name": "Hollow Isle", "centre": Vector2(-1450, 1450), "radius": 240.0, "rooms": 5, "mouths": 1,
+	{"name": "Hollow Isle", "centre": Vector2(-1450, 1450), "radius": 240.0, "rooms": 4, "mouths": 1,
 		"kinds": [[CaveNetwork.Kind.CRYSTAL, Vector2(-1450, 1450)]]},
 ]
 const CAVE_LINKS := [[0, 4]]
@@ -1135,7 +1135,7 @@ func _build_caves() -> void:
 				"embed": [0.4, 0.65] if rare else [0.3, 0.55]})
 		var field := ResourceField.new()
 		field.name = "Cavern_%d" % i
-		field.quota = 2 if size < 10.0 else (4 if size < 17.0 else 7)
+		field.quota = clampi(int(size / 5.0), 3, 16)
 		field.min_spacing = 3.6
 		field.refill_seconds = 40.0
 		field.spawn_clearance = 0.0
@@ -1146,10 +1146,10 @@ func _build_caves() -> void:
 		add_child(field)
 		field.prefill()
 		rock_fields.append(field)
-		if int(room.kind) == CaveNetwork.Kind.FUNGAL and size >= 9.0:
+		if int(room.kind) == CaveNetwork.Kind.FUNGAL and size >= 20.0:
 			var grove := ResourceField.new()
 			grove.name = "Glowcaps_%d" % i
-			grove.quota = 3 if size < 16.0 else 6
+			grove.quota = clampi(int(size / 8.0), 3, 10)
 			grove.min_spacing = 5.0
 			grove.refill_seconds = 60.0
 			grove.spawn_clearance = 0.0

@@ -13,13 +13,15 @@ extends Node3D
 ## giant glowcaps grow; magma caves under the burnt east; and the abyss, the
 ## deep passage under the sea. Each has its own ores, colours, light and look.
 ##
-## Geometry: a cavern is a faceted, lumpy ellipsoid with a flat floor, and a
-## tunnel is an eight-sided tube along a smooth curve with a flat floor, both
-## drawn and collided on the inside only. Where a tunnel meets a cavern the
-## cavern's wall is cut away inside the tube, and the tube starts just inside
-## the cavern with its floor a hair under the cavern's - so the two join with
-## an opening you can walk and drive through. Tunnels never cross one another
-## or pass through a cavern that is not theirs; the planner rules those out.
+## Geometry: a cavern is a faceted, lumpy ellipsoid with a flat floor - the big
+## ones a hundred metres and more across - and a tunnel is a broad, low tube
+## along a smooth curve with a flat floor, both drawn and collided on the
+## inside only. Where a tunnel meets a cavern the two are made to fit exactly:
+## the tube's end ring is slid onto the cavern's wall, point by point, and the
+## wall inside the tube's outline is pulled out onto the tube and opened, so
+## the join is sealed all round with no crack to see through. Tunnels never
+## cross one another or pass through a cavern that is not theirs; the planner
+## rules those out.
 ##
 ## Surface entrances are the built trench-and-portal `Cave`s, each opening into
 ## a cavern where its old chamber was.
@@ -52,10 +54,14 @@ const ORES := {
 ## Cover of rock kept over every cavern and tunnel, metres.
 const COVER := 9.0
 ## Steepest a tunnel runs, rise over run.
-const MAX_GRADE := 0.55
+const MAX_GRADE := 0.4
 ## Tube floor as a share of the radius below the tube's axis.
 const FLOOR_CUT := 0.62
-const SIDES := 9
+const SIDES := 12
+## Tunnels are this much wider than they are tall: thoroughfares, not pipes.
+const WIDEN := 1.6
+## Biggest tunnel radius; the width is WIDEN times this each side.
+const MAX_TUNNEL := 8.5
 const RING_STEP := 2.5
 const GRID := 48.0
 
@@ -118,10 +124,10 @@ func _plan_zone(zone: Dictionary, zi: int) -> Array:
 			continue
 		var d: Vector3 = plan_entry.dir
 		var z_end := Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH
-		var rz := 13.0
+		var rz := 18.0
 		var c := e + d * (z_end + rz * 0.83 - 2.0)
 		var floor_y := float(plan_entry.ground) - Cave.CHAMBER_DROP
-		var room := _room(Vector3(c.x, 0, c.z), 15.0, 6.0, rz, floor_y, atan2(d.x, d.z),
+		var room := _room(Vector3(c.x, 0, c.z), 24.0, 6.0, rz, floor_y, atan2(d.x, d.z),
 			_kind_at(zone, Vector2(c.x, c.z)), zi)
 		room["entrance"] = plan_entry
 		mine.append(rooms.size())
@@ -146,27 +152,31 @@ func _plan_zone(zone: Dictionary, zi: int) -> Array:
 		var p := home + Vector2(cos(a), sin(a)) * sqrt(_rng.randf()) * spread
 		if p.distance_to(centre) > radius * 0.85:
 			continue
+		# Caverns, not rooms: the small ones are the size of a barn, the
+		# big ones you could lose a village in.
 		var roll := _rng.randf()
-		var rx := _rng.randf_range(6.0, 9.0)
-		if roll < 0.14:
-			rx = _rng.randf_range(20.0, 30.0)
-		elif roll < 0.5:
-			rx = _rng.randf_range(11.0, 16.0)
+		var rx := _rng.randf_range(22.0, 32.0)
+		if roll < 0.25:
+			rx = _rng.randf_range(60.0, 90.0)
+		elif roll < 0.7:
+			rx = _rng.randf_range(36.0, 55.0)
+		# Smaller islands have less room under them.
+		rx = minf(rx, radius * 0.22)
 		var rz := rx * _rng.randf_range(0.75, 1.25)
-		var ry := rx * _rng.randf_range(0.5, 0.7)
+		var ry := minf(34.0, rx * _rng.randf_range(0.38, 0.5))
 		var reach := maxf(rx, rz)
 		var clear := true
 		for other in mine:
 			var o: Dictionary = rooms[other]
-			if Vector2(o.centre.x, o.centre.z).distance_to(p) < reach + maxf(o.rx, o.rz) + 45.0:
+			if Vector2(o.centre.x, o.centre.z).distance_to(p) < reach + maxf(o.rx, o.rz) + 60.0:
 				clear = false
 				break
 		if not clear:
 			continue
-		var floor_y := _rng.randf_range(-60.0, -8.0)
+		var floor_y := _rng.randf_range(-110.0, -15.0)
 		var ceiling := _lowest_ground(Vector3(p.x, 0, p.y), reach) - COVER - ry * 1.6
 		floor_y = minf(floor_y, ceiling)
-		if floor_y < -90.0:
+		if floor_y < -170.0:
 			continue
 		mine.append(rooms.size())
 		made += 1
@@ -179,7 +189,8 @@ func _plan_zone(zone: Dictionary, zi: int) -> Array:
 func _room(c: Vector3, rx: float, ry: float, rz: float, floor_y: float, yaw: float, kind: Kind,
 		zone: int) -> Dictionary:
 	return {"centre": Vector3(c.x, floor_y + ry * 0.55, c.z), "rx": rx, "ry": ry, "rz": rz,
-		"floor": floor_y, "yaw": yaw, "kind": kind, "zone": zone, "links": [], "entrance": null}
+		"floor": floor_y, "yaw": yaw, "kind": kind, "zone": zone, "links": [], "entrance": null,
+		"index": rooms.size()}
 
 ## Lowest ground (or sea bed) over a disc: what a cavern has to stay under.
 func _lowest_ground(c: Vector3, r: float) -> float:
@@ -332,10 +343,11 @@ func _plan_link(zones: Array, by_zone: Array, za: int, zb: int) -> void:
 		var t := float(i) / float(n)
 		var p := a.lerp(b, t)
 		var wob := Vector2(-(b.z - a.z), b.x - a.x).normalized() * _rng.randf_range(-40.0, 40.0)
-		var floor_y := minf(_rng.randf_range(-80.0, -62.0), _lowest_ground(p, 12.0) - COVER - 12.0)
+		var ry := _rng.randf_range(11.0, 14.0)
+		var floor_y := minf(_rng.randf_range(-110.0, -85.0), _lowest_ground(p, 30.0) - COVER - ry * 1.6)
 		var id := rooms.size()
-		rooms.append(_room(Vector3(p.x + wob.x, 0, p.z + wob.y), _rng.randf_range(9.0, 14.0),
-			_rng.randf_range(5.0, 7.0), _rng.randf_range(9.0, 14.0), floor_y, _rng.randf() * TAU,
+		rooms.append(_room(Vector3(p.x + wob.x, 0, p.z + wob.y), _rng.randf_range(24.0, 34.0),
+			ry, _rng.randf_range(24.0, 34.0), floor_y, _rng.randf() * TAU,
 			Kind.ABYSS, za))
 		chain.append(id)
 	chain.append(to)
@@ -371,14 +383,17 @@ func _try_tunnel(ia: int, ib: int, attempts: int) -> bool:
 	# behind the way in, the tunnel leaves by the side and swings round.
 	var via_a: Variant = _side_exit(a, b)
 	var via_b: Variant = _side_exit(b, a)
-	var r := _rng.randf_range(2.6, 3.6)
-	if int(a.kind) == Kind.ABYSS or int(b.kind) == Kind.ABYSS:
-		r = 3.2
+	# Broad all the way, narrowing only where a cavern is too low to take
+	# it at full size (the entrance halls).
+	var r := _rng.randf_range(6.5, MAX_TUNNEL)
+	var ra := minf(r, _fits(a))
+	var rb := minf(r, _fits(b))
+	r = maxf(ra, rb)
 	for attempt in attempts:
 		var wander := 0.3 if attempt < attempts - 1 else 0.08
-		var pts := _tunnel_curve(a, b, r, wander, via_a, via_b)
+		var pts := _tunnel_curve(a, b, ra, rb, wander, via_a, via_b)
 		if pts.size() >= 2 and _tunnel_ok(pts, r, ia, ib):
-			var tunnel := {"a": ia, "b": ib, "points": pts, "radius": r,
+			var tunnel := {"a": ia, "b": ib, "points": pts, "radius": r, "ra": ra, "rb": rb,
 				"kind_a": a.kind, "kind_b": b.kind}
 			var ti := tunnels.size()
 			tunnels.append(tunnel)
@@ -388,16 +403,80 @@ func _try_tunnel(ia: int, ib: int, attempts: int) -> bool:
 			return true
 	return false
 
-## Where a tunnel leaves a cavern: just inside its wall, toward `toward`, at
-## the height that puts the tube's floor a hair under the cavern's.
+## Largest tunnel radius a cavern takes: the tube, floor to roof, under its
+## lowest-bulging ceiling with a little to spare.
+func _fits(room: Dictionary) -> float:
+	var ceiling := float(room.ry) * (0.55 + 0.84) - 1.0
+	return clampf(ceiling / (1.08 + FLOOR_CUT), 2.5, MAX_TUNNEL)
+
+## Where a tunnel leaves a cavern: toward `toward`, at the height that puts
+## the tube's floor a hair under the cavern's, and as far out as the widest
+## part of the tube's outline still meets the wall - so every part of the
+## tube's end is at or beyond the wall and slides back onto it.
 func _mouth(room: Dictionary, toward: Vector3, r: float) -> Vector3:
 	var dir := Vector3(toward.x - room.centre.x, 0.0, toward.z - room.centre.z).normalized()
-	var local := dir.rotated(Vector3.UP, -float(room.yaw))
-	var along := 1.0 / sqrt(pow(local.x / float(room.rx), 2.0) + pow(local.z / float(room.rz), 2.0))
-	# The ellipsoid is narrower at floor height than at its widest.
-	var at_floor := along * 0.83
-	var p: Vector3 = room.centre + dir * (at_floor - 1.6)
-	return Vector3(p.x, float(room.floor) - 0.03 + r * FLOOR_CUT, p.z)
+	var side := Vector3.UP.cross(dir).normalized()
+	var base := Vector3(room.centre.x, float(room.floor) - 0.03 + r * FLOOR_CUT, room.centre.z)
+	var far := maxf(float(room.rx), float(room.rz)) * 1.4 + 4.0
+	var reach := 0.0
+	for s in section(r):
+		var o := base + side * s.x + Vector3.UP * s.y
+		if not _inside_wall(room, o):
+			continue
+		reach = maxf(reach, _wall_hit(room, o, dir, 0.0, far))
+	return base + dir * reach
+
+## The tube's outline at radius r, about its axis: x across, y up. Flat along
+## the bottom - the floor - and wider than it is tall.
+static func section(r: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for j in SIDES:
+		var a := TAU * float(j) / float(SIDES) - PI * 0.5
+		out.append(Vector2(cos(a) * r * WIDEN, maxf(sin(a) * r * 1.08, -r * FLOOR_CUT)))
+	return out
+
+## How far out along `v` the outline's edge is, as a multiple of v (over 1
+## when v is inside the outline).
+static func _outline_scale(poly: PackedVector2Array, v: Vector2) -> float:
+	var best := INF
+	for j in poly.size():
+		var a := poly[j]
+		var e := poly[(j + 1) % poly.size()] - a
+		var det := v.x * (-e.y) - v.y * (-e.x)
+		if absf(det) < 0.000001:
+			continue
+		var k := (a.x * (-e.y) - a.y * (-e.x)) / det
+		var m := (v.x * a.y - v.y * a.x) / det
+		if k > 0.0 and m >= -0.0001 and m <= 1.0001:
+			best = minf(best, k)
+	return best
+
+## The lumpiness of a cavern's wall in a direction (a unit vector in the
+## cavern's own frame): the same noise its mesh is built from.
+func _bump(room: Dictionary, v: Vector3) -> float:
+	return 1.0 + 0.16 * _noise.get_noise_3d(v.x * 2.0 + float(room.index), v.y * 2.0, v.z * 2.0)
+
+## Inside the cavern's wall (its floor aside)?
+func _inside_wall(room: Dictionary, p: Vector3) -> bool:
+	var local: Vector3 = (p - (room.centre as Vector3)).rotated(Vector3.UP, -float(room.yaw))
+	var q := Vector3(local.x / float(room.rx), local.y / float(room.ry), local.z / float(room.rz))
+	var length := q.length()
+	if length < 0.0001:
+		return true
+	return length < _bump(room, q / length)
+
+## How far along `dir` from `from` the wall is, between `lo` (inside) and `hi`
+## (outside).
+func _wall_hit(room: Dictionary, from: Vector3, dir: Vector3, lo: float, hi: float) -> float:
+	if _inside_wall(room, from + dir * hi):
+		return hi
+	for i in 26:
+		var mid := (lo + hi) * 0.5
+		if _inside_wall(room, from + dir * mid):
+			lo = mid
+		else:
+			hi = mid
+	return lo
 
 ## For an entrance cavern whose partner lies behind the way in: a point off to
 ## the side and a little below, for the tunnel to leave toward. Else null.
@@ -412,18 +491,22 @@ func _side_exit(from: Dictionary, to: Dictionary) -> Variant:
 	var side := Vector3(dir.z, 0.0, -dir.x)
 	if toward.dot(side) < 0.0:
 		side = -side
-	var reach := maxf(float(from.rx), float(from.rz)) + 28.0
+	var reach := maxf(float(from.rx), float(from.rz)) + 40.0
 	var p: Vector3 = from.centre + side * reach + dir * 6.0
 	return Vector3(p.x, float(from.floor) - 4.0, p.z)
 
-func _tunnel_curve(a: Dictionary, b: Dictionary, r: float, wander: float, via_a: Variant = null,
+func _tunnel_curve(a: Dictionary, b: Dictionary, ra: float, rb: float, wander: float, via_a: Variant = null,
 		via_b: Variant = null) -> PackedVector3Array:
-	var s := _mouth(a, via_a if via_a != null else b.centre, r)
-	var e := _mouth(b, via_b if via_b != null else a.centre, r)
+	var s := _mouth(a, via_a if via_a != null else b.centre, ra)
+	var e := _mouth(b, via_b if via_b != null else a.centre, rb)
 	var span := Vector2(e.x - s.x, e.z - s.z).length()
 	var side := Vector3(-(e.z - s.z), 0.0, e.x - s.x).normalized()
 	var mids := clampi(int(span / 60.0), 1, 5)
-	var ctrl: Array = [s + (s - e).normalized() * 0.01, s]
+	# Each end leaves its cavern level and square to the wall for a stretch,
+	# so the tube's floor runs on from the cavern's floor, not down through it.
+	var lead_a := s + _flat(s - (a.centre as Vector3)) * 16.0
+	var lead_b := e + _flat(e - (b.centre as Vector3)) * 16.0
+	var ctrl: Array = [s - (lead_a - s).normalized() * 0.01, s, lead_a]
 	if via_a != null:
 		ctrl.append(via_a)
 	for i in mids:
@@ -434,8 +517,9 @@ func _tunnel_curve(a: Dictionary, b: Dictionary, r: float, wander: float, via_a:
 		ctrl.append(p)
 	if via_b != null:
 		ctrl.append(via_b)
+	ctrl.append(lead_b)
 	ctrl.append(e)
-	ctrl.append(e + (e - s).normalized() * 0.01)
+	ctrl.append(e - (lead_b - e).normalized() * 0.01)
 	var out := PackedVector3Array()
 	for i in range(1, ctrl.size() - 2):
 		var p0: Vector3 = ctrl[i - 1]
@@ -448,7 +532,18 @@ func _tunnel_curve(a: Dictionary, b: Dictionary, r: float, wander: float, via_a:
 			var t := float(k) / float(n)
 			out.append(_catmull(p0, p1, p2, p3, t))
 	out.append(e)
+	# Dead level for the first stretch out of each cavern.
+	for i in out.size():
+		var q := out[i]
+		if Vector2(q.x - s.x, q.z - s.z).length() < 14.0:
+			q.y = s.y
+		elif Vector2(q.x - e.x, q.z - e.z).length() < 14.0:
+			q.y = e.y
+		out[i] = q
 	return out
+
+static func _flat(v: Vector3) -> Vector3:
+	return Vector3(v.x, 0.0, v.z).normalized()
 
 static func _catmull(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, t: float) -> Vector3:
 	var t2 := t * t
@@ -466,23 +561,23 @@ func _tunnel_ok(pts: PackedVector3Array, r: float, ia: int, ib: int) -> bool:
 				return false
 		# Near the caverns it joins a tunnel may run as shallow as they do.
 		var near_end := minf(p.distance_to(pts[0]), p.distance_to(pts[pts.size() - 1]))
-		var cover := COVER if near_end > 40.0 else 2.5
+		var cover := COVER if near_end > 60.0 else 2.5
 		if i % 2 == 0 and terrain.height_at(p.x, p.z) - (p.y + r * 1.1) < cover:
 			return false
 		# Clear of every cavern but its own two.
 		for ri in _near_rooms(p):
 			if ri == ia or ri == ib:
 				continue
-			if _in_room(rooms[ri], p, r + 4.0):
+			if _in_room(rooms[ri], p, r * WIDEN + 4.0):
 				return false
 		# Clear of every other tunnel, except close to the caverns it joins,
 		# where tunnels meet anyway.
-		if p.distance_to(pts[0]) < 18.0 or p.distance_to(pts[pts.size() - 1]) < 18.0:
+		if p.distance_to(pts[0]) < 40.0 or p.distance_to(pts[pts.size() - 1]) < 40.0:
 			continue
 		for hit in _near_tunnel_points(p):
 			var other: Dictionary = tunnels[hit[0]]
 			var q2: Vector3 = (other.points as PackedVector3Array)[hit[1]]
-			if p.distance_to(q2) < r + float(other.radius) + 4.0:
+			if p.distance_to(q2) < (r + float(other.radius)) * WIDEN + 5.0:
 				return false
 	return true
 
@@ -509,7 +604,7 @@ func _near_rooms(p: Vector3) -> Array:
 	var out: Array = []
 	for i in rooms.size():
 		var room: Dictionary = rooms[i]
-		var reach := maxf(room.rx, room.rz) + 40.0
+		var reach := maxf(room.rx, room.rz) + 80.0
 		if absf(room.centre.x - p.x) < reach and absf(room.centre.z - p.z) < reach:
 			out.append(i)
 	return out
@@ -530,7 +625,7 @@ func contains(p: Vector3, margin: float = 0.5) -> bool:
 	for hit in _near_tunnel_points(p):
 		var t: Dictionary = tunnels[hit[0]]
 		var q: Vector3 = (t.points as PackedVector3Array)[hit[1]]
-		if p.distance_to(q) < float(t.radius) * 1.05 + margin + RING_STEP * 0.5:
+		if p.distance_to(q) < float(t.radius) * WIDEN * 1.05 + margin + RING_STEP * 0.5:
 			return true
 	for cave in entrances:
 		if cave.depth_factor(p) > 0.0:
@@ -574,7 +669,7 @@ func kind_at(p: Vector3) -> int:
 	for hit in _near_tunnel_points(p):
 		var t: Dictionary = tunnels[hit[0]]
 		var pts: PackedVector3Array = t.points
-		if p.distance_to(pts[hit[1]]) < float(t.radius) + 2.0:
+		if p.distance_to(pts[hit[1]]) < float(t.radius) * WIDEN + 2.0:
 			return int(t.kind_a) if hit[1] < pts.size() / 2 else int(t.kind_b)
 	return -1
 
@@ -634,7 +729,7 @@ func _emit(body: StaticBody3D, mat: Material, buf: Buf, label: String) -> void:
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.visibility_range_end = 260.0
+	mi.visibility_range_end = 420.0
 	add_child(mi)
 	var cs := CollisionShape3D.new()
 	var shape := ConcavePolygonShape3D.new()
@@ -702,32 +797,58 @@ static func _icosphere(level: int) -> Array:
 	_ico_cache[level] = out
 	return out
 
-## A cavern: a lumpy ellipsoid, floor flattened, with the wall cut away inside
-## every tunnel that starts here and inside the entrance tunnel if it has one.
+## A cavern: a lumpy ellipsoid, floor flattened. Where a tunnel leaves it the
+## wall inside the tube's outline is pulled out onto the tube's own surface
+## and the part that would close the tube off is opened, so the cavern's wall
+## runs into the tunnel's with no seam; the entrance tunnel's way in is cut.
 func _room_mesh(ri: int) -> Buf:
 	var room: Dictionary = rooms[ri]
 	var out := Buf.new()
 	var size := maxf(float(room.rx), float(room.rz))
-	var level := 2 if size < 10.0 else 3
+	var level := 3 if size < 40.0 else 4
 	var ico := _icosphere(level)
 	var basis := Basis(Vector3.UP, float(room.yaw))
 	var c: Vector3 = room.centre
 	var floor_y: float = room.floor
 	var pts: Array = []
+	var on_floor := PackedByteArray()
 	for v: Vector3 in ico[0]:
-		var bump := 1.0 + 0.16 * _noise.get_noise_3d(v.x * 2.0 + float(ri), v.y * 2.0, v.z * 2.0)
-		var p := c + basis * Vector3(v.x * float(room.rx), v.y * float(room.ry), v.z * float(room.rz)) * bump
+		var p := c + basis * Vector3(v.x * float(room.rx), v.y * float(room.ry), v.z * float(room.rz)) * _bump(room, v)
+		on_floor.append(int(p.y <= floor_y))
 		p.y = maxf(p.y, floor_y)
 		pts.append(p)
-	# The tubes that start here: their first stretch, to cut the wall along.
-	var cuts: Array = []
+	# The tubes that start here, each as the frame and outline of its end.
+	# Which tube's outline each point was pulled onto (-1: none).
+	var opened := PackedInt32Array()
+	opened.resize(pts.size())
+	opened.fill(-1)
+	var mouths: Array = []
 	for ti in room.links:
-		var t: Dictionary = tunnels[ti]
-		var tp: PackedVector3Array = t.points
-		var from_start: bool = int(t.a) == ri
-		var s := tp[0] if from_start else tp[tp.size() - 1]
-		var s2 := tp[mini(4, tp.size() - 1)] if from_start else tp[maxi(0, tp.size() - 5)]
-		cuts.append([s, s2, float(t.radius)])
+		var mouth := _tube_end(ti, ri)
+		mouths.append(mouth)
+		var o: Vector3 = mouth.origin
+		var out_dir: Vector3 = mouth.out
+		var side: Vector3 = mouth.side
+		var up: Vector3 = mouth.up
+		var poly: PackedVector2Array = mouth.outline
+		# Only the near side of the cavern: the wall the tunnel goes through,
+		# and the roof just in front of it where the tube is taller.
+		var behind := -minf(14.0, Vector2(o.x - c.x, o.z - c.z).length() * 0.5)
+		for i in pts.size():
+			# The floor stays as it is: the tube's floor carries on from it.
+			if on_floor[i]:
+				continue
+			var d: Vector3 = pts[i] - o
+			var t := d.dot(out_dir)
+			if t < behind:
+				continue
+			var v := Vector2(d.dot(side), d.dot(up))
+			var k := _outline_scale(poly, v)
+			if k < 1.0:
+				continue
+			v *= k
+			pts[i] = o + out_dir * t + side * v.x + up * v.y
+			opened[i] = mouths.size() - 1
 	var entrance_frame: Variant = null
 	if room.entrance != null:
 		var e: Dictionary = room.entrance
@@ -740,7 +861,17 @@ func _room_mesh(ri: int) -> Buf:
 		var b: Vector3 = pts[tri[1]]
 		var cc: Vector3 = pts[tri[2]]
 		var mid := (a + b + cc) / 3.0
-		if _cut_away(mid, cuts, entrance_frame, floor_y):
+		# Pulled wholly onto one tube's outline: if it lies along the outline
+		# it is wall (the tube's sides carried back into the cavern), and it
+		# stays; if it spans across the outline it would close the tube off,
+		# and that is the opening.
+		var m := opened[tri[0]]
+		if m >= 0 and opened[tri[1]] == m and opened[tri[2]] == m:
+			var mouth: Dictionary = mouths[m]
+			var d: Vector3 = mid - (mouth.origin as Vector3)
+			if _outline_scale(mouth.outline, Vector2(d.dot(mouth.side), d.dot(mouth.up))) > 1.03:
+				continue
+		if _cut_away(mid, entrance_frame, floor_y):
 			continue
 		var n := (cc - a).cross(b - a)
 		if n.dot(inside - mid) < 0.0:
@@ -748,18 +879,29 @@ func _room_mesh(ri: int) -> Buf:
 		_tri(out, a, b, cc, inside, _shade(int(room.kind), n.normalized(), mid))
 	return out
 
-func _cut_away(p: Vector3, cuts: Array, entrance_frame: Variant, floor_y: float) -> bool:
-	for cut in cuts:
-		var s: Vector3 = cut[0]
-		var s2: Vector3 = cut[1]
-		var r: float = cut[2]
-		var axis := s2 - s
-		var t := (p - s).dot(axis) / maxf(0.001, axis.length_squared())
-		if t < 0.0:
-			continue
-		var q := s + axis * minf(t, 1.0)
-		if p.distance_to(q) < r * 1.02:
-			return true
+## A tunnel's end at cavern `ri`: where its axis starts, the way out along it
+## into the tunnel, its across and up, and its outline there - the same frame
+## the tube's end ring is built in.
+func _tube_end(ti: int, ri: int) -> Dictionary:
+	var t: Dictionary = tunnels[ti]
+	var tp: PackedVector3Array = t.points
+	var at_a: bool = int(t.a) == ri
+	var o := tp[0] if at_a else tp[tp.size() - 1]
+	var along := (tp[1] - tp[0]).normalized() if at_a else (tp[tp.size() - 1] - tp[tp.size() - 2]).normalized()
+	var frame := _ring_frame(along)
+	var r := float(t.get("ra", t.radius)) if at_a else float(t.get("rb", t.radius))
+	return {"origin": o, "out": along if at_a else -along, "side": frame[0], "up": frame[1],
+		"outline": section(r)}
+
+## Across and up for a ring on a tube running along `tangent`.
+static func _ring_frame(tangent: Vector3) -> Array:
+	var side := Vector3.UP.cross(tangent).normalized()
+	var up := tangent.cross(side).normalized()
+	if up.y < 0.0:
+		up = -up
+	return [side, up]
+
+func _cut_away(p: Vector3, entrance_frame: Variant, floor_y: float) -> bool:
 	if entrance_frame != null:
 		var local: Vector3 = (entrance_frame as Transform3D) * p
 		var z_end := Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH
@@ -768,41 +910,34 @@ func _cut_away(p: Vector3, cuts: Array, entrance_frame: Variant, floor_y: float)
 			return true
 	return false
 
-## A tunnel: an eight-sided tube along the curve, floor flattened, radius
-## wandering a little ring to ring.
+## A tunnel: a broad tube along the curve, floor flat, its size easing from
+## one end's to the other's and wandering a little ring to ring. Each end ring
+## is slid, point by point, along the tunnel onto its cavern's wall, so the
+## tube ends exactly where the wall is.
 func _tunnel_mesh(ti: int) -> Buf:
 	var t: Dictionary = tunnels[ti]
 	var pts: PackedVector3Array = t.points
-	var r: float = t.radius
+	var ra := float(t.get("ra", t.radius))
+	var rb := float(t.get("rb", t.radius))
 	var out := Buf.new()
-	# Each end is carried back a little way into its cavern, under the
-	# cavern's floor and behind its wall, so the seam where the cavern floor was
-	# cut away is always floored.
-	var src := pts
-	pts = PackedVector3Array()
-	pts.append(src[0] - (src[1] - src[0]).normalized() * 1.8)
-	pts.append_array(src)
-	pts.append(src[src.size() - 1] + (src[src.size() - 1] - src[src.size() - 2]).normalized() * 1.8)
 	var rings: Array = []
+	var last := pts.size() - 1
 	for k in pts.size():
 		var prev := pts[maxi(0, k - 1)]
-		var next := pts[mini(pts.size() - 1, k + 1)]
-		var tangent := (next - prev).normalized()
-		var side := Vector3.UP.cross(tangent).normalized()
-		var up := tangent.cross(side).normalized()
-		if up.y < 0.0:
-			up = -up
-		var rk := r * (1.0 + 0.1 * _noise.get_noise_2d(float(k) * 0.7, float(ti) * 3.1))
+		var next := pts[mini(last, k + 1)]
+		var frame := _ring_frame((next - prev).normalized())
+		var along := float(k) / float(maxi(1, last))
+		var rk := lerpf(ra, rb, smoothstep(0.0, 1.0, along))
 		# The rings at the caverns are true to size, so they meet the walls.
-		if k <= 1 or k >= pts.size() - 2:
-			rk = r
+		if k > 1 and k < last - 1:
+			rk *= 1.0 + 0.1 * _noise.get_noise_2d(float(k) * 0.7, float(ti) * 3.1)
 		var ring: Array = []
-		for j in SIDES:
-			var a := TAU * float(j) / float(SIDES) - PI * 0.5
-			var across := cos(a) * rk
-			var height := maxf(sin(a) * rk * 1.08, -r * FLOOR_CUT)
-			ring.append(pts[k] + side * across + up * height)
+		for sp in section(rk):
+			ring.append(pts[k] + (frame[0] as Vector3) * sp.x + (frame[1] as Vector3) * sp.y)
 		rings.append(ring)
+	if pts.size() >= 2:
+		_fit_to_wall(rings[0], rooms[int(t.a)], (pts[1] - pts[0]).normalized())
+		_fit_to_wall(rings[last], rooms[int(t.b)], (pts[last - 1] - pts[last]).normalized())
 	for k in rings.size() - 1:
 		var kind: int = int(t.kind_a) if k < rings.size() / 2 else int(t.kind_b)
 		var axis := (pts[k] + pts[k + 1]) * 0.5
@@ -821,6 +956,30 @@ func _tunnel_mesh(ti: int) -> Buf:
 			_tri(out, a, c, d, axis, col)
 	return out
 
+## Slides each point of an end ring back along the tunnel (`out` points away
+## from the cavern) to where the cavern's wall is, a hand's width inside it.
+func _fit_to_wall(ring: Array, room: Dictionary, out: Vector3) -> void:
+	var reach := maxf(float(room.rx), float(room.rz)) * 1.2 + 4.0
+	for j in ring.size():
+		var p: Vector3 = ring[j]
+		if _inside_wall(room, p + out * 3.0):
+			continue
+		# The nearest point back along the tunnel that is inside the cavern;
+		# the wall is between there and here.
+		var inside_at := -1.0
+		var u := 0.5
+		while u <= reach:
+			if _inside_wall(room, p - out * u):
+				inside_at = u
+				break
+			u += 0.5
+		if inside_at < 0.0:
+			continue
+		var back := p - out * inside_at
+		var hit := _wall_hit(room, back, out, 0.0, inside_at + 3.0)
+		# Never forward of where it was: that would fold it over the next ring.
+		ring[j] = back + out * minf(hit - 0.15, inside_at)
+
 # --- Dressing --------------------------------------------------------------------
 
 func _dress_room(ri: int) -> void:
@@ -834,8 +993,15 @@ func _dress_room(ri: int) -> void:
 	var count := int(size * 0.8) + 3
 	var floor_y: float = room.floor
 	var top: float = room.centre.y + float(room.ry) * 0.85
+	# Bigger caverns, bigger formations: columns and spires to scale.
+	var grand := clampf(size / 18.0, 1.0, 4.0)
 	for i in count:
 		var p := floor_point(room, rng)
+		if i % 3 == 0 and kind != Kind.FUNGAL and kind != Kind.MAGMA:
+			var tall := rng.randf_range(2.5, 6.0) * grand
+			g.prism(6, rng.randf_range(0.8, 1.6) * grand, 0.0, tall, Transform3D(Basis(Vector3.UP, rng.randf()), p),
+				(pal[0] as Color).lightened(0.08))
+			continue
 		match kind:
 			Kind.CRYSTAL, Kind.ABYSS:
 				var color: Color = [Color(0.7, 0.45, 1.0), Color(0.45, 0.9, 1.0), Color(1.0, 0.55, 0.9)][i % 3] \
@@ -875,7 +1041,7 @@ func _dress_room(ri: int) -> void:
 				g.prism(5, rng.randf_range(0.3, 0.6), 0.0, h * 0.8, Transform3D(Basis(Vector3.RIGHT, PI), Vector3(p.x, top, p.z)), (pal[0] as Color).lightened(0.05))
 	if not g.is_empty():
 		var mi := g.instance("CaveDressing", false)
-		mi.visibility_range_end = 200.0
+		mi.visibility_range_end = 320.0
 		add_child(mi)
 	# A pool in the river caves' bigger caverns; a lava pool in the magma ones.
 	if (kind == Kind.RIVER or kind == Kind.MAGMA) and size > 10.0:
@@ -903,11 +1069,11 @@ func _dress_room(ri: int) -> void:
 	light.position = room.centre + Vector3(0, float(room.ry) * 0.2, 0)
 	light.light_color = pal[2]
 	light.light_energy = 1.3 if kind != Kind.MAGMA else 2.0
-	light.omni_range = size * 1.7 + 4.0
+	light.omni_range = minf(size * 1.5 + 4.0, 140.0)
 	light.omni_attenuation = 0.8
 	light.shadow_enabled = false
 	light.distance_fade_enabled = true
-	light.distance_fade_begin = 90.0
+	light.distance_fade_begin = 180.0
 	light.distance_fade_length = 30.0
 	add_child(light)
 
@@ -924,7 +1090,7 @@ func _dress_tunnel(ti: int) -> void:
 		var tangent := (pts[k + 1] - pts[k - 1]).normalized()
 		var side := Vector3.UP.cross(tangent).normalized()
 		var s := 1.0 if k % 2 == 0 else -1.0
-		var at := pts[k] + side * s * r * 0.8 - Vector3(0, r * FLOOR_CUT, 0)
+		var at := pts[k] + side * s * r * WIDEN * 0.75 - Vector3(0, r * FLOOR_CUT, 0)
 		g.prism(5, 0.18, 0.0, 0.9, Transform3D(Basis(tangent, -s * 0.5), at), (PALETTE[kind][2] as Color), true)
 		g.prism(5, 0.12, 0.0, 0.6, Transform3D(Basis(tangent, -s * 0.8), at + tangent * 0.4), (PALETTE[kind][2] as Color).lightened(0.2), true)
 		k += 11

@@ -66,3 +66,13 @@ After adding a script with a new `class_name`, run
 
 Design notes, systems and measurements live in [docs/GUIDE.md](docs/GUIDE.md)
 for now.
+
+## Version numbers
+
+Every commit bumps the version shown on the title screen and pause menu (the
+last number goes up by one, and the date is stamped): see
+`tools/githooks/pre-commit`. Turn the hook on once after cloning:
+
+```
+git config core.hooksPath tools/githooks
+```

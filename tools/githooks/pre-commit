@@ -1,0 +1,23 @@
+#!/bin/sh
+# Pinecraft: every commit is a new version. Bumps the last number of the
+# version in scripts/core/BuildInfo.gd, stamps the date and time, and adds the
+# file to the commit. Turned on once per clone with:
+#   git config core.hooksPath tools/githooks
+# Skip it for one commit with:  PINECRAFT_NO_BUMP=1 git commit ...
+[ -n "$PINECRAFT_NO_BUMP" ] && exit 0
+f=scripts/core/BuildInfo.gd
+[ -f "$f" ] || exit 0
+cur=$(sed -n 's/^const NUMBER := "\(.*\)"/\1/p' "$f")
+[ -z "$cur" ] && exit 0
+major=${cur%%.*}
+rest=${cur#*.}
+minor=${rest%%.*}
+patch=${rest#*.}
+case "$patch" in ''|*[!0-9]*) patch=0 ;; esac
+new="$major.$minor.$((patch + 1))"
+when=$(date +"%Y-%m-%d %H:%M %Z")
+sed -e "s/^const NUMBER := \".*\"/const NUMBER := \"$new\"/" \
+    -e "s/^const RELEASED := \".*\"/const RELEASED := \"$when\"/" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+git add "$f"
+echo "Pinecraft version $cur -> $new"
+exit 0

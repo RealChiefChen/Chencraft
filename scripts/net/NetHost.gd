@@ -22,7 +22,7 @@ var _ids: Dictionary = {}             ## key -> id
 var _nodes: Dictionary = {}           ## id -> [node, kind, key]
 var _state_hash: Dictionary = {}      ## id -> hash of the last state sent
 var _poses: Dictionary = {}           ## id -> last pose sent
-var _econ_hash: int = 0
+var _econ_hash: Dictionary = {}     ## peer -> hash of the last money and kit sent
 var _tick: int = 0
 var _acc: float = 0.0
 var _outbox: Array = []               ## for every guest
@@ -59,7 +59,9 @@ func on_guest_ready(peer: int, display: String) -> void:
 		var st: Variant = _state_of(entry[0], entry[1])
 		if st != null:
 			batch.append({"t": "state", "id": id, "s": st})
-	batch.append(_econ_entry())
+	var econ := _econ_for(peer, _econ_entry())
+	_econ_hash[peer] = hash([econ.e, econ.p, econ.q])
+	batch.append(econ)
 	batch.append({"t": "you", "id": _ids.get(_key_of(p, "p"), -1)})
 	if OS.has_environment("NET_TRACE"):
 		print("[host] sending %d entries, %d bytes" % [batch.size(), var_to_bytes(batch).size()])
@@ -72,6 +74,7 @@ func on_guest_ready(peer: int, display: String) -> void:
 func on_guest_left(peer: int) -> void:
 	_ready_peers.erase(peer)
 	_mail.erase(peer)
+	_econ_hash.erase(peer)
 	world.call("remove_guest", peer)
 
 func on_guest_input(peer: int, state: Dictionary) -> void:
@@ -106,6 +109,9 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 			p.remote_press(b)
 		"base":
 			world.call("return_to_base", p)
+		"hotbar":
+			if p.kit != null:
+				p.kit.set_hotbar(int(ev.get("slot", -1)), StringName(String(ev.get("id", ""))))
 
 func _guest(peer: int) -> Player:
 	var guests: Dictionary = world.get("guests")
@@ -255,6 +261,16 @@ func _econ_entry() -> Dictionary:
 	return {"t": "econ", "e": Economy.to_dict(), "p": PlayerState.to_dict(),
 		"q": quests.call("to_dict") if quests != null else {}}
 
+## The shared state as one guest sees it: their own tools and gear in place
+## of the host's.
+func _econ_for(peer: int, econ: Dictionary) -> Dictionary:
+	var p := _guest(peer)
+	if p == null or p.kit == null:
+		return econ
+	var out := econ.duplicate()
+	out["p"] = p.kit.over(econ.p)
+	return out
+
 # --- Sending -------------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
@@ -299,10 +315,14 @@ func _physics_process(delta: float) -> void:
 			_outbox.append({"t": "gone", "id": id})
 	if _tick % ECON_EVERY == 0:
 		var econ := _econ_entry()
-		var h := hash([econ.e, econ.p, econ.q])
-		if h != _econ_hash:
-			_econ_hash = h
-			_outbox.append(econ)
+		for peer in _ready_peers:
+			var mine := _econ_for(peer, econ)
+			var h := hash([mine.e, mine.p, mine.q])
+			if h != int(_econ_hash.get(peer, 0)):
+				_econ_hash[peer] = h
+				if not _mail.has(peer):
+					_mail[peer] = []
+				(_mail[peer] as Array).append(mine)
 	if _tick % VIEW_EVERY == 0:
 		for peer in _ready_peers:
 			var p := _guest(peer)

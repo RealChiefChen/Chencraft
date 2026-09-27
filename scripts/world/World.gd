@@ -261,6 +261,8 @@ func _ready() -> void:
 	player.stores = [store]
 	if summit_store != null:
 		player.stores.append(summit_store)
+	for shop in player.stores:
+		shop.kit_source = all_kits
 	player.wants_to_drive.connect(func(v: Node3D): drive(v as Hauler))
 
 	build_system = BuildSystem.new()
@@ -1927,6 +1929,11 @@ func add_guest(peer: int, display: String) -> Player:
 	p.stores = player.stores.duplicate()
 	p.wants_to_drive.connect(func(v: Node3D): drive(v as Hauler, p))
 	p.interacted.connect(func(m: String): _tell(p, m))
+	# Their own tools and gear, as they left them last time in this world.
+	p.kit = PlayerKit.new()
+	p.kit.from_dict(PlayerState.guest_kits.get(display, {}))
+	p.kit.changed.connect(func(): PlayerState.guest_kits[display] = p.kit.to_dict())
+	PlayerState.guest_kits[display] = p.kit.to_dict()
 	guests[peer] = p
 	for field in tree_fields + rock_fields:
 		field.extra_focus.append(p)
@@ -1939,6 +1946,8 @@ func remove_guest(peer: int) -> void:
 	_guest_names.erase(peer)
 	if p == null or not is_instance_valid(p):
 		return
+	if p.kit != null:
+		PlayerState.guest_kits[display] = p.kit.to_dict()
 	if p.driving():
 		var riding := p.vehicle as Hauler
 		p.exit_vehicle()
@@ -1950,6 +1959,14 @@ func remove_guest(peer: int) -> void:
 		field.extra_focus.erase(p)
 	p.queue_free()
 	hud.log_message("%s left" % display)
+
+## Every kit in the game: this machine's (PlayerState) and each guest's.
+func all_kits() -> Array:
+	var out: Array = [PlayerState]
+	for p in guests.values():
+		if is_instance_valid(p) and (p as Player).kit != null:
+			out.append((p as Player).kit)
+	return out
 
 func guest_name(peer: int) -> String:
 	return String(_guest_names.get(peer, "Player %d" % peer))

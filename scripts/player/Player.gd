@@ -84,6 +84,12 @@ var input := PlayerInput.new()
 var net_view: bool = false
 ## What the host says is on the rack: [count, volume].
 var net_carry: Array = [0, 0.0]
+## A co-op guest's own tools, hotbar and gear (a PlayerKit). Null for the
+## player at this machine, whose kit is PlayerState.
+var kit: PlayerKit = null
+
+func kit_of() -> Object:
+	return kit if kit != null else PlayerState
 
 ## On the host: a key or button a co-op guest pressed, acted on as if pressed
 ## here.
@@ -156,24 +162,24 @@ func set_ui_blocking(blocking: bool) -> void:
 ## The rack is measured in cubic metres, not items: one trunk is a load, a
 ## pocketful of billets is not.
 func capacity_m3() -> float:
-	return PlayerState.stat(&"carry", "capacity_m3", 0.18)
+	return kit_of().stat(&"carry", "capacity_m3", 0.18)
 
 ## The longest single piece the rack will take. Anything longer has to be
 ## dragged, bucked shorter, or loaded onto the hauler - a 6 m pole does not go
 ## on a shoulder at any weight.
 func max_piece_length() -> float:
-	return PlayerState.track_value(&"carry", "max_piece_m", 2.6)
+	return kit_of().track_value(&"carry", "max_piece_m", 2.6)
 
 ## What the player can pick up and carry. Bulk is one limit; weight is the
 ## other, and a short length of ironwood hits the weight limit long before it
 ## fills the rack.
 func lift_limit_kg() -> float:
-	return PlayerState.stat(&"carry", "lift_kg", 100.0)
+	return kit_of().stat(&"carry", "lift_kg", 100.0)
 
 ## What the player can shift without lifting it: the heavy drag, which is how
 ## anything between the lift limit and a tonne gets moved by hand.
 func move_limit_kg() -> float:
-	return PlayerState.track_value(&"carry", "move_kg", 1000.0)
+	return kit_of().track_value(&"carry", "move_kg", 1000.0)
 
 func carried_volume() -> float:
 	if net_view:
@@ -313,14 +319,14 @@ func _on_mouse_action(event: InputEvent) -> bool:
 
 ## The tool in hand, or &"" for an empty hand.
 func selected_tool() -> StringName:
-	return PlayerState.hotbar_tool(selected_slot)
+	return kit_of().hotbar_tool(selected_slot)
 
 func selected_tool_def() -> Dictionary:
 	return GameData.tool(selected_tool())
 
 ## Number keys pick a slot; pressing the one in hand again empties the hand.
 func select_slot(slot: int) -> void:
-	if slot == selected_slot or PlayerState.hotbar_tool(slot) == &"":
+	if slot == selected_slot or kit_of().hotbar_tool(slot) == &"":
 		selected_slot = -1
 	else:
 		selected_slot = slot
@@ -329,8 +335,8 @@ func select_slot(slot: int) -> void:
 ## The wheel steps through the filled slots and an empty hand.
 func cycle_hotbar(step: int) -> void:
 	var filled: Array[int] = [-1]
-	for i in PlayerState.HOTBAR_SLOTS:
-		if PlayerState.hotbar_tool(i) != &"":
+	for i in PlayerKit.HOTBAR_SLOTS:
+		if kit_of().hotbar_tool(i) != &"":
 			filled.append(i)
 	var at := maxi(0, filled.find(selected_slot))
 	selected_slot = filled[wrapi(at + step, 0, filled.size())]
@@ -576,8 +582,8 @@ func _physics_step(delta: float) -> void:
 	elif input.just_pressed("jump"):
 		velocity.y = jump_velocity
 
-	var walk := PlayerState.stat(&"boots", "walk", 5.5) * WALK_MULT
-	var sprint := PlayerState.stat(&"boots", "sprint", 8.5) * WALK_MULT
+	var walk: float = kit_of().stat(&"boots", "walk", 5.5) * WALK_MULT
+	var sprint: float = kit_of().stat(&"boots", "sprint", 8.5) * WALK_MULT
 	# Hauling a full rack slows you down: the reason to build belts.
 	var load_factor: float = 1.0 - 0.35 * clampf(carried_volume() / maxf(0.01, capacity_m3()), 0.0, 1.0)
 	var speed: float = (sprint if input.pressed("sprint") else walk) * load_factor
@@ -1219,7 +1225,7 @@ func _interact() -> void:
 	if target is LooseItem:
 		var shop := _shop_for(target as LooseItem)
 		if shop != null:
-			interacted.emit(shop.open_box(target as LooseItem))
+			interacted.emit(shop.open_box(target as LooseItem, kit_of()))
 			return
 	if target is Hauler and (target as Hauler).is_seat_point(hit.get("position", Vector3.ZERO)):
 		wants_to_drive.emit(target)

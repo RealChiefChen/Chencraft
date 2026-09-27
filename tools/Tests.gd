@@ -123,6 +123,7 @@ func _run_all() -> void:
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
+	await _test(&"co-op guests keep their own tools and gear", test_guest_kit)
 	await _test(&"every balance knob is read by the game", test_balance_file)
 	await _test(&"controls can be rebound and saved", test_controls)
 	await _test(&"build mode opens empty-handed, with a menu and a copy key", test_build_menu_and_pick)
@@ -4677,6 +4678,42 @@ func test_net_address() -> void:
 	check_eq(Net.split_address("10.0.0.2:30000"), ["10.0.0.2", 30000], "an IP with another port")
 	check_eq(Net.split_address("myhost.example.com"), ["myhost.example.com", Net.PORT], "a host name")
 	check_eq(Net.split_address("10.0.0.2:banana"), ["10.0.0.2", Net.PORT], "a junk port falls back")
+	done()
+
+func test_guest_kit() -> void:
+	PlayerState.reset()
+	var kit := PlayerKit.new()
+	var axe := &"steel_axe"
+	check(not kit.owns_tool(axe), "a new kit starts with the start tools only")
+	check(kit.give_tool(axe), "a guest can get a tool")
+	check(kit.owns_tool(axe) and not PlayerState.owns_tool(axe), "a guest's tool is theirs, not the host's")
+	check(kit.hotbar.has(axe) and not PlayerState.hotbar.has(axe), "it goes on the guest's hotbar only")
+	check(kit.level_up(&"carry"), "a guest's carry rack goes up")
+	check_eq(kit.level(&"carry"), 2, "guest's rack")
+	check_eq(PlayerState.level(&"carry"), 1, "host's rack is untouched")
+	check(not kit.level_up(&"sawmill"), "machines are shared, not a guest's to level")
+	PlayerState.levels[&"sawmill"] = 3
+	check_eq(kit.level(&"sawmill"), 3, "a guest sees the shared machine level")
+	# What the guest's own game is told, and the save round trip.
+	var seen := kit.over(PlayerState.to_dict())
+	check((seen.tools as Array).has(String(axe)), "the guest is told of their own tools")
+	check_eq(int(seen.levels["carry"]), 2, "the guest is told of their own rack")
+	check_eq(int(seen.levels["sawmill"]), 3, "and of the shared machines")
+	PlayerState.guest_kits["Sam"] = kit.to_dict()
+	var saved := PlayerState.to_dict()
+	PlayerState.reset()
+	PlayerState.from_dict(saved)
+	var back := PlayerKit.new()
+	back.from_dict(PlayerState.guest_kits.get("Sam", {}))
+	check(back.owns_tool(axe) and back.level(&"carry") == 2, "a guest's kit comes back with the host's save")
+	# The store stocks what any player still lacks.
+	var shop := Store.new()
+	shop.kit_source = func(): return [PlayerState, kit]
+	check(shop.available({"kind": &"tool", "target": axe}), "a tool the host lacks is still stocked")
+	PlayerState.give_tool(axe, false)
+	check(not shop.available({"kind": &"tool", "target": axe}), "a tool everyone has is not stocked")
+	shop.free()
+	PlayerState.reset()
 	done()
 
 func test_kill_plane_below_caves() -> void:

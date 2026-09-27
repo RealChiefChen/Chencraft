@@ -27,6 +27,9 @@ var caches: Dictionary = {}
 var tools: Array[StringName] = []
 var hotbar: Array[StringName] = []
 const HOTBAR_SLOTS := 9
+## Co-op guests' own tools and gear, kept in the host's save by name so they
+## come back to them: name -> PlayerKit dictionary.
+var guest_kits: Dictionary = {}
 
 func _ready() -> void:
 	reset()
@@ -41,6 +44,7 @@ func reset() -> void:
 	discovered.clear()
 	caches.clear()
 	tools.clear()
+	guest_kits.clear()
 	hotbar.clear()
 	hotbar.resize(HOTBAR_SLOTS)
 	hotbar.fill(&"")
@@ -224,6 +228,10 @@ func set_hotbar(slot: int, id: StringName) -> void:
 		hotbar[was] = hotbar[slot]
 	hotbar[slot] = id
 	inventory_changed.emit()
+	# A guest's hotbar is kept on the host; tell it, or the next update
+	# would put the old one back.
+	if Net.is_client() and Net.client_side != null:
+		Net.client_side.call("send_event", {"t": "hotbar", "slot": slot, "id": String(id)})
 
 func hotbar_tool(slot: int) -> StringName:
 	if slot < 0 or slot >= hotbar.size():
@@ -254,7 +262,7 @@ func to_dict() -> Dictionary:
 	return {"levels": lv, "unlocked": ub, "tutorial": tut,
 		"discovered": discovered.duplicate(), "caches": caches.duplicate(),
 		"tools": tools.map(func(t): return String(t)),
-		"spare": spare.duplicate(),
+		"spare": spare.duplicate(), "guests": guest_kits.duplicate(true),
 		"hotbar": hotbar.map(func(t): return String(t))}
 
 func from_dict(d: Dictionary) -> void:
@@ -300,6 +308,9 @@ func from_dict(d: Dictionary) -> void:
 		var lv := int(old_levels.get(pair[0], 0))
 		for i in mini(lv, (pair[1] as Array).size()):
 			give_tool(StringName(pair[1][i]), false)
+	var kits: Dictionary = d.get("guests", {})
+	for who in kits:
+		guest_kits[String(who)] = kits[who]
 	var opened: Dictionary = d.get("caches", {})
 	for key in opened:
 		caches[String(key)] = int(opened[key])

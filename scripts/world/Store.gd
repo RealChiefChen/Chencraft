@@ -93,7 +93,15 @@ func price_of(slot: Dictionary) -> int:
 		&"tool":
 			return int(GameData.tool(target).get("cost", -1))
 		&"upgrade":
-			return PlayerState.next_cost(target)
+			if not PlayerKit.personal(target):
+				return PlayerState.next_cost(target)
+			# Priced for whoever is furthest behind: that is who it is for.
+			var cost := -1
+			for k in kits():
+				var c: int = k.next_cost(target)
+				if c >= 0 and (cost < 0 or c < cost):
+					cost = c
+			return cost
 		&"tier":
 			var tier: int = int(slot.tier)
 			if tier <= 1:
@@ -110,10 +118,27 @@ func available(slot: Dictionary) -> bool:
 	var target: StringName = slot.target
 	match slot.kind:
 		&"tool":
-			return not PlayerState.owns_tool(target)
+			for k in kits():
+				if not k.owns_tool(target):
+					return true
+			return false
 		&"upgrade":
-			return not PlayerState.at_max(target)
+			if not PlayerKit.personal(target):
+				return not PlayerState.at_max(target)
+			for k in kits():
+				if not k.at_max(target):
+					return true
+			return false
 	return true
+
+## Whose tools and gear the shelf stocks for: this machine's player and, in
+## co-op, every guest. Set by World.
+var kit_source: Callable
+
+func kits() -> Array:
+	if kit_source.is_valid():
+		return kit_source.call()
+	return [PlayerState]
 
 ## Why a box cannot be bought yet, or "" if it can. Nothing is: buy in any
 ## order you like - a higher tier bought first brings the machine with it.
@@ -254,7 +279,9 @@ func buy(carried: Array[LooseItem] = []) -> Dictionary:
 
 ## Spec: once purchased, the box can be carried and moved like any other object.
 ## Opening one is what actually delivers what is inside.
-func open_box(item: LooseItem) -> String:
+func open_box(item: LooseItem, kit: Object = null) -> String:
+	if kit == null:
+		kit = PlayerState
 	if item == null or not is_instance_valid(item):
 		return "nothing to open"
 	var slot := _slot_for(item.item_id)
@@ -266,10 +293,18 @@ func open_box(item: LooseItem) -> String:
 	var what := ""
 	match slot.kind:
 		&"tool":
-			PlayerState.give_tool(target)
+			if not kit.give_tool(target):
+				return "you already have a %s" % GameData.tool_name(target)
 			what = "%s added to your inventory - it is on the hotbar [I]" % GameData.tool_name(target)
 		&"upgrade":
-			what = _level_up(target)
+			if kit is PlayerKit and PlayerKit.personal(target):
+				if not (kit as PlayerKit).level_up(target):
+					return "your %s is as good as it gets" % String(target)
+				what = "%s is now %s" % [String(target), kit.label(target)]
+			elif kit.at_max(target):
+				return "your %s is as good as it gets" % String(target)
+			else:
+				what = _level_up(target)
 		_:
 			# One copy of the building, at the box's tier, to put up in build
 			# mode for free. A higher tier is its own machine: it does not

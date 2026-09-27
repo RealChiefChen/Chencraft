@@ -55,6 +55,9 @@ func _host() -> void:
 	# The purse is shared: money earned here is the guest's money too.
 	await get_tree().create_timer(2.0).timeout
 	Economy.add_money(12345)
+	# Tools are not: this one is the guest's alone.
+	guest.kit.give_tool(&"steel_axe")
+	_check(not PlayerState.owns_tool(&"steel_axe"), "the guest's new axe is not the host's")
 	t = 0.0
 	while guest.selected_slot != 0 and t < 40.0:
 		await get_tree().create_timer(0.25).timeout
@@ -172,6 +175,11 @@ func _join() -> void:
 			saw = true
 			break
 	_check(saw, "money the host earned shows here (%d -> %d)" % [money_before, Economy.money])
+	t = 0.0
+	while not PlayerState.owns_tool(&"steel_axe") and t < 5.0:
+		await get_tree().create_timer(0.25).timeout
+		t += 0.25
+	_check(PlayerState.owns_tool(&"steel_axe"), "the axe the host gave this player is in its own inventory")
 	# A key press, acted on by the host: 1 picks the first tool.
 	var key := InputEventKey.new()
 	key.keycode = KEY_1

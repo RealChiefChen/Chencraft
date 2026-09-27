@@ -849,8 +849,19 @@ static func _wake(body: RigidBody3D) -> void:
 	if body != null and body.sleeping:
 		body.sleeping = false
 
+## On a guest's machine, while the guest drives: the arm follows the
+## controls here, and nothing else - the hook, the winch and what they hold
+## are the host's.
+var net_mirror: bool = false
+
 func _physics_process(delta: float) -> void:
 	if vehicle == null:
+		return
+	if net_mirror:
+		if has_crane():
+			var goals: Dictionary = solve(target, target_yaw) if operating else _rest_goals()
+			_step_joints(goals, delta, (FINE * COARSE_JOINTS if _fine else COARSE_JOINTS) if operating else COARSE_JOINTS)
+		_draw()
 		return
 	_work_winch()
 	_work_crane(delta)

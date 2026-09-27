@@ -35,6 +35,13 @@ func _host() -> void:
 	_check(Net.host(PORT) == "", "the host opened its port")
 	await _load_world()
 	var start_money := Economy.money
+	# The whole base goes to the guest: more land than at the start, and a
+	# bin with something in it.
+	world.plot._apply_expansion(mini(2, GameData.max_expansion_tier()))
+	var bin := world.plot.place(GameData.building(&"storage"), Vector2i(-40, -40), Vector3i.ZERO, false) as StorageBin
+	_check(bin != null, "the host put up a storage bin")
+	if bin != null:
+		bin.contents.append({"id": &"wood_pine", "dims": Solid.cylinder(0.1, 0.1, 1.0), "owned": true})
 	# Wait for a guest to arrive and look round.
 	var t := 0.0
 	while world.guests.is_empty() and t < 90.0:
@@ -131,8 +138,13 @@ func _join() -> void:
 	_check(joined, "the guest connected to the host")
 	if not joined:
 		return
+	# Nothing of this player's own game comes along.
+	PlayerState.give_tool(&"goldleaf_axe", false)
+	Economy.from_dict({"money": 987654})
 	# A long, blocking build with the connection open: it must survive it.
 	await _load_world()
+	_check(not PlayerState.owns_tool(&"goldleaf_axe") and Economy.money != 987654,
+		"this player's own tools and money stayed at home")
 	_check(Net.is_client() and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED,
 		"still connected after building the world")
 	var client: NetClient = world.net_client
@@ -156,6 +168,13 @@ func _join() -> void:
 		if client._nodes[id] is Avatar:
 			avatars += 1
 	_check(avatars == 1, "the host's player is drawn as a person here (%d)" % avatars)
+	var want_tier := mini(2, GameData.max_expansion_tier())
+	_check(world.plot.tier == want_tier, "the host's land size came across (tier %d, want %d)" % [world.plot.tier, want_tier])
+	var bins := 0
+	for rec in world.plot.placed:
+		if rec.node is StorageBin and not (rec.node as StorageBin).contents.is_empty():
+			bins += 1
+	_check(bins >= 1, "what is in the host's bin came across (%d)" % bins)
 	# Walk forward: the host moves this player, and this view follows.
 	var money_before := Economy.money
 	var from := world.player.global_position
@@ -164,7 +183,7 @@ func _join() -> void:
 	Input.action_release("move_forward")
 	await get_tree().create_timer(0.5).timeout
 	_check(world.player.global_position.distance_to(from) > 2.0,
-		"this player moved where the host walked it (%.1f m)" % world.player.global_position.distance_to(from))
+		"this player walked here (%.1f m)" % world.player.global_position.distance_to(from))
 	# The shared purse: the host adds money once it has seen the walk.
 	var saw := false
 	t = 0.0
@@ -229,6 +248,7 @@ func _join() -> void:
 		"the truck drove off here too (%.1f m)" % truck.global_position.distance_to(from_truck))
 	var sits := world.player.global_position.distance_to(truck.global_position) < 4.0
 	_check(sits, "this player rode along in the truck")
+	_check(truck.net_mirror, "the truck was driven here, not on the host")
 	client.send_press(_key(KEY_F))
 	t = 0.0
 	while world.player.driving() and t < 10.0:

@@ -185,6 +185,6 @@ func h_batch(batch: Array) -> void:
 
 ## Where everything that moves is now. The latest wins; a lost one is replaced.
 @rpc("authority", "unreliable_ordered")
-func h_motion(ids: PackedInt32Array, poses: PackedFloat32Array, tick: int) -> void:
+func h_motion(ids: PackedInt32Array, poses: PackedFloat32Array, carriers: PackedInt32Array, tick: int) -> void:
 	if client_side != null:
-		client_side.call("on_motion", ids, poses, tick)
+		client_side.call("on_motion", ids, poses, carriers, tick)

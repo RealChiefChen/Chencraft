@@ -13,6 +13,9 @@ const ECON_EVERY := 20        ## money and unlocks, once a second
 const VIEW_EVERY := 2         ## each guest's own prompt and hand
 const WHEEL := 1 << 24        ## wheel poses ride on the vehicle's id plus this
 const CHUNK := 32             ## poses per motion packet
+## A resting thing's pose is sent again this often (in motion updates), so a
+## lost packet never leaves it in the wrong place for good.
+const REFRESH := 40
 
 var world: Node
 
@@ -22,6 +25,9 @@ var _ids: Dictionary = {}             ## key -> id
 var _nodes: Dictionary = {}           ## id -> [node, kind, key]
 var _state_hash: Dictionary = {}      ## id -> hash of the last state sent
 var _poses: Dictionary = {}           ## id -> last pose sent
+var _sent_at: Dictionary = {}         ## id -> tick it was last sent
+var _carrier_sent: Dictionary = {}    ## id -> the carrier its last pose was relative to
+var _holder: Dictionary = {}          ## piece -> the player carrying it, this update
 var _econ_hash: Dictionary = {}     ## peer -> hash of the last money and kit sent
 var _tick: int = 0
 var _acc: float = 0.0
@@ -45,6 +51,8 @@ func on_guest_ready(peer: int, display: String) -> void:
 		print("[host] guest ready ", peer, " ", display)
 	var p: Player = world.call("add_guest", peer, display)
 	_ready_peers[peer] = true
+	if not p.warped.is_connected(_on_warped):
+		p.warped.connect(_on_warped.bind(peer, p))
 	# Everything there is, as it is, then who they are.
 	var batch: Array = []
 	for entry in _entities():
@@ -60,7 +68,7 @@ func on_guest_ready(peer: int, display: String) -> void:
 		if st != null:
 			batch.append({"t": "state", "id": id, "s": st})
 	var econ := _econ_for(peer, _econ_entry())
-	_econ_hash[peer] = hash([econ.e, econ.p, econ.q])
+	_econ_hash[peer] = hash([econ.e, econ.p, econ.q, econ.land])
 	batch.append(econ)
 	batch.append({"t": "you", "id": _ids.get(_key_of(p, "p"), -1)})
 	if OS.has_environment("NET_TRACE"):
@@ -82,6 +90,28 @@ func on_guest_input(peer: int, state: Dictionary) -> void:
 	if p == null:
 		return
 	p.input.apply(state)
+	# Where the guest has walked, unless the host has moved them since.
+	if state.has("pos") and int(state.get("ws", -1)) == p.net_warp_seq and not p.driving():
+		var at: Array = state.pos
+		p.net_target = Vector3(float(at[0]), float(at[1]), float(at[2]))
+		p.net_has_target = true
+	# Driving on their machine: the truck, its wheels and its arms go where
+	# the guest has them. The hook, the winch and the loads stay ours.
+	if state.has("veh") and p.driving() and p.vehicle is Hauler:
+		var v := p.vehicle as Hauler
+		var vs: Dictionary = state.veh
+		if int(vs.get("id", -1)) == int(_ids.get(_key_of(v, "v"), -2)):
+			var wheels: Array = []
+			for w in vs.get("w", []):
+				wheels.append(_unpose(w))
+			v.net_follow_to(_unpose(vs.x), wheels)
+			if v.rig != null and vs.has("tg") and v.rig.claw_state == &"":
+				v.rig.target = vs.tg
+				v.rig.target_yaw = float(vs.get("ty", 0.0))
+			if v.loader != null and vs.has("ld"):
+				v.loader.lift = clampf(float(vs.ld[0]), v.loader.lift_min, v.loader.lift_max)
+				v.loader.tilt = clampf(float(vs.ld[1]), LoaderArm.TILT_MIN, LoaderArm.TILT_MAX)
+				v.loader.homing = false
 	if state.has("yaw"):
 		p.rotation.y = float(state.yaw)
 	if state.has("pitch"):
@@ -112,6 +142,18 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 		"hotbar":
 			if p.kit != null:
 				p.kit.set_hotbar(int(ev.get("slot", -1)), StringName(String(ev.get("id", ""))))
+
+## The host moved a guest's player: put the guest there too.
+func _on_warped(peer: int, p: Player) -> void:
+	if not is_instance_valid(p):
+		return
+	_post(peer, {"t": "warp", "s": p.net_warp_seq,
+		"x": [p.global_position.x, p.global_position.y, p.global_position.z]})
+
+func _post(peer: int, entry: Dictionary) -> void:
+	if not _mail.has(peer):
+		_mail[peer] = []
+	(_mail[peer] as Array).append(entry)
 
 func _guest(peer: int) -> Player:
 	var guests: Dictionary = world.get("guests")
@@ -231,14 +273,21 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 			return (thing as OreRock).net_state()
 		"b":
 			var node: Node = (thing as Dictionary).node
+			var s := {}
 			var run: Variant = node.get("running")
-			return {"run": bool(run)} if run != null else null
+			if run != null:
+				s.run = bool(run)
+			# What is inside it: a bin's stock, a mould's fill, a machine's
+			# queue. Not a pad's truck, which is sent as a vehicle.
+			if node.has_method("to_dict") and not node is VehiclePad:
+				s.d = node.call("to_dict")
+			return s if not s.is_empty() else null
 		"v":
 			var v := thing as Hauler
 			var s := {"tub": v._tub_angle, "held": v.held}
 			if v.rig != null:
 				var r := v.rig
-				s.rig = {"j": r.joints.duplicate(), "op": r.operating, "out": r.outriggers_down,
+				s.rig = {"j": r.joints.duplicate(), "op": r.operating, "out": r.outriggers_down, "cs": String(r.claw_state),
 					"fold": r.folding, "anch": r.anchored, "ty": r.target_yaw, "tg": r.target}
 			if v.loader != null:
 				var l := v.loader
@@ -252,13 +301,17 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 			return {"pitch": snappedf(p.camera.rotation.x, 0.05), "veh": veh, "tool": String(p.selected_tool())}
 	return null
 
+static func _unpose(x: PackedFloat32Array) -> Transform3D:
+	return Transform3D(Basis(Quaternion(x[3], x[4], x[5], x[6]).normalized()), Vector3(x[0], x[1], x[2]))
+
 static func _pose(t: Transform3D) -> PackedFloat32Array:
 	var q := t.basis.orthonormalized().get_rotation_quaternion()
 	return PackedFloat32Array([t.origin.x, t.origin.y, t.origin.z, q.x, q.y, q.z, q.w])
 
 func _econ_entry() -> Dictionary:
 	var quests: Variant = world.get("quests")
-	return {"t": "econ", "e": Economy.to_dict(), "p": PlayerState.to_dict(),
+	var plot: Plot = world.get("plot")
+	return {"t": "econ", "e": Economy.to_dict(), "p": PlayerState.to_dict(), "land": plot.tier,
 		"q": quests.call("to_dict") if quests != null else {}}
 
 ## The shared state as one guest sees it: their own tools and gear in place
@@ -285,6 +338,12 @@ func _physics_process(delta: float) -> void:
 	var seen: Dictionary = {}
 	var ids := PackedInt32Array()
 	var poses := PackedFloat32Array()
+	var carriers := PackedInt32Array()
+	_holder.clear()
+	for pl: Player in world.call("players"):
+		for item in pl.held:
+			if is_instance_valid(item):
+				_holder[item] = pl
 	var check_state := _tick % STATE_EVERY == 0
 	for entry in ents:
 		var key: String = entry[2]
@@ -303,7 +362,7 @@ func _physics_process(delta: float) -> void:
 				if fresh or int(_state_hash.get(id, 0)) != h:
 					_state_hash[id] = h
 					_outbox.append({"t": "state", "id": id, "s": st})
-		_collect_motion(id, entry[0], entry[1], ids, poses)
+		_collect_motion(id, entry[0], entry[1], ids, poses, carriers)
 	# Gone since last time.
 	for id in _nodes.keys():
 		if not seen.has(id):
@@ -312,12 +371,14 @@ func _physics_process(delta: float) -> void:
 			_ids.erase(key)
 			_state_hash.erase(id)
 			_poses.erase(id)
+			_sent_at.erase(id)
+			_carrier_sent.erase(id)
 			_outbox.append({"t": "gone", "id": id})
 	if _tick % ECON_EVERY == 0:
 		var econ := _econ_entry()
 		for peer in _ready_peers:
 			var mine := _econ_for(peer, econ)
-			var h := hash([mine.e, mine.p, mine.q])
+			var h := hash([mine.e, mine.p, mine.q, mine.land])
 			if h != int(_econ_hash.get(peer, 0)):
 				_econ_hash[peer] = h
 				if not _mail.has(peer):
@@ -342,34 +403,57 @@ func _physics_process(delta: float) -> void:
 		var i := 0
 		while i < ids.size():
 			var n := mini(CHUNK, ids.size() - i)
-			Net.rpc_id(peer, "h_motion", ids.slice(i, i + n), poses.slice(i * 7, (i + n) * 7), _tick)
+			Net.rpc_id(peer, "h_motion", ids.slice(i, i + n), poses.slice(i * 7, (i + n) * 7),
+				carriers.slice(i, i + n), _tick)
 			i += n
 	_outbox.clear()
 	_mail.clear()
 
-func _collect_motion(id: int, thing: Variant, kind: String, ids: PackedInt32Array, poses: PackedFloat32Array) -> void:
+func _collect_motion(id: int, thing: Variant, kind: String, ids: PackedInt32Array, poses: PackedFloat32Array,
+		carriers: PackedInt32Array) -> void:
 	match kind:
-		"i", "p":
-			_moved(id, (thing as Node3D).global_transform, ids, poses)
+		"i":
+			var item := thing as LooseItem
+			# In a bed or on a rack, a piece goes where what carries it goes:
+			# sent in its frame, it stays put on the guest's screen however
+			# that moves there.
+			var by: Node3D = _holder.get(item, null)
+			if by == null and item.carrier != null and is_instance_valid(item.carrier):
+				by = item.carrier
+			_moved(id, item.global_transform, ids, poses, carriers, by)
+		"p":
+			_moved(id, (thing as Node3D).global_transform, ids, poses, carriers, null)
 		"v":
 			var v := thing as Hauler
-			_moved(id, v.global_transform, ids, poses)
+			var tug: Node3D = v.towed_by if v.towed_by != null and is_instance_valid(v.towed_by) else null
+			_moved(id, v.global_transform, ids, poses, carriers, tug)
 			for w in v.wheel_bodies.size():
-				_moved(id + WHEEL * (w + 1), v.wheel_bodies[w].global_transform, ids, poses)
+				_moved(id + WHEEL * (w + 1), v.wheel_bodies[w].global_transform, ids, poses, carriers, v)
 
-## Adds a pose if it has changed since it was last sent.
-func _moved(id: int, t: Transform3D, ids: PackedInt32Array, poses: PackedFloat32Array) -> void:
+## Adds a pose if it has changed since it was last sent (or has not been sent
+## for a while). With a carrier, the pose is in the carrier's frame.
+func _moved(id: int, t: Transform3D, ids: PackedInt32Array, poses: PackedFloat32Array,
+		carriers: PackedInt32Array, by: Node3D) -> void:
+	var cid := 0
+	if by != null:
+		cid = int(_ids.get(_key_of(by, "v" if by is Hauler else "p"), 0))
+		if cid != 0:
+			t = by.global_transform.affine_inverse() * t
 	var p := _pose(t)
 	var last: Variant = _poses.get(id, null)
-	if last != null:
+	if last != null and int(_carrier_sent.get(id, 0)) == cid \
+			and _tick - int(_sent_at.get(id, 0)) < REFRESH + id % 20:
 		var l: PackedFloat32Array = last
 		var dp := Vector3(p[0] - l[0], p[1] - l[1], p[2] - l[2]).length()
 		var dq := absf(p[3] * l[3] + p[4] * l[4] + p[5] * l[5] + p[6] * l[6])
 		if dp < 0.004 and dq > 0.99995:
 			return
 	_poses[id] = p
+	_sent_at[id] = _tick
+	_carrier_sent[id] = cid
 	ids.append(id)
 	poses.append_array(p)
+	carriers.append(cid)
 
 ## A guest's own player: what their HUD shows.
 func _view_of(p: Player) -> Dictionary:

@@ -19,6 +19,12 @@ var _acc: float = 0.0
 var _last_tick: int = -1
 var _wheels: Dictionary = {}           ## wheel pose id -> RigidBody3D
 var _last_veh: int = -2
+## The last time the host moved this player itself; sent back with where we
+## are, so the host knows we have caught up.
+var _warp_seq: int = -1
+var _rel: Dictionary = {}              ## id -> id of what it rides on
+## The vehicle this player is driving here (its id), or -1.
+var _local_veh: int = -1
 
 func _ready() -> void:
 	Net.client_side = self
@@ -58,6 +64,13 @@ func _give_up(reason: String) -> void:
 # --- Sending ---------------------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
+	# Driving here: the player sits in the seat of the truck driven here.
+	var lv := _nodes.get(_local_veh, null) as Hauler
+	if lv != null and is_instance_valid(lv):
+		var me: Player = world.get("player")
+		if me != null:
+			me.global_position = lv.seat_transform().origin
+			me.velocity = Vector3.ZERO
 	if not Net.is_client() or multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return
 	_acc += delta
@@ -72,6 +85,23 @@ func _physics_process(delta: float) -> void:
 			state = {"a": [], "k": [], "b": []}
 		state.yaw = p.rotation.y
 		state.pitch = p.camera.rotation.x
+		if not p.driving() and _warp_seq >= 0:
+			var at := p.global_position
+			state.pos = [at.x, at.y, at.z]
+			state.ws = _warp_seq
+		var v := _nodes.get(_local_veh, null) as Hauler
+		if v != null and is_instance_valid(v):
+			var vs := {"id": _local_veh, "x": NetHost._pose(v.global_transform)}
+			var wheels: Array = []
+			for body in v.wheel_bodies:
+				wheels.append(NetHost._pose(body.global_transform))
+			vs.w = wheels
+			if v.rig != null and v.rig.has_crane():
+				vs.tg = v.rig.target
+				vs.ty = v.rig.target_yaw
+			if v.loader != null:
+				vs.ld = [v.loader.lift, v.loader.tilt]
+			state.veh = vs
 	Net.rpc_id(1, "c_input", state)
 
 ## A key or button pressed here, for the host to act on.
@@ -99,6 +129,9 @@ func on_batch(batch: Array) -> void:
 			"state":
 				_state(int(e.id), e.s)
 			"econ":
+				var plot: Plot = world.get("plot")
+				if e.has("land") and plot != null and plot.tier != int(e.land):
+					plot._apply_expansion(int(e.land))
 				Economy.from_dict(e.e)
 				PlayerState.from_dict(e.p)
 				var quests: Variant = world.get("quests")
@@ -114,24 +147,36 @@ func on_batch(batch: Array) -> void:
 					_nodes[_me] = world.get("player")
 			"view":
 				_view(e)
+			"warp":
+				var wp: Player = world.get("player")
+				if wp != null:
+					var x: Array = e.x
+					wp.global_position = Vector3(float(x[0]), float(x[1]), float(x[2]))
+					wp.velocity = Vector3.ZERO
+				_warp_seq = int(e.s)
 			"msg":
 				var p: Player = world.get("player")
 				if p != null:
 					p.interacted.emit(String(e.m))
 
 var _motion_count := 0
-func on_motion(ids: PackedInt32Array, poses: PackedFloat32Array, tick: int) -> void:
+func on_motion(ids: PackedInt32Array, poses: PackedFloat32Array, carriers: PackedInt32Array, tick: int) -> void:
 	_motion_count += ids.size()
 	for i in ids.size():
 		var id := ids[i]
 		var t := Transform3D(Basis(Quaternion(poses[i * 7 + 3], poses[i * 7 + 4], poses[i * 7 + 5], poses[i * 7 + 6])),
 			Vector3(poses[i * 7], poses[i * 7 + 1], poses[i * 7 + 2]))
 		if id == _me:
-			# This player: where the host has it. Which way it looks is ours.
+			# This player walks here; in a truck it is where the host has it.
 			var p: Player = world.get("player")
-			if p != null:
+			if p != null and p.driving() and _local_veh < 0:
 				p.global_position = t.origin
 			continue
+		var by := carriers[i] if i < carriers.size() else 0
+		if by != 0:
+			_rel[id] = by
+		else:
+			_rel.erase(id)
 		_goal[id] = t
 	_last_tick = tick
 
@@ -157,23 +202,39 @@ func _process(delta: float) -> void:
 			_trace_t = 0.0
 			print("[guest] alive frame=%d nodes=%d me=%d motion=%d pos=%s" % [Engine.get_process_frames(), _nodes.size(), _me, _motion_count, world.get("player").global_position])
 	var k := clampf(delta * 18.0, 0.0, 1.0)
-	for id in _goal:
-		if id == _me:
-			continue
-		var node: Node3D = null
-		if id >= WHEEL:
-			node = _wheels.get(id, null)
-		else:
-			node = _nodes.get(id, null) as Node3D
-		if node == null or not is_instance_valid(node):
-			continue
-		var goal: Transform3D = _goal[id]
-		var now := node.global_transform
-		if now.origin.distance_to(goal.origin) > 6.0:
-			node.global_transform = goal
-			continue
-		var q := now.basis.get_rotation_quaternion().slerp(goal.basis.get_rotation_quaternion(), k)
-		node.global_transform = Transform3D(Basis(q), now.origin.lerp(goal.origin, k))
+	# Things in the world first, then what rides on them - in a bed, on a
+	# rack, behind a truck, a wheel on its axle - in the frame of what
+	# carries it, so it goes with its carrier however that moves here.
+	for pass_rel in [false, true]:
+		for id in _goal:
+			if id == _me or _rel.has(id) != pass_rel or _is_local(id):
+				continue
+			var node: Node3D = null
+			if id >= WHEEL:
+				node = _wheels.get(id, null)
+			else:
+				node = _nodes.get(id, null) as Node3D
+			if node == null or not is_instance_valid(node):
+				continue
+			var goal: Transform3D = _goal[id]
+			var now := node.global_transform
+			if pass_rel:
+				var carrier := _nodes.get(int(_rel[id]), null) as Node3D
+				if carrier == null or not is_instance_valid(carrier):
+					continue
+				var frame := carrier.global_transform
+				now = frame.affine_inverse() * now
+				if now.origin.distance_to(goal.origin) > 6.0:
+					node.global_transform = frame * goal
+					continue
+				var rq := now.basis.get_rotation_quaternion().slerp(goal.basis.get_rotation_quaternion(), k)
+				node.global_transform = frame * Transform3D(Basis(rq), now.origin.lerp(goal.origin, k))
+				continue
+			if now.origin.distance_to(goal.origin) > 6.0:
+				node.global_transform = goal
+				continue
+			var q := now.basis.get_rotation_quaternion().slerp(goal.basis.get_rotation_quaternion(), k)
+			node.global_transform = Transform3D(Basis(q), now.origin.lerp(goal.origin, k))
 	# Loader buckets and cranes follow their vehicle.
 	for id in _kinds:
 		if _kinds[id] == "v":
@@ -196,6 +257,10 @@ func _spawn(e: Dictionary) -> void:
 			var manager: LooseItemManager = world.get("manager")
 			var item := manager.mirror_spawn(StringName(e.item), _pose_of(e), Solid.from_dict(e.dims))
 			if item != null:
+				# A picture: nothing here - the truck driven here above all -
+				# bumps into it. The host's copy is the one that is hit.
+				item.collision_layer = 0
+				item.collision_mask = 0
 				for a in e.get("limbs", []):
 					item.add_limb(Vector3(a[0], a[1], a[2]), Vector3(a[3], a[4], a[5]), float(a[6]), float(a[7]),
 						[], Color(0.42, 0.3, 0.2), float(a[8]) if (a as Array).size() > 8 else -1.0)
@@ -267,6 +332,9 @@ func _gone(id: int) -> void:
 	_nodes.erase(id)
 	_kinds.erase(id)
 	_goal.erase(id)
+	_rel.erase(id)
+	if id == _local_veh:
+		_local_veh = -1
 	if node == null or not is_instance_valid(node):
 		return
 	match kind:
@@ -307,6 +375,8 @@ func _state(id: int, s: Variant) -> void:
 		"b":
 			if s.has("run") and (node as Node).get("running") != null:
 				(node as Node).set("running", bool(s.run))
+			if s.has("d") and (node as Node).has_method("from_dict") and not node is VehiclePad:
+				(node as Node).call("from_dict", s.d)
 		"v":
 			_vehicle_state(node as Hauler, s)
 		"p":
@@ -314,25 +384,69 @@ func _state(id: int, s: Variant) -> void:
 			if a != null:
 				a.set_pitch(float(s.get("pitch", 0.0)))
 
+## Whether this is the vehicle driven here, or one of its wheels.
+func _is_local(id: int) -> bool:
+	return _local_veh >= 0 and (id == _local_veh or (id >= WHEEL and id % WHEEL == _local_veh))
+
+## Driving here: the copy of the truck comes alive and is driven by this
+## player's own keys; the host's copy follows it.
+func _drive_here(id: int, v: Hauler) -> void:
+	_let_go()
+	_local_veh = id
+	v.net_mirror = true
+	v.driver = world.get("player")
+	if v.rig != null:
+		v.rig.net_mirror = true
+	v.process_mode = Node.PROCESS_MODE_INHERIT
+	for body in v.wheel_bodies:
+		body.process_mode = Node.PROCESS_MODE_INHERIT
+	v.freeze = v.planted
+	v.linear_velocity = Vector3.ZERO
+	v.angular_velocity = Vector3.ZERO
+
+## Out of the truck: it is only a picture again, moved by the host.
+func _let_go() -> void:
+	var v := _nodes.get(_local_veh, null) as Hauler
+	_local_veh = -1
+	if v == null or not is_instance_valid(v):
+		return
+	v.driver = null
+	v.net_mirror = false
+	if v.rig != null:
+		v.rig.net_mirror = false
+	v.process_mode = Node.PROCESS_MODE_DISABLED
+	for body in v.wheel_bodies:
+		body.process_mode = Node.PROCESS_MODE_DISABLED
+
 func _vehicle_state(v: Hauler, s: Dictionary) -> void:
+	var here: bool = _local_veh >= 0 and _nodes.get(_local_veh, null) == v
 	if s.has("tub") and v.bed_kind == &"tub":
 		v._tub_angle = float(s.tub)
 		v._pose_tub(v._tub_angle)
 	if s.has("rig") and v.rig != null:
 		var r := v.rig
 		var rs: Dictionary = s.rig
-		r.joints = (rs.j as Dictionary).duplicate()
+		var was := r.planted()
 		r.operating = bool(rs.op)
 		r.outriggers_down = bool(rs.out)
 		r.folding = bool(rs.fold)
 		r.anchored = bool(rs.anch)
-		r.target_yaw = float(rs.get("ty", 0.0))
-		r.target = rs.get("tg", r.target)
+		r.claw_state = StringName(String(rs.get("cs", "")))
+		# Worked here, the arm is ours - except while the claw drops, which
+		# the host does.
+		if not here or r.claw_state != &"":
+			r.target_yaw = float(rs.get("ty", 0.0))
+			r.target = rs.get("tg", r.target)
+		if not here:
+			r.joints = (rs.j as Dictionary).duplicate()
+		if r.planted() != was:
+			r._apply_plant()
 		r._draw()
 	if s.has("ld") and v.loader != null:
 		var l := v.loader
-		l.lift = float(s.ld[0])
-		l.tilt = float(s.ld[1])
+		if not here:
+			l.lift = float(s.ld[0])
+			l.tilt = float(s.ld[1])
 		l.locked = bool(s.ld[2])
 		l.thumb_angle = float(s.ld[3])
 		if l._thumb != null:
@@ -352,6 +466,7 @@ func _view(e: Dictionary) -> void:
 		return
 	_last_veh = veh
 	if veh < 0:
+		_let_go()
 		if p.vehicle != null:
 			p.vehicle = null
 			p.camera.position = Vector3(0, 1.65, 0)
@@ -359,3 +474,5 @@ func _view(e: Dictionary) -> void:
 	else:
 		var v: Variant = _nodes.get(veh, null)
 		p.vehicle = v as Node3D if v != null and is_instance_valid(v) else null
+		if p.vehicle is Hauler and not (p.vehicle as Hauler).is_trailer:
+			_drive_here(veh, p.vehicle as Hauler)

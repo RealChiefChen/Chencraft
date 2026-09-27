@@ -856,7 +856,69 @@ func cargo_summary() -> String:
 
 # --- Driving ---------------------------------------------------------------
 
+# --- Co-op -------------------------------------------------------------------------
+
+## On a guest's machine: this copy is being driven there, so all it does is
+## drive. What is in the bed, on the hook or on the winch is the host's.
+var net_mirror: bool = false
+## On the host: a guest is driving this on their machine, and it goes where
+## they say (its wheels too) rather than where its own motors would take it.
+var net_follow: bool = false
+var _net_goal: Transform3D
+var _net_wheels: Array = []
+var _net_heard: float = 0.0
+var _net_vel: Vector3 = Vector3.ZERO
+
+## Where the guest driving it has it now.
+func net_follow_to(goal: Transform3D, wheels: Array) -> void:
+	if net_follow:
+		var gap := maxf(_net_heard, 1.0 / 60.0)
+		_net_vel = (goal.origin - _net_goal.origin) / gap
+	else:
+		_net_vel = Vector3.ZERO
+		release_hold()
+	net_follow = true
+	_net_goal = goal
+	_net_wheels = wheels
+	_net_heard = 0.0
+
+func end_net_follow() -> void:
+	if not net_follow:
+		return
+	net_follow = false
+	freeze = planted
+	for body in wheel_bodies:
+		body.freeze = false
+		body.linear_velocity = _net_vel
+	if not planted:
+		linear_velocity = _net_vel
+		angular_velocity = Vector3.ZERO
+
+func _net_follow_step(delta: float) -> void:
+	_net_heard += delta
+	if driver == null or _net_heard > 1.0:
+		end_net_follow()
+		return
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = true
+	global_transform = _net_goal
+	for i in wheel_bodies.size():
+		var body := wheel_bodies[i]
+		body.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		body.freeze = true
+		if i < _net_wheels.size():
+			body.global_transform = _net_wheels[i]
+
 func _physics_process(delta: float) -> void:
+	if net_mirror:
+		if driver != null:
+			_read_input()
+		if not freeze:
+			_drive_wheels()
+			_clamp_motion()
+		return
+	if net_follow:
+		_net_follow_step(delta)
 	_poll -= delta
 	if _poll <= 0.0:
 		_poll = 0.1
@@ -870,6 +932,8 @@ func _physics_process(delta: float) -> void:
 		towed_by = null
 	if towing != null and not is_instance_valid(towing):
 		towing = null
+	if net_follow:
+		return
 	if driver != null:
 		_read_input()
 	elif towed_by != null:

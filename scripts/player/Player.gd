@@ -14,6 +14,9 @@ signal interacted(message: String)
 signal swung()
 ## Asks the world to put the player in a vehicle's driving seat.
 signal wants_to_drive(vehicle: Node3D)
+## Co-op, on the host: a guest's player was moved here rather than by the
+## guest (back to base, out of a truck), so the guest must be told.
+signal warped()
 
 @export var jump_velocity: float = Balance.num("player.jump_velocity", 6.5)
 @export var mouse_sensitivity: float = 0.0022
@@ -78,10 +81,18 @@ var _mouse_captured: bool = false
 ## guest's game.
 var input := PlayerInput.new()
 
-## Co-op, on a guest's machine: this player is a view of its copy on the
-## host. It looks about here (so the mouse is instant) but moves where the
-## host says, and its keys and clicks are sent to the host to act on.
+## Co-op, on a guest's machine: this player walks here, so moving is instant,
+## and the host is told where it is; its keys and clicks are sent to the host
+## to act on, and in a truck it is wherever the host has the truck.
 var net_view: bool = false
+## Co-op, on the host: a guest's player, standing where the guest says.
+var net_follow: bool = false
+var net_target: Vector3 = Vector3.ZERO
+var net_has_target: bool = false
+## Bumped each time the host moves the player itself; the guest's reports of
+## where it is count again once they carry the new number.
+var net_warp_seq: int = 0
+var _follow_last: Variant = null
 ## What the host says is on the rack: [count, volume].
 var net_carry: Array = [0, 0.0]
 ## A co-op guest's own tools, hotbar and gear (a PlayerKit). Null for the
@@ -463,7 +474,8 @@ func _on_driving_key(event: InputEvent) -> bool:
 ## them in.
 func toggle_outriggers(r: VehicleRig) -> String:
 	if not r.has_crane():
-		return "only a crane truck has outriggers"	if r.operating or r.folding:
+		return "only a crane truck has outriggers"
+	if r.operating or r.folding:
 		return "the crane is working on them - stow it first [R]"
 	r.set_outriggers(not r.outriggers_down)
 	return "outriggers down - the truck is locked in place" if r.outriggers_down else "outriggers up"
@@ -560,12 +572,16 @@ func _physics_process(delta: float) -> void:
 	input.end_frame()
 
 func _physics_step(delta: float) -> void:
-	if net_view:
-		# Where the body is comes from the host; only the camera is ours.
-		if driving():
-			_update_chase_camera(delta)
+	if net_view and driving():
+		# In a truck the body is where the host has it. Driving it here, the
+		# arms are worked here too.
+		if vehicle is Hauler and (vehicle as Hauler).net_mirror:
+			_update_vehicle_controls(delta)
+		_update_chase_camera(delta)
 		return
 	_swing_cd = maxf(0.0, _swing_cd - delta)
+	if net_follow and driving():
+		_follow_last = null
 	if driving():
 		_update_rack()
 		_update_vehicle_controls(delta)
@@ -576,6 +592,13 @@ func _physics_step(delta: float) -> void:
 		# The freecam has the camera; the body stays put until build mode ends.
 		velocity = Vector3.ZERO
 		_update_rack()
+		return
+
+	if net_follow:
+		_follow_guest()
+		_update_rack()
+		_update_drag()
+		_update_prompt()
 		return
 
 	if not is_on_floor():
@@ -612,10 +635,27 @@ func _physics_step(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, speed * 5.0 * delta)
 		velocity.z = move_toward(velocity.z, 0.0, speed * 5.0 * delta)
 	move_and_slide()
+	if net_view:
+		# The rest - what is carried, dragged, looked at - is the host's.
+		return
 
 	_update_rack()
 	_update_drag()
 	_update_prompt()
+
+## On the host: a guest's player goes where the guest last said it was. If
+## something here moved it instead - or it has just got out of a truck, or
+## just arrived - the guest is sent to where it is.
+func _follow_guest() -> void:
+	if _follow_last == null or global_position.distance_to(_follow_last) > 2.0:
+		net_warp_seq += 1
+		net_has_target = false
+		velocity = Vector3.ZERO
+		warped.emit()
+	elif net_has_target:
+		velocity = (net_target - global_position) * float(Engine.physics_ticks_per_second)
+		global_position = net_target
+	_follow_last = global_position
 
 ## Spec: the camera is third-person on the vehicle while driving. Working the
 ## crane it orbits the log (or the empty grapple) - the mouse turns it, the
@@ -683,19 +723,22 @@ func _camera_clearance(pivot: Vector3, back: Vector3, most: float, skip: Array[R
 ## A/D to its left and right, Shift/Ctrl up and down, Q/E turn it. Holding the
 ## right mouse button is the slow, fine speed for setting it down.
 func _update_vehicle_controls(delta: float) -> void:
+	# A guest driving on their own machine works the arms there.
+	var theirs := net_follow and vehicle is Hauler and (vehicle as Hauler).net_follow
 	var l := loader()
-	if l != null:
+	if l != null and not theirs:
 		# Shift raises the arms, Ctrl lowers them; E curls the bucket back,
 		# Q tips it forward.
 		l.drive(input.axis(&"lower", &"sprint"), input.axis(&"turn_ccw", &"turn_cw"), delta)
 	var r := rig()
 	if r == null:
 		return
-	work_winch(r, delta)
+	if not net_view:
+		work_winch(r, delta)
 	if r.claw_said != "":
 		interacted.emit(r.claw_said)
 		r.claw_said = ""
-	if not r.operating:
+	if not r.operating or theirs:
 		return
 	# W takes the log away from the camera, S toward it, A and D to the
 	# camera's left and right - turned into the truck's frame.

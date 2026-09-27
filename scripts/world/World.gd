@@ -280,8 +280,13 @@ func _ready() -> void:
 		# A guest plays in the host's world: nothing of its own save is used.
 		autosave = false
 		player.net_view = true
+		# Walks on the ground here but is nothing for anything else to hit.
 		player.collision_layer = 0
-		player.collision_mask = 0
+		# Nothing of this player's own game comes along: the host's money,
+		# unlocks and quests arrive with its world, and a blank kit till then.
+		PlayerState.reset()
+		Economy.from_dict({})
+		quests.from_dict({})
 	else:
 		SaveSystem.choose_start_slot()
 	if not Net.is_client() and SaveSystem.has_save():
@@ -1915,6 +1920,7 @@ func add_guest(peer: int, display: String) -> Player:
 	var p := _make_player()
 	p.name = "Guest_%d" % peer
 	p.input.remote = true
+	p.net_follow = true
 	(p.get_node("Camera3D") as Camera3D).current = false
 	# Off to one side of the spawn, so guests do not land on each other.
 	p.position = Vector3(2.0 + 1.5 * float(guests.size()), 2.0, 12.0)

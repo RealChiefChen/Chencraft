@@ -140,6 +140,12 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 			world.call("return_to_base", p)
 		"build":
 			tell_peer(peer, _guest_build(ev))
+		"mcfg":
+			var entry: Variant = _nodes.get(int(ev.get("id", -1)), null)
+			if entry != null and String(entry[1]) == "b":
+				var m := (entry[0] as Dictionary).node as InlineMachine
+				if m != null:
+					m.set_setting(StringName(String(ev.get("k", ""))), float(ev.get("v", 0.0)))
 		"hotbar":
 			if p.kit != null:
 				p.kit.set_hotbar(int(ev.get("slot", -1)), StringName(String(ev.get("id", ""))))

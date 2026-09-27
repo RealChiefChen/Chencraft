@@ -35,7 +35,7 @@ const ACTIONS := [
 	[&"turn_cw", "Turn held piece / crane log / curl bucket", "Hands and tools", ["E"]],
 	[&"wheel_up", "Closer / previous / zoom in", "Hands and tools", ["WheelUp"]],
 	[&"wheel_down", "Further / next / zoom out", "Hands and tools", ["WheelDown"]],
-	[&"machine_output", "Machine: change output size", "Hands and tools", ["R"]],
+	[&"machine_output", "Machine: set output sizes (cm)", "Hands and tools", ["R"]],
 	[&"slot_1", "Hotbar 1", "Hands and tools", ["1"]],
 	[&"slot_2", "Hotbar 2", "Hands and tools", ["2"]],
 	[&"slot_3", "Hotbar 3", "Hands and tools", ["3"]],

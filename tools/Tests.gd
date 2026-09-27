@@ -5267,35 +5267,42 @@ func test_felled_no_leaves() -> void:
 func test_machine_output_size() -> void:
 	_setup()
 	Economy.from_dict({"money": 90000, "day": 1})
-	for pair in [[&"sawmill", &"wood_pine", 2], [&"furnace", &"ore_iron", 4], [&"gem_cutter", &"gem_quartz", 2]]:
-		var def := GameData.building(pair[0])
-		var m := plot.place(def, Vector2i(0, 0), 0, false) as InlineMachine
-		await step(2)
-		check(m.output_options().size() >= 3, "the %s has no output sizes" % pair[0])
-		var n: int = pair[2]
-		while m._pieces() != n:
-			m.cycle_output()
-		var dims := Solid.cylinder(0.2, 0.2, 2.0) if pair[1] == &"wood_pine" else Solid.cube(0.3)
-		if pair[1] == &"wood_pine":
-			dims = Solid.with_finish(dims, &"sanded")
-		var outs := m._cut_to_size(m.work({"id": pair[1], "dims": dims, "owned": true, "plot": 0, "changed": false, "ready": 0.0}))
-		check_eq(outs.size(), n, "the %s set to %d pieces made %d" % [pair[0], n, outs.size()])
-		var single := m.work({"id": pair[1], "dims": dims, "owned": true, "plot": 0, "changed": false, "ready": 0.0})
-		var one := Solid.volume(single[0].dims)
-		var sum := 0.0
-		for o in outs:
-			sum += Solid.volume(o.dims)
-		check_near(sum, one, 0.0001, "cutting the %s's output to size lost volume" % pair[0])
-		check_eq(m.to_dict().get("output", -1), m.output_size, "the output size is not saved")
-		plot.remove(m)
-	# The crusher goes finer.
-	var crusher := plot.place(GameData.building(&"crusher"), Vector2i(0, 0), 0, false) as InlineMachine
+	var log_dims := Solid.with_finish(Solid.cylinder(0.2, 0.2, 2.0), &"sanded")
+	# The planker: boards 10 cm wide and 4 cm thick.
+	var saw := plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0, false) as InlineMachine
 	await step(2)
-	var coarse := crusher.work({"id": &"ore_iron", "dims": Solid.cube(0.5), "owned": true, "plot": 0, "changed": false, "ready": 0.0}).size()
-	crusher.cycle_output()
-	crusher.cycle_output()
-	var fine := crusher.work({"id": &"ore_iron", "dims": Solid.cube(0.5), "owned": true, "plot": 0, "changed": false, "ready": 0.0}).size()
-	check(fine > coarse, "fine crushing made no more lumps (%d vs %d)" % [fine, coarse])
+	check(saw.config_fields().size() == 2, "the planker has no board sizes")
+	var whole := saw._cut_to_size(saw.work({"id": &"wood_pine", "dims": log_dims.duplicate(true), "owned": true, "plot": 0, "changed": false, "ready": 0.0}))
+	check_eq(whole.size(), 1, "as it comes, one plank")
+	saw.set_setting(&"width_cm", 10)
+	saw.set_setting(&"thick_cm", 4)
+	var boards := saw._cut_to_size(saw.work({"id": &"wood_pine", "dims": log_dims.duplicate(true), "owned": true, "plot": 0, "changed": false, "ready": 0.0}))
+	check(boards.size() > 1, "set to 10 x 4 cm, still one plank")
+	var b0: Vector3 = boards[0].dims.size
+	check(absf(b0.x - 0.10) < 0.03 and absf(b0.z - 0.04) < 0.015, "boards are %.3f x %.3f m, not about 0.10 x 0.04" % [b0.x, b0.z])
+	var sum := 0.0
+	for o in boards:
+		sum += Solid.volume(o.dims)
+	check_near(sum, Solid.volume(whole[0].dims), 0.0001, "cutting boards lost volume")
+	check_eq(float((saw.to_dict().config as Dictionary).get(&"width_cm", 0.0)), 10.0, "the board width is not saved")
+	var back := plot.place(GameData.building(&"sawmill"), Vector2i(0, 16), 0, false) as InlineMachine
+	await step(2)
+	back.from_dict(saw.to_dict())
+	check_eq(back.setting(&"thick_cm"), 4.0, "the board thickness did not come back")
+	# The smelter: bars 3 cm thick.
+	var furnace := plot.place(GameData.building(&"furnace"), Vector2i(0, 32), 0, false) as InlineMachine
+	await step(2)
+	furnace.set_setting(&"section_cm", 3)
+	var bars := furnace._cut_to_size(furnace.work({"id": &"ore_iron", "dims": Solid.cube(0.3), "owned": true, "plot": 0, "changed": false, "ready": 0.0}))
+	check(bars.size() >= 1 and absf((bars[0].dims.size as Vector3).z - 0.03) < 0.001, "the bars are not 3 cm thick")
+	# The crusher: smaller lumps, more of them.
+	var crusher := plot.place(GameData.building(&"crusher"), Vector2i(0, 48), 0, false) as InlineMachine
+	await step(2)
+	var coarse := crusher.work({"id": &"ore_iron", "dims": Solid.cube(0.02), "owned": true, "plot": 0, "changed": false, "ready": 0.0}).size()
+	crusher.set_setting(&"max_cm", 8)
+	var fine := crusher.work({"id": &"ore_iron", "dims": Solid.cube(0.02), "owned": true, "plot": 0, "changed": false, "ready": 0.0})
+	check(fine.size() > coarse, "an 8 cm crusher made no more lumps (%d vs %d)" % [fine.size(), coarse])
+	check(Solid.bounds(fine[0].dims).x <= 0.081, "a lump is bigger than 8 cm (%s, %d lumps)" % [Solid.bounds(fine[0].dims), fine.size()])
 	done()
 
 func test_gearbox() -> void:

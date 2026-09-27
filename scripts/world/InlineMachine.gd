@@ -32,11 +32,14 @@ var hole: Vector2 = Vector2(1.0, 0.8)
 var total_processed: int = 0
 var volume_in: float = 0.0
 var volume_out: float = 0.0
-## Which output size the machine is set to (see output_options): the planker
-## can cut one wide plank or several narrower boards, the smelter one bar or
-## several small ones, the crusher coarse or fine lumps, and so on. Volume is
-## the same whichever it is set to; only the size of the pieces changes.
-var output_size: int = 0
+## What the machine is set to make, in centimetres (see config_fields): the
+## planker's board width and thickness, the crusher's biggest lump, the
+## smelter's bar thickness, the refiner's cross-section, the cutter's jewel
+## size. Zero (or unset) is as it comes: one piece, its natural size. Volume
+## is the same whatever it is set to; only the size of the pieces changes.
+var config: Dictionary = {}
+## Longest a bar or a refined piece is made before it is cut in two.
+const MAX_BAR := 0.8
 
 const WALL := 0.15
 const LIP_LENGTH := 0.7
@@ -527,9 +530,11 @@ func work(entry: Dictionary) -> Array[Dictionary]:
 			# least two. Only its own lumps go through untouched.
 			if not bool(dims.get("crushed", false)):
 				var v := Solid.volume(dims)
-				var options := output_options()
-				var fineness := float(options[clampi(output_size, 0, options.size() - 1)][1])
-				var count := clampi(int(ceil(v / pow(machine_def.max_piece * 0.9 * fineness, 3.0))), 2, 128)
+				var side := machine_def.max_piece * 0.9
+				var want := setting(&"max_cm") / 100.0
+				if want > 0.0:
+					side = minf(side, want)
+				var count := clampi(int(ceil(v / pow(side, 3.0))), 2, 128)
 				var lump := Solid.cube(v / float(count))
 				lump["crushed"] = true
 				_change(entry, entry.id, lump)
@@ -539,85 +544,101 @@ func work(entry: Dictionary) -> Array[Dictionary]:
 					out.append(more)
 	return out
 
-## Set to make smaller pieces: what it made is cut to size.
+## Set to a size: what it made is cut to it.
 func _cut_to_size(outs: Array[Dictionary]) -> Array[Dictionary]:
-	var n := _pieces()
-	if n <= 1:
-		return outs
 	var split: Array[Dictionary] = []
 	for e in outs:
 		if bool(e.changed):
-			split.append_array(_split_output(e, n))
+			split.append_array(_shape_output(e))
 		else:
 			split.append(e)
 	return split
 
 # --- Output size ---------------------------------------------------------------
 
-## The sizes this machine can make its output in, as [label, pieces] - or,
-## for the crusher, [label, lump size as a share of its biggest].
-func output_options() -> Array:
+## What can be set, as [key, label, min, max, step] in centimetres. The
+## minimum, 0, means "as it comes".
+func config_fields() -> Array:
 	if machine_def == null:
 		return []
 	match machine_def.mode:
 		MachineDef.MODE_PLANK:
-			return [["one wide plank", 1], ["2 boards", 2], ["4 boards", 4]]
-		MachineDef.MODE_SMELT:
-			return [["one bar", 1], ["2 bars", 2], ["4 bars", 4]]
-		MachineDef.MODE_REFINE:
-			return [["whole", 1], ["cut in half", 2], ["cut in quarters", 4]]
-		MachineDef.MODE_CUT:
-			return [["one jewel", 1], ["2 jewels", 2], ["4 jewels", 4]]
+			return [[&"width_cm", "Board width", 0, 150, 1], [&"thick_cm", "Board thickness", 0, 60, 1]]
 		MachineDef.MODE_CRUSH:
-			return [["coarse lumps", 1.0], ["medium lumps", 0.7], ["fine lumps", 0.5]]
+			return [[&"max_cm", "Largest lump", 0, int(machine_def.max_piece * 90.0), 1]]
+		MachineDef.MODE_SMELT:
+			return [[&"section_cm", "Bar thickness", 0, 30, 1]]
+		MachineDef.MODE_REFINE:
+			return [[&"section_cm", "Cross-section", 0, 60, 1]]
+		MachineDef.MODE_CUT:
+			return [[&"jewel_cm", "Jewel size", 0, 30, 1]]
 	return []
 
+func setting(key: StringName) -> float:
+	return float(config.get(key, 0.0))
+
+## Sets one size (in cm; 0 for as it comes). Returns what it is set to now.
+func set_setting(key: StringName, cm: float) -> String:
+	for f in config_fields():
+		if f[0] == key:
+			config[key] = clampf(cm, float(f[2]), float(f[3]))
+			return "%s: %s" % [def.display_name, output_label()]
+	return ""
+
+## The settings in words.
 func output_label() -> String:
-	var options := output_options()
-	if options.is_empty():
-		return ""
-	return String(options[clampi(output_size, 0, options.size() - 1)][0])
+	var parts: Array[String] = []
+	for f in config_fields():
+		var v := setting(f[0])
+		parts.append("%s %s" % [String(f[1]).to_lower(), ("%d cm" % int(v)) if v > 0.0 else "as it comes"])
+	return ", ".join(parts)
 
-## Steps to the next output size. Returns what it is set to now.
-func cycle_output() -> String:
-	var options := output_options()
-	if options.is_empty():
-		return "%s makes one size" % def.display_name
-	output_size = (output_size + 1) % options.size()
-	return "%s: %s" % [def.display_name, output_label()]
-
-func _pieces() -> int:
-	var options := output_options()
-	if options.is_empty() or machine_def.mode == MachineDef.MODE_CRUSH:
-		return 1
-	return int(options[clampi(output_size, 0, options.size() - 1)][1])
-
-## Cuts a finished entry into `n` equal pieces, the way the machine would:
-## boards side by side across a plank's width, bars and jewels made smaller,
-## a refined bar cut along its length. Volume and finish are kept exactly.
-func _split_output(entry: Dictionary, n: int) -> Array[Dictionary]:
-	var out: Array[Dictionary] = []
-	if n <= 1:
-		out.append(entry)
-		return out
+## Cuts one finished entry to the sizes set, the way the machine would -
+## boards side by side and stacked, bars and refined stock to a cross-section,
+## jewels to a size. Volume and finish are kept exactly.
+func _shape_output(entry: Dictionary) -> Array[Dictionary]:
 	var dims: Dictionary = entry.dims
-	var each: Dictionary
+	var v := Solid.volume(dims)
+	var n := 1
+	var each: Dictionary = {}
 	match machine_def.mode:
 		MachineDef.MODE_PLANK:
 			var sz: Vector3 = dims.size
-			each = Solid.box(Vector3(sz.x / float(n), sz.y, sz.z))
+			var w := setting(&"width_cm") / 100.0
+			var t := setting(&"thick_cm") / 100.0
+			if w > 0.0 and t > 0.0:
+				n = maxi(1, int(round(sz.x * sz.z / (w * t))))
+				var s := sqrt(sz.x * sz.z / (float(n) * w * t))
+				each = Solid.box(Vector3(w * s, sz.y, t * s))
+			elif w > 0.0:
+				n = maxi(1, int(round(sz.x / w)))
+				each = Solid.box(Vector3(sz.x / float(n), sz.y, sz.z))
+			elif t > 0.0:
+				n = maxi(1, int(round(sz.z / t)))
+				each = Solid.box(Vector3(sz.x, sz.y, sz.z / float(n)))
 		MachineDef.MODE_SMELT:
-			var t := pow(Solid.volume(dims) / float(n) / 6.4, 1.0 / 3.0)
-			each = Solid.box(Vector3(t * 1.6, t * 4.0, t))
+			var t := setting(&"section_cm") / 100.0
+			if t > 0.0:
+				var run := v / (1.6 * t * t)
+				n = maxi(1, int(ceil(run / MAX_BAR)))
+				each = Solid.box(Vector3(t * 1.6, run / float(n), t))
+		MachineDef.MODE_REFINE:
+			var t := setting(&"section_cm") / 100.0
+			if t > 0.0:
+				var run := v / (t * t)
+				n = maxi(1, int(ceil(run / MAX_BAR)))
+				each = Solid.box(Vector3(t, run / float(n), t))
 		MachineDef.MODE_CUT:
-			var r0 := pow(Solid.volume(dims) / float(n) / 1.649, 1.0 / 3.0)
-			each = Solid.cylinder(r0, r0 * 0.5, r0 * 0.9)
-		_:
-			if dims.get("shape", Solid.BOX) == Solid.CYLINDER:
-				each = Solid.cylinder(float(dims.r0), float(dims.r1), float(dims.length) / float(n))
-			else:
-				var s2: Vector3 = dims.size
-				each = Solid.box(Vector3(s2.x, s2.y / float(n), s2.z))
+			var size := setting(&"jewel_cm") / 100.0
+			if size > 0.0:
+				var r0 := size * 0.5
+				n = clampi(int(round(v / (1.649 * r0 * r0 * r0))), 1, 64)
+				r0 = pow(v / float(n) / 1.649, 1.0 / 3.0)
+				each = Solid.cylinder(r0, r0 * 0.5, r0 * 0.9)
+	var out: Array[Dictionary] = []
+	if each.is_empty():
+		out.append(entry)
+		return out
 	Solid.keep_finish(dims, each)
 	for i in n:
 		var piece := entry.duplicate(true)
@@ -640,8 +661,8 @@ func _along_belt() -> Basis:
 func status_line() -> String:
 	var line := "%s (%s): %s, %d through  [E] %s" % [def.display_name, tier_label(),
 		"running" if running else "stopped", total_processed, "stop" if running else "start"]
-	if output_options().size() > 1:
-		line += "\nmaking %s  [R] change" % output_label()
+	if not config_fields().is_empty():
+		line += "\n%s  [R] set sizes" % output_label()
 	return line
 
 func to_dict() -> Dictionary:
@@ -649,12 +670,15 @@ func to_dict() -> Dictionary:
 	for e in queue:
 		held.append({"id": String(e.id), "dims": Solid.to_dict(e.dims), "owned": e.owned,
 			"plot": e.plot, "changed": e.changed})
-	return {"running": running, "total_processed": total_processed, "queue": held, "output": output_size}
+	return {"running": running, "total_processed": total_processed, "queue": held, "config": config.duplicate()}
 
 func from_dict(d: Dictionary) -> void:
 	running = bool(d.get("running", true))
 	total_processed = int(d.get("total_processed", 0))
-	output_size = int(d.get("output", 0))
+	config.clear()
+	var c: Dictionary = d.get("config", {})
+	for k in c:
+		config[StringName(k)] = float(c[k])
 	queue.clear()
 	for e in d.get("queue", []):
 		queue.append({"id": StringName(e.id), "dims": Solid.from_dict(e.dims), "owned": bool(e.get("owned", true)),

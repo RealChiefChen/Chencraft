@@ -14,6 +14,8 @@ signal interacted(message: String)
 signal swung()
 ## Asks the world to put the player in a vehicle's driving seat.
 signal wants_to_drive(vehicle: Node3D)
+## [R] at a machine that can be set to a size: the HUD opens its settings.
+signal machine_config_requested(machine: InlineMachine)
 ## Co-op, on the host: a guest's player was moved here rather than by the
 ## guest (back to base, out of a truck), so the guest must be told.
 signal warped()
@@ -355,6 +357,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if building or Controls.pressed(event, &"build_mode"):
 			if not _on_mouse_action(event):
 				_on_key(event)
+			return
+		# A machine's sizes are set here, on its picture, and sent on.
+		if Controls.pressed(event, &"machine_output") and not driving() and _cycle_machine_output():
 			return
 		if Net.client_side != null:
 			Net.client_side.call("send_press", event)
@@ -923,9 +928,9 @@ func _cycle_machine_output() -> bool:
 	var hit := aim_hit()
 	var target := _owner_of(hit.get("collider")) if not hit.is_empty() else null
 	var m := target as InlineMachine
-	if m == null or m.output_options().size() < 2:
+	if m == null or m.config_fields().is_empty():
 		return false
-	interacted.emit(m.cycle_output())
+	machine_config_requested.emit(m)
 	return true
 
 ## Walks up from a collider to the gameplay node that owns it (machines and

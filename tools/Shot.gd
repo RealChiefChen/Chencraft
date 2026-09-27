@@ -433,3 +433,13 @@ func shot_ground() -> void:
 	var c: Vector3 = world.starter_forest
 	await look(c + Vector3(50, 8, 55), c)
 	await snap("ground")
+
+func shot_machinecfg() -> void:
+	var m := world.plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0, false) as InlineMachine
+	await get_tree().process_frame
+	m.set_setting(&"width_cm", 15)
+	world.hud.visible = true
+	world.hud.machine_config.open(m)
+	for i in 10:
+		await get_tree().process_frame
+	await snap("machinecfg")

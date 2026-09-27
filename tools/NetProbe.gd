@@ -60,7 +60,9 @@ func _host() -> void:
 		await get_tree().create_timer(0.25).timeout
 		t += 0.25
 	_check(guest.selected_slot == 0, "the guest's key press picked a tool on the host (slot %d)" % guest.selected_slot)
-	# A log at the guest's feet: they pick it up (right mouse, at their end).
+	# A log at the guest's feet: they pick it up (right mouse, at their end),
+	# once they have seen the tool in hand and the hand is emptied again.
+	await get_tree().create_timer(4.0).timeout
 	guest.select_slot(0)
 	var log_piece := world.manager.spawn(&"wood_pine", Transform3D(Basis(), guest.global_position + Vector3(0.8, 0.4, 0)),
 		0, Vector3.ZERO, Solid.cylinder(0.1, 0.1, 1.0), true)

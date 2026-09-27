@@ -49,6 +49,12 @@ var _arms: Array[MeshInstance3D] = []
 ## clamp hinged on the top of the back plate - swings down over the load.
 var locked: bool = false
 var _locked: Dictionary = {}          ## LooseItem -> [its shapes on the bucket]
+## What is on the end of the arms: the bucket, or the log grapple - open fork
+## tines under a toothed back rack, with a heavy clamp that comes down over
+## whatever lies across the tines. Swapped with the attachment key while empty.
+var attachment: StringName = &"bucket"
+const ATTACHMENTS := [&"bucket", &"grapple"]
+var _parts: Array[Node] = []
 var _thumb: Node3D
 var thumb_angle: float = THUMB_OPEN
 const THUMB_OPEN := 2.0               ## rad, folded up and back
@@ -80,18 +86,8 @@ func _ready() -> void:
 	var pm := PhysicsMaterial.new()
 	pm.friction = 0.9
 	bucket.physics_material_override = pm
-	# Bucket frame: the hinge at the back of the floor, the mouth toward -Z.
-	_plate(Vector3(width + PLATE * 2.0, PLATE, depth), Vector3(0, -PLATE * 0.5, -depth * 0.5))
-	_plate(Vector3(width + PLATE * 2.0, height, PLATE), Vector3(0, height * 0.5, PLATE * 0.5))
-	for side in [-1.0, 1.0]:
-		_plate(Vector3(PLATE, height, depth), Vector3(side * (width + PLATE) * 0.5, height * 0.5, -depth * 0.5))
-	bucket.add_child(_dress_bucket())
-	_thumb = Node3D.new()
-	_thumb.name = "Thumb"
-	_thumb.position = Vector3(0, height + PLATE * 0.5, PLATE * 0.5)
-	_thumb.add_child(_dress_thumb())
-	bucket.add_child(_thumb)
 	add_child(bucket)
+	_build_attachment()
 	for side in [-1.0, 1.0]:
 		var arm := MeshInstance3D.new()
 		var g := Greeble.new()
@@ -112,6 +108,81 @@ func _plate(size: Vector3, pos: Vector3) -> void:
 	cs.shape = b
 	cs.position = pos
 	bucket.add_child(cs)
+	_parts.append(cs)
+
+## Puts the attachment's plates, model and clamp on the end of the arms.
+## Bucket frame: the hinge at the back of the floor, the mouth toward -Z.
+func _build_attachment() -> void:
+	for part in _parts:
+		if is_instance_valid(part):
+			part.get_parent().remove_child(part)
+			part.queue_free()
+	_parts.clear()
+	var mesh: MeshInstance3D
+	var clamp_at: Vector3
+	if attachment == &"grapple":
+		# Fork tines to lift logs on, a rack at the back for them to lie
+		# against, and nothing at the sides, so a long log sticks out either
+		# end the way it does off a real log loader.
+		var tines := 4
+		for i in tines:
+			var x := lerpf(-width * 0.42, width * 0.42, float(i) / float(tines - 1))
+			_plate(Vector3(0.14, 0.12, depth * 1.35), Vector3(x, -0.06, -depth * 0.675))
+		_plate(Vector3(width * 0.95, height * 1.35, PLATE), Vector3(0, height * 0.675, PLATE * 0.5))
+		mesh = _dress_grapple()
+		clamp_at = Vector3(0, height * 1.35, PLATE * 0.5)
+	else:
+		_plate(Vector3(width + PLATE * 2.0, PLATE, depth), Vector3(0, -PLATE * 0.5, -depth * 0.5))
+		_plate(Vector3(width + PLATE * 2.0, height, PLATE), Vector3(0, height * 0.5, PLATE * 0.5))
+		for side in [-1.0, 1.0]:
+			_plate(Vector3(PLATE, height, depth), Vector3(side * (width + PLATE) * 0.5, height * 0.5, -depth * 0.5))
+		mesh = _dress_bucket()
+		clamp_at = Vector3(0, height + PLATE * 0.5, PLATE * 0.5)
+	bucket.add_child(mesh)
+	_parts.append(mesh)
+	_thumb = Node3D.new()
+	_thumb.name = "Thumb"
+	_thumb.position = clamp_at
+	_thumb.add_child(_dress_thumb())
+	bucket.add_child(_thumb)
+	_parts.append(_thumb)
+
+## Swaps the bucket for the log grapple or back. Only an empty, unlocked
+## attachment comes off. Returns what happened.
+func swap_attachment() -> String:
+	if locked:
+		return "unlock the %s first [Space]" % attachment
+	var inside := held()
+	if not inside.is_empty():
+		return "empty the %s first - %d piece%s in it" % [attachment, inside.size(), "" if inside.size() == 1 else "s"]
+	set_attachment(ATTACHMENTS[(ATTACHMENTS.find(attachment) + 1) % ATTACHMENTS.size()])
+	return "log grapple on - lift logs on the tines, [Space] clamps them" if attachment == &"grapple" \
+		else "bucket on"
+
+func set_attachment(kind: StringName) -> void:
+	if not ATTACHMENTS.has(kind) or kind == attachment and not _parts.is_empty():
+		return
+	attachment = kind
+	if bucket != null:
+		_build_attachment()
+		_pose(true)
+
+## The grapple: tines, a toothed back rack, and a cross tube.
+func _dress_grapple() -> MeshInstance3D:
+	var g := Greeble.new()
+	g.layer_step = VehicleModel.LAYER
+	var steel := Color(0.36, 0.37, 0.40)
+	var paint := vehicle.paint
+	var tines := 4
+	for i in tines:
+		var x := lerpf(-width * 0.42, width * 0.42, float(i) / float(tines - 1))
+		g.box(Vector3(0.14, 0.12, depth * 1.35), Transform3D(Basis(), Vector3(x, -0.06, -depth * 0.675)), steel)
+		# Upturned tips, so a log does not roll off the end.
+		g.box(Vector3(0.14, 0.22, 0.1), Transform3D(Basis(), Vector3(x, 0.05, -depth * 1.33)), steel)
+		g.box(Vector3(0.12, height * 1.35, 0.12), Transform3D(Basis(), Vector3(x, height * 0.675, PLATE * 0.5)), paint)
+	for y in [0.1, height * 0.7, height * 1.3]:
+		g.box(Vector3(width * 0.95, 0.1, 0.1), Transform3D(Basis(), Vector3(0, y, PLATE * 0.5)), paint.darkened(0.15))
+	return g.instance("GrappleMesh")
 
 func _dress_bucket() -> MeshInstance3D:
 	var g := Greeble.new()
@@ -134,10 +205,12 @@ func _dress_thumb() -> MeshInstance3D:
 	var steel := VehicleModel.DARK
 	g.box(Vector3(width * 0.9, 0.12, 0.12), Transform3D(), steel)
 	var tines := 4
+	var reach := depth * (1.25 if attachment == &"grapple" else 0.95)
+	var hook := 0.5 if attachment == &"grapple" else 0.28
 	for i in tines:
 		var x := lerpf(-width * 0.38, width * 0.38, float(i) / float(tines - 1))
-		g.box(Vector3(0.1, 0.1, depth * 0.95), Transform3D(Basis(), Vector3(x, 0, -depth * 0.475)), vehicle.paint.darkened(0.2))
-		g.box(Vector3(0.1, 0.28, 0.1), Transform3D(Basis(), Vector3(x, -0.12, -depth * 0.95)), steel)
+		g.box(Vector3(0.1, 0.1, reach), Transform3D(Basis(), Vector3(x, 0, -reach * 0.5)), vehicle.paint.darkened(0.2))
+		g.box(Vector3(0.1, hook, 0.1), Transform3D(Basis(), Vector3(x, 0.05 - hook * 0.5, -reach)), steel)
 	return g.instance("ThumbMesh")
 
 ## Clamps what is in the bucket, or lets it go. Returns what happened.
@@ -284,7 +357,8 @@ func held() -> Array[LooseItem]:
 	return out
 
 func status_line() -> String:
-	return "loader: arms %d%%, bucket %s%s  [Shift/Ctrl] raise/lower  [Q/E] tip/curl  [Space] %s  [N] reset" % [
-		roundi(100.0 * (lift - lift_min) / (lift_max - lift_min)),
+	return "loader: arms %d%%, %s %s%s\n[Shift/Ctrl] raise/lower  [Q/E] tip/curl  [Space] %s  [G] %s  [N] reset" % [
+		roundi(100.0 * (lift - lift_min) / (lift_max - lift_min)), attachment,
 		"curled" if tilt > 0.15 else ("tipped" if tilt < -0.15 else "flat"),
-		", locked" if locked else "", "unlock" if locked else "lock"]
+		", locked" if locked else "", "unlock" if locked else "lock",
+		"bucket" if attachment == &"grapple" else "log grapple"]

@@ -109,6 +109,9 @@ func accept_item(item: LooseItem) -> bool:
 	if not can_accept(item.item_id):
 		return false
 	contents.append({"id": item.item_id, "dims": item.dims.duplicate(), "owned": item.owned})
+	# Branches on a trunk go in with it, and come out as pieces of their own.
+	for i in item.limbs.size():
+		contents.append({"id": item.item_id, "dims": item.limb_dims(i), "owned": item.owned})
 	manager.despawn(item)
 	contents_changed.emit(self)
 	return true

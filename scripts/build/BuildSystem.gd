@@ -6,6 +6,8 @@ extends Node3D
 
 signal mode_changed(active: bool)
 signal selection_changed(def: BuildingDef)
+## The build menu opened or closed.
+signal menu_toggled(open: bool)
 
 var plot: Plot
 var camera: Camera3D
@@ -15,8 +17,15 @@ var active: bool = false
 ## Quarter turns about each axis. Spec binds Z, X and C to the three of them.
 var rot: Vector3i = Vector3i.ZERO
 var yaw: int = 0
-var index: int = 0
+## Which palette entry is in hand; -1 for nothing. Build mode opens with an
+## empty hand: you choose from the menu (or copy a building you aim at).
+var index: int = -1
 var palette: Array[BuildingDef] = []
+## A building copied off the plot with the pick key: its exact size and tier,
+## which may not be a palette entry (a stretched belt, say).
+var _picked: BuildingDef = null
+## The build menu is open: the mouse is the menu's.
+var menu_open: bool = false
 var last_error: String = ""
 var target_cell: Vector2i = Vector2i.ZERO
 var has_target: bool = false
@@ -50,6 +59,9 @@ var _drag: Dictionary = {}
 ## Where a handle drag has got to on screen: it starts at the crosshair and
 ## follows the mouse from there.
 var _cursor: Vector2 = Vector2.ZERO
+## Mouse look is held off for a moment after a handle is let go.
+var _quiet_until_ms: int = 0
+const QUIET_AFTER_DRAG_MS := 120
 
 func setup(p_plot: Plot, p_camera: Camera3D, p_player: Node3D) -> void:
 	plot = p_plot
@@ -71,20 +83,19 @@ func _ready() -> void:
 	_ghost.material_override = _ghost_material
 	_ghost.visible = false
 	add_child(_ghost)
-	# What you are about to place, named, because a translucent box is not a
-	# description of anything.
-	_ghost_label = Nameplate.attach(_ghost, "", 0.0)
 	_gizmo = BuildGizmo.new()
 	_gizmo.top_level = true
 	add_child(_gizmo)
 	set_process(true)
 
 func refresh_palette() -> void:
-	var was := current()
+	var was := current() if _picked == null else null
 	palette = PlayerState.available_buildings()
-	index = clampi(index, 0, maxi(0, palette.size() - 1))
+	if index >= palette.size():
+		index = palette.size() - 1
 	# Stay on the same thing if it is still there.
 	if was != null:
+		index = -1
 		for i in palette.size():
 			if palette[i].id == was.id and palette[i].tier == was.tier:
 				index = i
@@ -143,10 +154,64 @@ func _tint_preview(valid: bool) -> void:
 		if mi != null:
 			mi.material_override = _preview_ok if valid else _preview_bad
 
+## What is in hand to build, or null for nothing.
 func current() -> BuildingDef:
-	if palette.is_empty():
+	if _picked != null:
+		return _picked
+	if palette.is_empty() or index < 0:
 		return null
 	return palette[clampi(index, 0, palette.size() - 1)]
+
+## Empty-handed again.
+func clear_choice() -> void:
+	index = -1
+	_picked = null
+	selection_changed.emit(null)
+
+## Takes `def` in hand - a palette entry, or a copy of something placed.
+func choose(def: BuildingDef) -> void:
+	_picked = null
+	index = -1
+	if def == null:
+		selection_changed.emit(null)
+		return
+	for i in palette.size():
+		if palette[i] == def or (palette[i].id == def.id and palette[i].tier == def.tier and palette[i].size == def.size):
+			index = i
+			break
+	if index < 0:
+		_picked = def
+	selection_changed.emit(current())
+
+## The build menu: open it, or close it again.
+func toggle_menu() -> void:
+	set_menu(not menu_open)
+
+func set_menu(open: bool) -> void:
+	if open == menu_open or (open and not active):
+		return
+	menu_open = open
+	menu_toggled.emit(open)
+
+## Copies the building under the crosshair into your hand: the same thing, at
+## the same size and tier, turned the same way. Returns what happened.
+func pick_block() -> String:
+	if not active:
+		return ""
+	var hit := _aim_hit()
+	var i := plot.index_at_hit(hit) if not hit.is_empty() else -1
+	if i < 0:
+		var point: Variant = _aim_point()
+		if point != null:
+			i = plot.index_at_world(point)
+	if i < 0:
+		return "aim at a building to copy it"
+	var rec: Dictionary = plot.placed[i]
+	choose(rec.def)
+	rot = rec.rot
+	yaw = rot.y
+	var def: BuildingDef = rec.def
+	return "copied: %s  (%s)" % [def.display_name, PlayerState.build_note(def)]
 
 func set_active(value: bool) -> void:
 	if active == value:
@@ -163,8 +228,10 @@ func set_active(value: bool) -> void:
 		plot.show_grid(value)
 	if value:
 		refresh_palette()
+		clear_choice()
 		_enter_freecam()
 	else:
+		set_menu(false)
 		deselect()
 		_leave_freecam()
 	mode_changed.emit(active)
@@ -224,12 +291,17 @@ func can_start() -> String:
 func cycle(step: int) -> void:
 	if palette.is_empty():
 		return
-	index = wrapi(index + step, 0, palette.size())
+	_picked = null
+	if index < 0:
+		index = 0 if step > 0 else palette.size() - 1
+	else:
+		index = wrapi(index + step, 0, palette.size())
 	selection_changed.emit(current())
 
 func select_index(i: int) -> void:
 	if i < 0 or i >= palette.size():
 		return
+	_picked = null
 	index = i
 	selection_changed.emit(current())
 
@@ -238,7 +310,7 @@ func select_index(i: int) -> void:
 const BAR_SLOTS := 7
 
 func bar_first() -> int:
-	return (index / BAR_SLOTS) * BAR_SLOTS
+	return (maxi(0, index) / BAR_SLOTS) * BAR_SLOTS
 
 ## Number key 1-7: a slot on the page the selection is on.
 func select_slot(slot: int) -> void:
@@ -338,17 +410,25 @@ func edit_input(event: InputEvent) -> bool:
 		return false
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_RIGHT:
+		if mb.is_action(&"secondary"):
 			return true
-		if mb.button_index == MOUSE_BUTTON_LEFT:
+		if mb.is_action(&"primary"):
 			if mb.pressed:
 				_cursor = _centre()
 				_press(_cursor)
 			else:
+				if not _drag.is_empty():
+					# The mouse moved all through the drag without turning the
+					# view; what the system hands over as it is let go (a
+					# catch-up of all that motion, on some platforms) must not
+					# swing the camera round.
+					_quiet_until_ms = Time.get_ticks_msec() + QUIET_AFTER_DRAG_MS
 				_drag = {}
 				_refresh_gizmo()
 			return true
 		return false
+	if event is InputEventMouseMotion and Time.get_ticks_msec() < _quiet_until_ms:
+		return true
 	if event is InputEventMouseMotion and not _drag.is_empty():
 		var mm := event as InputEventMouseMotion
 		var view := get_viewport().get_visible_rect().size
@@ -405,10 +485,10 @@ func _drag_to(mouse: Vector2) -> void:
 		BuildGizmo.Mode.MOVE:
 			var moved: float = BuildGizmo.along_axis(h.point, axis, ray[0], ray[1]) - float(d.t0)
 			if axis_i == 1:
-				lift = maxf(0.0, snappedf(lift + moved, 0.25))
-				steps = int(round(lift * 4.0))
+				lift = maxf(0.0, snappedf(lift + moved, Plot.SNAP))
+				steps = int(round(lift / Plot.SNAP))
 			else:
-				steps = int(round(moved / Plot.CELL))
+				steps = int(round(moved / Plot.SNAP))
 				cell += Vector2i(steps, 0) if axis_i == 0 else Vector2i(0, steps)
 		BuildGizmo.Mode.SCALE:
 			var limits := Plot.size_limits(selected_record().def)
@@ -425,7 +505,7 @@ func _drag_to(mouse: Vector2) -> void:
 			size = new_size
 			# Grown from the minus side, the building's corner cell moves too.
 			if h.sign < 0.0 and axis_i != 1:
-				cell += Vector2i(-steps, 0) if axis_i == 0 else Vector2i(0, -steps)
+				cell += Vector2i(-steps * Plot.SUB, 0) if axis_i == 0 else Vector2i(0, -steps * Plot.SUB)
 		BuildGizmo.Mode.ROTATE:
 			var start: Vector3 = h.point
 			var angle := BuildGizmo.angle_about(d.centre, axis, start, ray[0], ray[1])
@@ -437,7 +517,7 @@ func _drag_to(mouse: Vector2) -> void:
 			var def: BuildingDef = selected_record().def
 			var old_fp := Plot.oriented_size(def.size, d.rot)
 			var new_fp := Plot.oriented_size(def.size, rot)
-			cell += Vector2i((old_fp.x - new_fp.x) / 2, (old_fp.z - new_fp.z) / 2)
+			cell += Vector2i((old_fp.x - new_fp.x) * Plot.SUB / 2, (old_fp.z - new_fp.z) * Plot.SUB / 2)
 	if steps == int(d.steps):
 		return
 	d.steps = steps
@@ -502,12 +582,12 @@ func _update_ghost() -> void:
 	if def == null or point == null:
 		has_target = false
 		_hide_ghost()
-		last_error = "no target"
+		last_error = "" if def == null else "no target"
 		return
 	var world_point: Vector3 = point
 	var fp := Plot.oriented_size(def.size, rot)
 	var cursor := plot.world_to_cell(world_point)
-	target_cell = Vector2i(cursor.x - fp.x / 2, cursor.y - fp.z / 2)
+	target_cell = Vector2i(cursor.x - fp.x * Plot.SUB / 2, cursor.y - fp.z * Plot.SUB / 2)
 	has_target = true
 
 	var size := Vector3(float(fp.x), float(def.size.y), float(fp.z)) * Plot.CELL
@@ -516,8 +596,6 @@ func _update_ghost() -> void:
 	_ghost.global_position = base + Vector3(0, size.y * 0.5, 0)
 	_ghost.rotation = Vector3.ZERO
 	_ghost.visible = true
-	_ghost_label.text = def.display_name
-	_ghost_label.position = Vector3(0, size.y * 0.5 + 0.7, 0)
 
 	last_error = plot.placement_error(def, target_cell, rot)
 	# The box is only the footprint now, faint; the model shows the building.
@@ -552,8 +630,8 @@ func try_remove() -> bool:
 func status_line() -> String:
 	var def := current()
 	if def == null:
-		return "no buildings unlocked"
-	var base := "%s  %s  [%d/%d]" % [def.display_name, PlayerState.build_note(def), index + 1, palette.size()]
+		return "nothing in hand - [E] opens the build menu"
+	var base := "%s  %s" % [def.display_name, PlayerState.build_note(def)]
 	if last_error != "":
 		return base + "  -- " + last_error
 	return base

@@ -11,6 +11,8 @@ signal load_requested
 signal main_menu_requested
 signal quit_requested
 signal leave_requested
+signal load_slot_requested(slot: int)
+signal save_slot_requested(slot: int)
 
 var _root: Control
 var _card: PanelContainer
@@ -71,14 +73,19 @@ func _show_main() -> void:
 	else:
 		_add_row([["Save  [F5]", func(): save_requested.emit()],
 			["Load  [F9]", _confirm_load]])
+		_add("Save slots...", func(): _show_slots())
 	if Net.is_host():
 		_add("Stop hosting (%d playing with you)" % Net.guests().size(), func(): leave_requested.emit())
 	_content.add_child(HSeparator.new())
 	_add_row([["Main menu", func(): main_menu_requested.emit()],
 		["Quit to desktop", func(): quit_requested.emit()]])
-	var note := UIKit.label("Your game saves when you leave for the menu or quit.", "Small")
+	var note := UIKit.label("Playing in save slot %d. Your game saves when you leave for the menu or quit." % SaveSystem.slot, "Small")
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_content.add_child(note)
+	var version := UIKit.label(Version.line(), "Small")
+	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	version.modulate.a = 0.7
+	_content.add_child(version)
 	first.grab_focus.call_deferred()
 
 func _add(text: String, action: Callable) -> Button:
@@ -106,6 +113,14 @@ func _confirm_load() -> void:
 	_dialog = UIKit.confirm(_root, "Load your last save?",
 		"Anything since you last saved will be lost.", "Load",
 		func(): load_requested.emit())
+
+func _show_slots() -> void:
+	var panel := SavePanel.new(SavePanel.Mode.PAUSE, _root)
+	panel.load_requested.connect(func(n: int): load_slot_requested.emit(n))
+	panel.save_requested.connect(func(n: int):
+		save_slot_requested.emit(n)
+		panel.refresh())
+	_show_page("Save slots", panel)
 
 func _show_page(title: String, page: Control) -> void:
 	_clear()

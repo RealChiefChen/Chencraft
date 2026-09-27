@@ -16,6 +16,11 @@ const LIFT := 0.14
 const STEP := 3.0                   ## metres between cross-sections
 const PIECE := 360.0                ## metres of road per mesh, for culling
 const POST_EVERY := 40.0
+## The plain road's shoulder each side, sloping from the carriageway down to
+## the land.
+const SHOULDER := 1.2
+## How far either way the road's direction is judged over.
+const TANGENT_REACH := 4.0
 
 var terrain: Terrain
 var _body: StaticBody3D
@@ -33,15 +38,15 @@ func _ready() -> void:
 	if terrain == null:
 		return
 	for road in terrain.road_paths:
-		_build_road(road.path, String(road.style))
+		_build_road(road.path, String(road.style), road.get("profile", PackedFloat32Array()))
 
-func _build_road(path: Array, style: String) -> void:
+func _build_road(path: Array, style: String, profile: PackedFloat32Array = PackedFloat32Array()) -> void:
 	if path.size() < 2:
 		return
 	var span := terrain._path_length(path)
 	var dirt := style == "dirt"
 	var half := HALF * (0.75 if dirt else 1.0)
-	var verge := 0.0 if plain else VERGE
+	var verge := SHOULDER if plain else VERGE
 	var verts := PackedVector3Array()
 	var uvs := PackedVector2Array()
 	var colors := PackedColorArray()
@@ -52,30 +57,53 @@ func _build_road(path: Array, style: String) -> void:
 	var next_post := POST_EVERY * 0.5
 	while along <= span:
 		var p := terrain._point_along(path, along)
-		var ahead := terrain._point_along(path, minf(span, along + 1.5))
-		var behind := terrain._point_along(path, maxf(0.0, along - 1.5))
+		# The direction is taken over a few metres either way, so a tight bend
+		# turns the cross-sections smoothly rather than a step at a time.
+		var ahead := terrain._point_along(path, minf(span, along + TANGENT_REACH))
+		var behind := terrain._point_along(path, maxf(0.0, along - TANGENT_REACH))
 		var tangent := Vector3(ahead.x - behind.x, 0.0, ahead.z - behind.z).normalized()
 		var side := Vector3(-tangent.z, 0.0, tangent.x)
 		var ground := terrain.height_at(p.x, p.z)
 		# Over water the bridge deck carries the road; the surface stops at
 		# either end of it.
 		var wet := ground < Terrain.WATER_LEVEL - 0.05 and not dirt
+		# No road across the player's land: it stops at the edge of the plot.
+		var kept_clear := terrain.in_clear_zone(p.x, p.z, half + verge + 0.5)
 		var section: Array = []
-		if not wet:
+		if not wet and not kept_clear:
+			# The carriageway is level across at the road's own height, bends
+			# and all - never tipped toward the hillside on a turn - and the
+			# shoulders run from its edges down to the land (the land under a
+			# road is cut down to it, so it never stands up through it).
+			var level := (terrain._profile_height(profile, along, span) if not profile.is_empty() \
+				else ground + Terrain.ROAD_SINK) + LIFT
+			# Where the road stops at the plot it comes down to the ground over
+			# its last few metres, rather than ending in a step.
+			var before := terrain._point_along(path, maxf(0.0, along - STEP))
+			var after := terrain._point_along(path, minf(span, along + STEP))
+			if terrain.in_clear_zone(before.x, before.z, half + verge + 0.5) \
+					or terrain.in_clear_zone(after.x, after.z, half + verge + 0.5):
+				level = minf(level, ground + 0.03)
 			for k in [-(half + verge + 0.01), -half, half, half + verge + 0.01]:
 				var q: Vector3 = p + side * float(k)
-				section.append(Vector3(q.x, terrain.height_at(q.x, q.z) + LIFT, q.z))
-			# The carriageway is graded flat across; it rides at whichever is
-			# higher, the centre or the plate under each edge, so the land
-			# never shows through it.
-			section[1].y = maxf(ground, terrain.height_at(section[1].x, section[1].z)) + LIFT
-			section[2].y = maxf(ground, terrain.height_at(section[2].x, section[2].z)) + LIFT
-			section[0].y = minf(section[0].y, ground + LIFT - 0.01)
-			section[3].y = minf(section[3].y, ground + LIFT - 0.01)
+				section.append(Vector3(q.x, level, q.z))
+			for k in [0, 3]:
+				var land := terrain.height_at(section[k].x, section[k].z) + LIFT * 0.5
+				section[k].y = minf(land, level - 0.01)
+			# On the inside of a tight bend the edge would come back past
+			# where it was a step ago and fold the strip over itself: it is
+			# held where it was instead.
+			if not prev.is_empty():
+				for k in 4:
+					var was: Vector3 = prev[k]
+					if (section[k] - was).dot(tangent) < 0.05:
+						var y: float = section[k].y
+						section[k] = was + tangent * 0.05
+						section[k].y = y
 		if not prev.is_empty() and not section.is_empty():
 			_quad_strip(verts, uvs, colors, prev, section, along, dirt)
 		prev = section
-		if not wet and along >= next_post and not dirt and not plain:
+		if not wet and not kept_clear and along >= next_post and not dirt and not plain:
 			next_post += POST_EVERY
 			for s in [-1.0, 1.0]:
 				var at: Vector3 = p + side * s * (half + VERGE + 0.4)
@@ -100,9 +128,13 @@ func _quad_strip(verts: PackedVector3Array, uvs: PackedVector2Array, colors: Pac
 	var v1 := along / 8.0
 	var gravel := Color(0.52, 0.47, 0.40) if not dirt else Color(0.46, 0.38, 0.28)
 	if plain:
-		# One band, one colour.
+		# One band, one colour, and a darker shoulder down each side.
+		var band := PLAIN_DIRT if dirt else PLAIN_ROAD
 		_quad(verts, uvs, colors, a[1], a[2], b[2], b[1], Vector2(0, v0), Vector2(1, v0), Vector2(1, v1),
-			Vector2(0, v1), PLAIN_DIRT if dirt else PLAIN_ROAD)
+			Vector2(0, v1), band)
+		for k in [0, 2]:
+			_quad(verts, uvs, colors, a[k], a[k + 1], b[k + 1], b[k], Vector2(0, v0), Vector2(0.02, v0),
+				Vector2(0.02, v1), Vector2(0, v1), band.darkened(0.18))
 		return
 	for k in 3:
 		var u0 := 0.0

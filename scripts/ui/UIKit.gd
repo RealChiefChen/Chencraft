@@ -6,7 +6,8 @@ extends RefCounted
 ## a keycap.
 
 const KEY_NAMES := ["LMB", "RMB", "MMB", "WASD", "SHIFT", "CTRL", "SPACE", "TAB",
-	"ESC", "WHEEL", "ENTER", "ALT", "DEL"]
+	"ESC", "WHEEL", "ENTER", "ALT", "DEL", "WHEELUP", "WHEELDOWN", "MOUSE4", "MOUSE5",
+	"BACKSPACE", "UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "INSERT", "PAGEUP", "PAGEDOWN"]
 
 static var _key_pattern: RegEx
 
@@ -74,6 +75,8 @@ static func is_key_text(inner: String) -> bool:
 			continue
 		if p in KEY_NAMES:
 			continue
+		if p.begins_with("KP ") or (p.length() == 1 and "[];',./-=`\\".contains(p)):
+			continue
 		return false
 	return true
 
@@ -89,7 +92,8 @@ static func parse_keys(text: String) -> Array:
 			continue
 		if m.get_start() > at:
 			out.append(["text", text.substr(at, m.get_start() - at)])
-		out.append(["key", m.get_string(1)])
+		# Drawn as whatever key does that job now, if it has been rebound.
+		out.append(["key", Controls.remap_label(m.get_string(1))])
 		at = m.get_end()
 	if at < text.length():
 		out.append(["text", text.substr(at)])

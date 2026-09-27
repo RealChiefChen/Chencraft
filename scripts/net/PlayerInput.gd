@@ -18,7 +18,11 @@ var _just: Dictionary = {}
 func pressed(action: StringName) -> bool:
 	if remote:
 		return actions.has(action)
-	return Input.is_action_pressed(action)
+	return InputMap.has_action(action) and Input.is_action_pressed(action)
+
+## The same, by the name the controls use.
+func held(action: StringName) -> bool:
+	return pressed(action)
 
 func just_pressed(action: StringName) -> bool:
 	if remote:
@@ -26,9 +30,7 @@ func just_pressed(action: StringName) -> bool:
 	return Input.is_action_just_pressed(action)
 
 func axis(negative: StringName, positive: StringName) -> float:
-	if remote:
-		return (1.0 if actions.has(positive) else 0.0) - (1.0 if actions.has(negative) else 0.0)
-	return Input.get_axis(negative, positive)
+	return (1.0 if pressed(positive) else 0.0) - (1.0 if pressed(negative) else 0.0)
 
 func key(code: Key) -> bool:
 	if remote:
@@ -40,14 +42,13 @@ func mouse(button: MouseButton) -> bool:
 		return buttons.has(int(button))
 	return Input.is_mouse_button_pressed(button)
 
-## The held state, as a guest sends it: what the host needs every frame.
-const ACTIONS := [&"move_forward", &"move_back", &"move_left", &"move_right", &"jump", &"sprint",
-	&"lower", &"winch_in", &"winch_out", &"reel"]
+## The held state, as a guest sends it: every control held down (by the
+## guest's own key bindings), what the host needs every frame.
 const KEYS := [KEY_Q, KEY_E]
 
 static func capture() -> Dictionary:
 	var a: Array = []
-	for action in ACTIONS:
+	for action in Controls.ids():
 		if InputMap.has_action(action) and Input.is_action_pressed(action):
 			a.append(String(action))
 	var k: Array = []

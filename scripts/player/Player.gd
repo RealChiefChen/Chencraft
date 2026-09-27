@@ -30,6 +30,9 @@ signal wants_to_drive(vehicle: Node3D)
 var crane_zoom: float = 7.0
 @export var chase_height: float = 2.8
 
+## Walking and sprinting, as a multiple of what the boots give.
+static var WALK_MULT: float = Balance.num("player.walk_multiplier", 1.0)
+
 ## Water deeper than this is swum rather than waded.
 const WADE_DEPTH := 1.1
 static var SWIM_SPEED_FACTOR: float = Balance.num("player.swim_speed_factor", 0.38)
@@ -85,10 +88,9 @@ var net_carry: Array = [0, 0.0]
 ## On the host: a key or button a co-op guest pressed, acted on as if pressed
 ## here.
 func remote_press(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed:
-		_on_mouse_button(event as InputEventMouseButton)
-	elif event is InputEventKey and event.pressed:
-		_on_key(event as InputEventKey)
+	if _on_mouse_action(event):
+		return
+	_on_key(event)
 var _ui_blocking: bool = false
 
 @onready var camera: Camera3D = $Camera3D
@@ -250,62 +252,62 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _ui_blocking:
 		return
-	if net_view:
-		# A guest's presses are the host's to act on.
-		if (event is InputEventMouseButton and event.pressed) or (event is InputEventKey and event.pressed and not event.echo):
-			if not _mouse_captured and event is InputEventMouseButton:
-				capture_mouse(true)
-				return
-			if Net.client_side != null:
-				Net.client_side.call("send_press", event)
+	var press := (event is InputEventMouseButton or event is InputEventKey) \
+		and event.is_pressed() and not event.is_echo()
+	if not press:
 		return
-	if event is InputEventMouseButton and event.pressed:
-		_on_mouse_button(event as InputEventMouseButton)
-	elif event is InputEventKey and event.pressed and not event.echo:
-		_on_key(event as InputEventKey)
-
-func _on_mouse_button(event: InputEventMouseButton) -> void:
-	if not _mouse_captured:
+	if event is InputEventMouseButton and not _mouse_captured:
 		capture_mouse(true)
 		return
+	if net_view:
+		# A co-op guest's presses are the host's to act on.
+		if Net.client_side != null:
+			Net.client_side.call("send_press", event)
+		return
+	if _on_mouse_action(event):
+		return
+	_on_key(event)
+
+## The mouse-button jobs: whatever `primary`, `secondary` and the wheel are
+## bound to. Returns true when the event was one of them.
+func _on_mouse_action(event: InputEvent) -> bool:
 	var building := build_system != null and build_system.active
-	match event.button_index:
-		MOUSE_BUTTON_LEFT:
-			if building:
-				build_system.try_place()
-			elif driving():
-				pass
-			elif selected_tool() != &"":
-				_swing()
-			else:
-				_grab_drag()
-		MOUSE_BUTTON_RIGHT:
-			if building:
-				build_system.try_remove()
-			elif driving():
-				pass
-			elif dragged != null:
-				_throw_dragged()
-			else:
-				_pick_up()
-		MOUSE_BUTTON_WHEEL_UP:
-			if building:
-				build_system.cycle(-1)
-			elif steering_load():
-				crane_zoom = maxf(3.0, crane_zoom - 1.0)
-			elif dragged != null:
-				_drag_distance = minf(_drag_distance + 0.3, reach)
-			elif not driving():
-				cycle_hotbar(-1)
-		MOUSE_BUTTON_WHEEL_DOWN:
-			if building:
-				build_system.cycle(1)
-			elif steering_load():
-				crane_zoom = minf(30.0, crane_zoom + 1.0)
-			elif dragged != null:
-				_drag_distance = maxf(_drag_distance - 0.3, DRAG_MIN_DISTANCE)
-			elif not driving():
-				cycle_hotbar(1)
+	if Controls.pressed(event, &"primary"):
+		if building:
+			build_system.try_place()
+		elif driving():
+			pass
+		elif selected_tool() != &"":
+			_swing()
+		else:
+			_grab_drag()
+		return true
+	if Controls.pressed(event, &"secondary"):
+		if building:
+			build_system.try_remove()
+		elif driving():
+			pass
+		elif dragged != null:
+			_throw_dragged()
+		else:
+			_pick_up()
+		return true
+	if building and Controls.pressed(event, &"pick_block"):
+		interacted.emit(build_system.pick_block())
+		return true
+	for step in [-1, 1]:
+		if not Controls.pressed(event, &"wheel_up" if step < 0 else &"wheel_down"):
+			continue
+		if building:
+			build_system.cycle(step)
+		elif steering_load():
+			crane_zoom = clampf(crane_zoom + float(step), 3.0, 30.0)
+		elif dragged != null:
+			_drag_distance = clampf(_drag_distance - 0.3 * float(step), DRAG_MIN_DISTANCE, reach)
+		elif not driving():
+			cycle_hotbar(step)
+		return true
+	return false
 
 # --- Hotbar ----------------------------------------------------------------
 
@@ -335,62 +337,72 @@ func cycle_hotbar(step: int) -> void:
 	if selected_slot >= 0:
 		_release_dragged()
 
-func _on_key(event: InputEventKey) -> void:
+func _on_key(event: InputEvent) -> void:
 	if driving() and _on_driving_key(event):
 		return
-	if build_system != null and build_system.active:
-		if event.keycode == KEY_F:
+	var building := build_system != null and build_system.active
+	if building:
+		if Controls.pressed(event, &"edit_select"):
 			build_system.toggle_select()
 			return
 		if build_system.editing():
-			if event.keycode >= KEY_1 and event.keycode <= KEY_3:
-				build_system.set_edit_mode(int(event.keycode - KEY_1))
+			var mode := Controls.slot_pressed(event)
+			if mode >= 0 and mode <= 2:
+				build_system.set_edit_mode(mode)
 				return
-			if event.keycode == KEY_DELETE or event.keycode == KEY_BACKSPACE:
+			if Controls.pressed(event, &"remove_selected"):
 				build_system.remove_selected()
 				return
+		if Controls.pressed(event, &"build_menu"):
+			build_system.toggle_menu()
+			return
 	# The number row picks off the build bar, or the hotbar on foot.
-	if event.keycode >= KEY_1 and event.keycode <= KEY_9:
-		if build_system != null and build_system.active:
-			build_system.select_slot(int(event.keycode - KEY_1))
+	var slot := Controls.slot_pressed(event)
+	if slot >= 0:
+		if building:
+			build_system.select_slot(slot)
 		elif not driving():
-			select_slot(int(event.keycode - KEY_1))
+			select_slot(slot)
 		return
-	# Shift and Q/E roll whatever is in hand.
-	if turning_held() and (event.keycode == KEY_Q or event.keycode == KEY_E):
+	if Controls.pressed(event, &"build_mode"):
+		if build_system != null:
+			var was := build_system.active
+			build_system.toggle()
+			if not was and not build_system.active:
+				interacted.emit(build_system.last_error)
 		return
-	match event.keycode:
-		KEY_E:
-			_interact()
-		KEY_Q:
-			_drop(1)
-		KEY_G:
-			_drop(held.size())
-		KEY_B:
-			if build_system != null:
-				var was := build_system.active
-				build_system.toggle()
-				if not was and not build_system.active:
-					interacted.emit(build_system.last_error)
-		KEY_Z:
-			if build_system != null and build_system.active:
-				build_system.rotate_axis(0)
-		KEY_X:
-			if build_system != null and build_system.active:
-				build_system.rotate_axis(1)
-		KEY_C:
-			if build_system != null and build_system.active:
-				build_system.rotate_axis(2)
+	if building:
+		if Controls.pressed(event, &"rotate_x"):
+			build_system.rotate_axis(0)
+		elif Controls.pressed(event, &"rotate_y"):
+			build_system.rotate_axis(1)
+		elif Controls.pressed(event, &"rotate_z"):
+			build_system.rotate_axis(2)
+		return
+	if driving():
+		return
+	# Shift and the turn keys roll whatever is in hand.
+	if turning_held() and (Controls.pressed(event, &"turn_ccw") or Controls.pressed(event, &"turn_cw")):
+		return
+	if Controls.pressed(event, &"machine_output") and _cycle_machine_output():
+		return
+	if Controls.pressed(event, &"use"):
+		_interact()
+	elif Controls.pressed(event, &"drop_one"):
+		_drop(1)
+	elif Controls.pressed(event, &"drop_all"):
+		_drop(held.size())
 
 ## Keys that only mean something with a vehicle under you. Returns true when the
 ## key was used here, so it does not also do its on-foot job.
-func _on_driving_key(event: InputEventKey) -> bool:
-	# In a loader Q and E work the bucket (held, in _update_vehicle_controls).
-	if loader() != null and (event.keycode == KEY_Q or event.keycode == KEY_E):
+func _on_driving_key(event: InputEvent) -> bool:
+	var l := loader()
+	# In a loader the turn keys work the bucket (held, in _update_vehicle_controls).
+	if l != null and (Controls.pressed(event, &"turn_ccw") or Controls.pressed(event, &"turn_cw")):
 		return true
-	if event.keycode == KEY_N:
-		if loader() != null:
-			loader().home()
+	if Controls.pressed(event, &"rig_home"):
+		if l != null:
+			l.home()
 			interacted.emit("bucket back to its carrying pose")
 			return true
 		if rig() != null and rig().operating:
@@ -398,42 +410,47 @@ func _on_driving_key(event: InputEventKey) -> bool:
 			interacted.emit("crane back to its starting spot")
 			return true
 		return false
-	if loader() != null and event.keycode == KEY_SPACE:
-		interacted.emit(loader().set_locked(not loader().locked))
+	if l != null and Controls.pressed(event, &"loader_lock"):
+		interacted.emit(l.set_locked(not l.locked))
 		return true
+	if l != null and Controls.pressed(event, &"loader_attachment"):
+		interacted.emit(l.swap_attachment())
+		return true
+	var truck := vehicle as Hauler
+	if truck != null and l == null and (rig() == null or not rig().operating):
+		if Controls.pressed(event, &"gear_up") and truck.manual_gearbox():
+			interacted.emit(truck.shift_gear(1))
+			return true
+		if Controls.pressed(event, &"gear_down") and truck.manual_gearbox():
+			interacted.emit(truck.shift_gear(-1))
+			return true
 	var r := rig()
 	if r == null:
 		return false
-	match event.keycode:
-		KEY_R:
-			if not r.has_crane():
-				interacted.emit("this vehicle has no crane")
-			else:
-				r.set_operating(not r.operating)
-				interacted.emit("crane: you move the log - W/S away from / toward the camera, A/D left/right, Shift/Ctrl up and down, Q/E turn it, F drop the claw"
-					if r.operating else "crane folding away")
+	if Controls.pressed(event, &"crane"):
+		if not r.has_crane():
+			interacted.emit("this vehicle has no crane")
+		else:
+			r.set_operating(not r.operating)
+			interacted.emit("crane: you move the log - [W/S] away from / toward the camera, [A/D] left/right, [Shift/Ctrl] up and down, [Q/E] turn it, [F] drop the claw"
+				if r.operating else "crane folding away")
+		return true
+	if r.operating:
+		if Controls.pressed(event, &"enter_vehicle"):
+			# Working the crane, the get-out key is the grapple.
+			var had := r.held != null
+			var said := r.claw()
+			interacted.emit(said if said != "" else ("let go" if had else "claw going down"))
 			return true
-		KEY_F:
-			# Working the crane, F is the grapple; otherwise it is the door.
-			if r.operating:
-				var had := r.held != null
-				var said := r.claw()
-				interacted.emit(said if said != "" else ("let go" if had else "claw going down"))
-				return true
-			return false
-		KEY_Q, KEY_E:
-			# In operator mode Q and E turn the log.
-			if r.operating:
-				return true
-			if event.keycode == KEY_E:
-				interacted.emit(hook_winch(r))
+		# In operator mode the turn keys turn the log.
+		if Controls.pressed(event, &"turn_ccw") or Controls.pressed(event, &"turn_cw"):
 			return true
-		KEY_Y:
-			interacted.emit(hook_winch(r))
-			return true
-		KEY_O:
-			interacted.emit(toggle_outriggers(r))
-			return true
+	if Controls.pressed(event, &"winch_hook") or (not r.operating and Controls.pressed(event, &"use")):
+		interacted.emit(hook_winch(r))
+		return true
+	if Controls.pressed(event, &"outriggers"):
+		interacted.emit(toggle_outriggers(r))
+		return true
 	return false
 
 ## Puts a rig's outriggers out, locking the truck where it stands, or brings
@@ -449,7 +466,7 @@ func hook_winch(r: VehicleRig) -> String:
 	if r.anchored:
 		r.release_winch()
 		return "winch unhooked"
-	var hit := aim_hit_far(r.reach + 6.0)
+	var hit := winch_target(r)
 	if hit.is_empty():
 		return "nothing there to hook the winch to"
 	var target := _owner_of(hit.collider) as Node3D
@@ -457,13 +474,68 @@ func hook_winch(r: VehicleRig) -> String:
 		target = hit.collider as Node3D
 	return _said(r.attach_winch(target, hit.position), "winch hooked on - [K] reel in, [L] let out")
 
+## Where the winch hook would go: what the crosshair is on - or, when that is
+## only the ground (or nothing), the log, chunk or tree nearest the line of
+## sight, so the hook does not need pixel-perfect aim. The reticle shows the
+## same point.
+func winch_target(r: VehicleRig) -> Dictionary:
+	var distance := r.reach + 6.0
+	var hit := aim_hit_far(distance)
+	if not hit.is_empty() and _hookable(hit.collider):
+		return hit
+	var from := camera.global_position
+	var dir := -camera.global_transform.basis.z
+	var along_to := distance if hit.is_empty() else from.distance_to(hit.position) + 1.5
+	var box := BoxShape3D.new()
+	box.size = Vector3(WINCH_SNAP * 2.0, WINCH_SNAP * 2.0, along_to)
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = box
+	q.transform = Transform3D(Basis.looking_at(dir, Vector3.UP if absf(dir.y) < 0.98 else Vector3.RIGHT),
+		from + dir * along_to * 0.5)
+	q.collision_mask = Layers.LOOSE | Layers.TREE
+	var excluded: Array[RID] = [get_rid()]
+	if vehicle is CollisionObject3D:
+		excluded.append((vehicle as CollisionObject3D).get_rid())
+	q.exclude = excluded
+	var best: Dictionary = {}
+	var best_score := INF
+	for h in get_world_3d().direct_space_state.intersect_shape(q, 32):
+		var body := h.collider as Node3D
+		if body == null or not _hookable(body):
+			continue
+		var p := body.global_position
+		if body is ChoppableTree:
+			p += Vector3(0, 1.0, 0)
+		var t := (p - from).dot(dir)
+		if t < 1.0 or t > along_to:
+			continue
+		var off := (p - (from + dir * t)).length()
+		if off > WINCH_SNAP:
+			continue
+		var score := off + t * 0.02
+		if score < best_score:
+			best_score = score
+			best = {"collider": body, "position": p, "normal": Vector3.UP}
+	if not best.is_empty():
+		return best
+	return hit
+
+## How far off the line of sight the winch looks for something to hook.
+const WINCH_SNAP := 1.4
+
+func _hookable(collider: Object) -> bool:
+	var n := _owner_of(collider)
+	if n is LooseItem:
+		return (n as LooseItem).state == LooseItem.State.FREE
+	return n is OreRock or n is ChoppableTree or n is Hauler
+
 ## What the player is aiming at, further out than arm's reach.
 func aim_hit_far(distance: float) -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	var from := camera.global_position
 	var to := from - camera.global_transform.basis.z * distance
 	var q := PhysicsRayQueryParameters3D.create(from, to)
-	q.exclude = [get_rid()]
+	q.exclude = _aim_exclusions()
 	var v := vehicle as CollisionObject3D
 	if v != null:
 		q.exclude.append(v.get_rid())
@@ -504,8 +576,8 @@ func _physics_step(delta: float) -> void:
 	elif input.just_pressed("jump"):
 		velocity.y = jump_velocity
 
-	var walk := PlayerState.stat(&"boots", "walk", 5.5)
-	var sprint := PlayerState.stat(&"boots", "sprint", 8.5)
+	var walk := PlayerState.stat(&"boots", "walk", 5.5) * WALK_MULT
+	var sprint := PlayerState.stat(&"boots", "sprint", 8.5) * WALK_MULT
 	# Hauling a full rack slows you down: the reason to build belts.
 	var load_factor: float = 1.0 - 0.35 * clampf(carried_volume() / maxf(0.01, capacity_m3()), 0.0, 1.0)
 	var speed: float = (sprint if input.pressed("sprint") else walk) * load_factor
@@ -608,9 +680,7 @@ func _update_vehicle_controls(delta: float) -> void:
 	if l != null:
 		# Shift raises the arms, Ctrl lowers them; E curls the bucket back,
 		# Q tips it forward.
-		var curl := (1.0 if input.key(KEY_E) else 0.0) \
-			- (1.0 if input.key(KEY_Q) else 0.0)
-		l.drive(input.axis("lower", "sprint"), curl, delta)
+		l.drive(input.axis(&"lower", &"sprint"), input.axis(&"turn_ccw", &"turn_cw"), delta)
 	var r := rig()
 	if r == null:
 		return
@@ -626,14 +696,13 @@ func _update_vehicle_controls(delta: float) -> void:
 	var move := axes[0] * input.axis("move_right", "move_left") \
 		+ axes[1] * input.axis("move_back", "move_forward") \
 		+ Vector3.UP * input.axis("lower", "sprint")
-	var turn := (1.0 if input.key(KEY_Q) else 0.0) \
-		- (1.0 if input.key(KEY_E) else 0.0)
-	r.drive(move, turn, input.mouse(MOUSE_BUTTON_RIGHT), delta)
+	var turn := input.axis(&"turn_cw", &"turn_ccw")
+	r.drive(move, turn, input.held(&"secondary"), delta)
 
 func work_winch(r: VehicleRig, delta: float) -> void:
-	if input.pressed("winch_in") or (driving() and input.pressed("reel")):
+	if input.held(&"winch_in") or (driving() and loader() == null and input.held(&"drop_all")):
 		r.reel(delta)
-	if input.pressed("winch_out"):
+	if input.held(&"winch_out"):
 		r.pay_out(delta)
 
 
@@ -643,8 +712,28 @@ func aim_hit() -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	var from := camera.global_position
 	var to := from - camera.global_transform.basis.z * reach
-	var q := PhysicsRayQueryParameters3D.create(from, to, Layers.MASK_RAY_INTERACT, [get_rid()])
+	var q := PhysicsRayQueryParameters3D.create(from, to, Layers.MASK_RAY_INTERACT, _aim_exclusions())
 	return space.intersect_ray(q)
+
+## The player, and what is on their carry rack: the rack is in front of the
+## chest, and the crosshair looks past it rather than at it.
+func _aim_exclusions() -> Array[RID]:
+	var out: Array[RID] = [get_rid()]
+	for item in held:
+		if is_instance_valid(item):
+			out.append(item.get_rid())
+	return out
+
+## At a machine: steps through the sizes it can make its output in. Returns
+## false when not aiming at one that has a choice.
+func _cycle_machine_output() -> bool:
+	var hit := aim_hit()
+	var target := _owner_of(hit.get("collider")) if not hit.is_empty() else null
+	var m := target as InlineMachine
+	if m == null or m.output_options().size() < 2:
+		return false
+	interacted.emit(m.cycle_output())
+	return true
 
 ## Walks up from a collider to the gameplay node that owns it (machines and
 ## bins put their collider in a child StaticBody3D).
@@ -1056,7 +1145,7 @@ func _update_drag() -> void:
 	if not is_instance_valid(dragged) or dragged.state != LooseItem.State.CARRIED:
 		dragged = null
 		return
-	if not input.mouse(MOUSE_BUTTON_LEFT) and _mouse_captured and not _hold_for_tests:
+	if not input.held(&"primary") and _mouse_captured and not _hold_for_tests:
 		_release_dragged()
 		return
 	var dt := get_physics_process_delta_time()
@@ -1065,8 +1154,7 @@ func _update_drag() -> void:
 		# about the vertical, Q/E roll it about the line of sight.
 		var pitch := input.axis("move_back", "move_forward")
 		var yaw := input.axis("move_right", "move_left")
-		var roll := (1.0 if input.key(KEY_Q) else 0.0) \
-			- (1.0 if input.key(KEY_E) else 0.0)
+		var roll := input.axis(&"turn_cw", &"turn_ccw")
 		var spin := Vector3(-pitch, yaw, roll) * DRAG_TURN_RATE * dt
 		if spin.length() > 0.0:
 			_drag_turn = (Basis(spin.normalized(), spin.length()) * _drag_turn).orthonormalized()

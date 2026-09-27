@@ -96,13 +96,18 @@ func sell_all(carried: Array[LooseItem] = []) -> Dictionary:
 	var bonus := 0
 	var extra := 0
 	for item in items:
-		var paid := Economy.sell(item.item_id, item.dims)
-		total += paid
-		var mult := premium_for(item.item_id)
-		if mult > 1.0:
-			extra += int(round(float(paid) * (mult - 1.0)))
-		if quests != null:
-			bonus += quests.deliver(item.item_id, item.category, item.volume())
+		# Branches still on a trunk are wood too, and are paid for with it.
+		var pieces: Array[Dictionary] = [item.dims]
+		for i in item.limbs.size():
+			pieces.append(item.limb_dims(i))
+		for dims in pieces:
+			var paid := Economy.sell(item.item_id, dims)
+			total += paid
+			var mult := premium_for(item.item_id)
+			if mult > 1.0:
+				extra += int(round(float(paid) * (mult - 1.0)))
+			if quests != null:
+				bonus += quests.deliver(item.item_id, item.category, Solid.volume(dims))
 		manager.despawn(item)
 	if extra > 0:
 		Economy.add_money(extra)
@@ -168,6 +173,19 @@ func _build() -> void:
 	g.block(Vector3(2.0, 0.9, 0.06), hut + Vector3(0, 1.5, 1.53), Color(0.12, 0.10, 0.08))
 	g.block(Vector3(2.3, 0.12, 0.5), hut + Vector3(0, 1.0, 1.7), dark)
 	g.lamp(Transform3D(Basis(), hut + Vector3(1.6, 2.3, 1.55)))
+	# A painted board over the hatch says what the place is.
+	g.box(Vector3(3.6, 0.7, 0.1), Transform3D(Basis(), hut + Vector3(0, 3.15, 1.62)), Color(0.20, 0.30, 0.22))
+	g.frame(Vector3(3.6, 0.7, 0.1), Transform3D(Basis(), hut + Vector3(0, 3.15, 1.62)), 0.06, Color(0.92, 0.76, 0.30))
+	var sign := Label3D.new()
+	sign.name = "Sign"
+	sign.text = "SELL YARD"
+	sign.font = UITheme.display_font()
+	sign.font_size = 96
+	sign.pixel_size = 0.0055
+	sign.outline_size = 0
+	sign.modulate = Color(0.98, 0.88, 0.55)
+	sign.position = hut + Vector3(0, 3.15, 1.69)
+	add_child(sign)
 	# The weighbridge: a steel deck in the middle of the yard.
 	g.block(Vector3(5.0, 0.1, 3.0), Vector3(0, 0.14, 1.0), Color(0.40, 0.41, 0.44))
 	g.frame(Vector3(5.0, 0.1, 3.0), Transform3D(Basis(), Vector3(0, 0.14, 1.0)), 0.12, Color(0.95, 0.76, 0.2))

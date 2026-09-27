@@ -168,6 +168,16 @@ func _model_for(product: Dictionary) -> Node3D:
 				for x in [-0.18, 0.18]:
 					g.block(Vector3(0.22, 0.4, 0.28), Vector3(x, 0.2, 0), Color.WHITE)
 					g.block(Vector3(0.24, 0.12, 0.5), Vector3(x, 0.06, 0.12), Color.WHITE)
+			elif target == &"engine":
+				# A block with a row of cylinders and a pulley on the front.
+				g.block(Vector3(0.7, 0.4, 0.45), Vector3(0, 0.2, 0), Color.WHITE)
+				for x in [-0.24, -0.08, 0.08, 0.24]:
+					g.block(Vector3(0.12, 0.18, 0.3), Vector3(x, 0.49, 0), Color.WHITE)
+				g.prism(10, 0.14, 0.14, 0.06, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.2, 0.22, 0.26)), Color.WHITE)
+			elif target == &"tyres":
+				# Two tyres stood on edge, with a tread.
+				for x in [-0.17, 0.17]:
+					g.prism(12, 0.38, 0.38, 0.26, Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(x, 0.38, 0)), Color.WHITE)
 			else:
 				g.frame(Vector3(0.6, 0.9, 0.2), Transform3D(Basis(), Vector3(0, 0.45, 0)), 0.06, Color.WHITE)
 				for y in [0.25, 0.55]:

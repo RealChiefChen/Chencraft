@@ -24,10 +24,17 @@ it up; headless runs resolve class names from that cache.
 ### Controls
 
 The game opens on a title screen over a flyover of the valley: **Continue**
-picks up the save (it tells you the day, money and when it was saved), **New
-Game** starts over after asking, and Settings and Controls are there before
-you play. The full list of keys is on the Controls page and in the journal
-(F1), and the few that matter right now are always in the bottom-right corner.
+picks up the newest save (it tells you the slot, day, money and when it was
+saved), **Load Game** lists every save slot, **New Game** asks which slot to
+start in, and Settings and Controls are there before you play. The full list
+of keys is on the Controls page and in the journal (F1), and the few that
+matter right now are always in the bottom-right corner.
+
+**Every key can be rebound**: Settings > Controls lists every action - click
+one and press the key or mouse button you want (+ adds a second key, x clears
+it) - or edit the `[controls]` section of your config file (below). Prompts,
+hints and the controls sheet all draw whatever key does the job now. The
+defaults:
 
 | Key | Action |
 | --- | --- |
@@ -36,30 +43,38 @@ you play. The full list of keys is on the Controls page and in the journal
 | LMB, empty hand | hold to drag what you aim at, by the point you grabbed; heave a chunk out of the ground |
 | Wheel (dragging) / RMB (dragging) | pull it closer or push it away / throw it |
 | LMB, axe / hammer | cut the limb under the crosshair or buck felled wood / crack a chunk |
-| RMB | pick a piece onto the carry rack |
+| RMB | pick a piece onto the carry rack (the crosshair looks past what is on it) |
 | I | inventory: drag tools onto the hotbar |
 | Q / G | drop one / drop everything |
 | E | deposit, open a paid box, talk to the shopkeep, stop or start a belt |
+| R (at a machine) | change the size of what it makes |
 | Shift+E | empty a storage bin back onto the ground |
-| B | build mode (freecam: WASD, mouse, Shift/Ctrl for height) |
-| Wheel / 1-7 (build) | choose from the build bar |
+| B | build mode (freecam: WASD, mouse, Shift/Ctrl for height) - you start empty-handed |
+| E (build) | the build menu: click what to build |
+| MMB (build) | copy the building you aim at - same thing, size, tier and turn |
+| Wheel / 1-7 (build) | step through / pick from the build bar |
 | Z / X / C (build) | rotate the ghost about each axis, in quarter turns |
 | LMB / RMB (build) | place / remove |
 | F (build) | select the building you aim at for editing (again to finish) |
-| 1 / 2 / 3, drag a handle (editing) | move / scale / rotate it; hold RMB to look; Del removes |
-| Esc | pause menu (leaves build mode first, closes the journal first) |
+| 1 / 2 / 3, drag a handle (editing) | move / scale / rotate it; Del removes |
+| Esc | pause menu (closes the build menu, journal or build mode first) |
 | Tab / M / P / U / F1 | journal: orders / map / market / upgrades / controls |
-| H / F3 | hide the key hints / debug readout |
-| F5 / F9 / F8 | quick save / quick load / new game (asks first) |
-| E at a vehicle's cab or seat / V | get in / get out (third-person while driving) |
-| Y | winch: hook the line on whatever you aim at, or unhook it - from the seat or standing by the truck |
-| K / L | winch: reel in / let out (E and G still work in the seat) |
+| H / F3 | hide the key hints and the crane banner / debug readout |
+| F5 / F9 / F8 | quick save / quick load (the slot being played) / new game (asks first) |
+| F at a vehicle / F in it | get in (third-person while driving) / get out |
+| Shift / Ctrl (driving, manual gearbox) | gear up / down |
+| Y | winch: hook the line on whatever you aim at, or unhook it - from the seat or standing by the truck; it snaps to a log, chunk or tree near the crosshair |
+| K / L | winch: reel in / let out (G still reels in the seat) |
 | O | outriggers out or in - the truck is locked where it stands (seated or standing by it) |
-| Q (driving) | crane: work it (the truck goes down on its outriggers) or stow it |
-| A / D, W / S, R / T (crane) | swing the boom, raise and lower it, run it out and in |
-| Shift / Ctrl (crane) | hoist the hook up / let it down |
-| F (crane) | latch the hook (a ball) on to whatever it is touching - a loose piece or ore still in the ground - or let go |
-| X / Z / C (not in build mode) | unload all (the dump truck tips its tub) / drop one / flip the vehicle upright |
+| R (driving) | crane: work it (the truck goes down on its outriggers) or stow it |
+| WASD / Shift, Ctrl / Q, E (crane) | move the log away/toward and left/right of the camera, up and down, turn it |
+| F (crane) | drop the claw: it goes down until it meets something, grabs and comes back up (again: let go) |
+| RMB held (crane) | fine, slow control; without it the crane runs at a brisk pace |
+| Shift / Ctrl, Q / E, Space (loader) | arms up / down, tip / curl, lock the load |
+| G (loader) | swap the bucket for the log grapple (empty) |
+| N | crane or loader back to its starting pose |
+| X / Z / C (not in build mode) | unload all (the dump truck tips its tub) / drop one / recover (once a second, not on outriggers) |
+| T | hitch a trailer behind the truck, or let it go |
 
 ## Interface
 
@@ -68,22 +83,40 @@ you play. The full list of keys is on the Controls page and in the journal
 - **Pause menu** (Esc, or alt-tab) over frosted glass: resume, settings,
   controls, save, load, back to the title, quit. Leaving for the title or
   quitting saves; so does closing the window.
-- **Settings** (`user://settings.cfg`, kept apart from the save so a new game
-  keeps them): mouse sensitivity, invert Y, field of view; fullscreen, v-sync,
-  render scale, shadows, ambient occlusion, bloom, view distance, and whether
-  the sun moves; interface scale, key hints, compass, checklist, frame rate;
-  autosave. Everything applies as you move it.
+- **Settings and controls** live in one **personal config file**,
+  `user://config.cfg` (on Windows `%APPDATA%/Godot/app_userdata/Pinecraft/`),
+  kept apart from the saves so a new game keeps them. Every line has a comment
+  saying what it is, so it can be edited by hand as easily as from the
+  Settings screen, which has buttons to open its folder and to read it again.
+  In it: mouse sensitivity, invert Y, field of view, manual gearbox; fullscreen,
+  v-sync, render scale, shadows, ambient occlusion, bloom, view distance, and
+  whether the sun moves; interface scale, key hints, the crane/winch banner,
+  compass, checklist, frame rate, name labels over buildings; autosave; and
+  every key binding. (An old `settings.cfg` is read once if there is no
+  config file yet.)
+- **Save slots**: six (`user://saves/slot_N.json`). The game plays in one;
+  saves, quick saves and autosaves go to it. The pause menu's Save slots page
+  saves into any slot, loads another (saving this one first) or clears one;
+  the title screen loads any slot or starts a new game in one. The old single
+  save moves into slot 1.
+- **Version**: the version number and release date are on the pause menu and
+  the title screen, from `application/config/version` and
+  `application/config/release_date` in project.godot - bump them there.
 - **HUD**: money that counts up, with the change floating off it; the day and
   how long until prices move; the carry rack as a bar; a compass with the plot,
   the sell yard, the store, the quarry and your truck on it; the open orders
   with progress bars; the prompt for what you are aiming at, with its keys drawn
   as keycaps; a feed of what just happened (a yard of fifty logs is one line,
   not fifty); and the keys for what you are doing now.
-- **Build bar**: in build mode, every building you own with its size and cost
-  (red when you cannot afford it), a line on what it is for, and why the ghost
-  will not go where you are pointing. The pad's grid brightens so you can see
-  what it will snap to.
-- **Driving**: speed and cargo gauges.
+- **Build menu and bar**: build mode opens empty-handed. The build menu (E)
+  shows everything you can put up, in sections - belts, machines, storage,
+  pads, plans, doodads - with its size and what it costs or how many copies
+  are left; click one to take it in hand. The bar along the bottom is the same
+  list a page at a time, with a line on what the thing in hand is for and why
+  the ghost will not go where you are pointing. The pad's grid brightens, with
+  the quarter-metre snapping grid showing up close.
+- **Driving**: speed, cargo and gear; the crane, winch or loader controls sit
+  in a banner over the gauges (hidden with H or in Settings > Interface).
 - **Journal**: orders, a map of the island (every place you have found, a "?"
   for the rest, your truck and you), today's market with each price's move,
   upgrade tracks and what is still on the shelf, and the controls.
@@ -168,16 +201,28 @@ its cell grid and a hazard-striped edge.
    order. Land is sold at the desk. **Summit Outfitters**, a long drive
    up into the high country, sells the pro tools, the heavy trucks, the top
    machine tiers, the refiner and the fancier doodads.
-8. **Build.** Machines and belts go on the plot grid. Plain belts, splitters,
-   bins and the first sawmill are paid for as you place them; store-bought
-   things use up the copies you bought. Structures are free plans built out of
-   *material*: place a translucent plan, touch material to it, and it fills by
-   exactly that piece's volume. The first piece decides what the shape is made
-   of and nothing else will go in after that; full, it turns solid and takes the
-   material's colour.
+8. **Build.** Machines and belts go on the plot grid, which snaps to a
+   quarter of a metre (sixteen steps to each square; buildings are still sized
+   in whole metres). Build mode starts with nothing in hand: choose from the
+   build menu, or aim at something already built and copy it (MMB) - same
+   thing, size, tier and turn. Plain belts, splitters, bins and the first
+   sawmill are paid for as you place them; store-bought things use up the
+   copies you bought. Structures are free plans built out of *material*: place
+   a translucent plan, touch material to it, and it fills. A plan takes a tenth
+   of its own volume in material (`build.material_share`) - it is framed and
+   faced, not cast solid. The first piece decides what the shape is made of and
+   nothing else will go in after that; full, it turns solid and takes the
+   material's colour. The models speak for themselves now: floating name
+   labels over buildings are off unless you turn them on (Settings > Interface).
 9. **Automate**: belts run into and out of the machine tunnels, ramps climb,
    long and wide belts come in the store, splitters fan output three ways,
    filters sort by type, belts can be stopped and storage buffers the surplus.
+   Borderless belts run right to the edge of their grid square with no steel
+   channel down the sides, so several laid side by side make one wide deck.
+   Aim at a tunnel machine and press **R** to change the size of what it makes:
+   one wide plank, 2 or 4 boards; one bar, 2 or 4; whole, halved or quartered
+   refined bars; 1, 2 or 4 jewels; coarse, medium or fine crusher lumps. The
+   volume is the same whichever; only the pieces change.
    In build mode, **F** selects a placed building and gives it handles: move
    it (blue diamonds; up and down in quarter metres), scale it (belts stretch
    up to 16 m and widen, plans and doodads grow) or rotate it (a ring round
@@ -263,6 +308,19 @@ Everything else is carved into that afterwards, in order:
   is 18 m across on a 6 m grid, with a 20 m shoulder blending back into the
   land. Where a road meets a river it crosses at a ford rather than filling the
   river in, and driving one is slightly quicker.
+* **Roads hold their line on bends.** The carriageway (RoadSurface) is laid at
+  the road's own profile height, level across, bends and all, with a shoulder
+  down to the land each side; the land under it is laid a little lower
+  (`ROAD_SINK`), and where the road comes back past itself - a hairpin, a
+  switchback, a tight bend on a hillside - the ground between the legs is taken
+  down to the lower leg, so nothing pokes up through a road on a turn. Its
+  cross-sections take their direction over a few metres, and the inside edge of
+  a tight bend is held rather than folded back over itself.
+* **The plot is kept clear.** Its square, at its biggest expansion and a
+  margin round it, is levelled just under the pad (before the roads are graded
+  and again at the end), so the land never shows through at the corners, and
+  no road is laid across it: the roads come down to the ground and stop at its
+  edge.
 
 Resource fields sample the ground, so trees and rocks stand on it and avoid the
 water, the roads and the levelled build sites.
@@ -337,7 +395,12 @@ it went in, rather than sent home by the kill plane.
 **The forest belongs to the biomes.** A species is offered a pool of ground the
 terrain has already vetted - right biome, dry, off the roads, outside the build
 sites - rather than a ring drawn round the origin, so the look of the land tells
-you what you will be cutting, and the hard woods are out in the hard country:
+you what you will be cutting, and the hard woods are out in the hard country.
+Within its country each species grows in **groves of its own** (about one per
+36 vetted spots, `world.grove_radius` across), thicker toward the middle, with
+a few strays between (`world.grove_share`). And there is always a wood a short
+walk from the plot - the **Home Woods**, pine, birch and oak, on the compass -
+so the first tree is not a trek. A tree comes down bare: its leaves stay behind.
 
 | Tree | Grows in | Cuts into |
 | --- | --- | --- |
@@ -470,9 +533,18 @@ dimensions:
   category* (0.12 m3 of any lumber plus a little metal makes a crate), so any
   offcut length is usable.
 * Because value is per cubic metre, a machine's worth is exactly what it adds,
-  and the day's market moves every rate.
+  and the week's market moves every rate.
+* **The market moves by material.** Every form of a material - mahogany logs,
+  sanded mahogany, mahogany lumber - shares the week's rise or fall, so a good
+  week for mahogany is good whatever state you sell it in; the market board
+  has one row per material. How far a material swings depends on what it is
+  worth: cheap woods are all over the place (up to about +/-60% by default),
+  the dear metals and stones hardly move (a few percent). The two ends and
+  where they fall are in balance.json (`economy.*`).
 * Bucking, splitting, storing, loading and unloading all conserve volume too,
-  and the test suite asserts it to four decimal places at every step.
+  and the test suite asserts it to four decimal places at every step. Branches
+  still on a trunk count: they are paid for with it at the yard, go into a bin
+  with it (and come out as pieces of their own), and go into a machine with it.
 
 ## Vehicles
 
@@ -485,17 +557,49 @@ rig - so a new one is a row of data.
 | --- | --- | --- | --- | --- |
 | Quad Bike | $1,200 | 20 m/s | 0.6 m³ rack | - |
 | Pickup | $2,500 | 27 m/s | 2.5 m³ | winch 2.5 t |
-| Dune Buggy | $3,500 | 32 m/s | none | - |
+| Dune Buggy | $3,500 | 32 m/s | none | winch 1 t |
 | Flatbed Hauler | $5,000 | 22 m/s | 8 m³ | winch 4 t, crane 1.2 t |
 | Log Truck | $12,000 | 19 m/s | 18 m³ stake bed, open back | winch 8 t, crane 2.5 t |
 | Dump Truck | $15,000 | 18 m/s | 14 m³ tub that tips | winch 6 t |
 | Crane Truck | $20,000 | 18 m/s | 10 m³ | winch 12 t, crane 6 t, 22 m reach |
 
-The big three run tandem rear axles. Springs and dampers scale with weight, so
+The big three run tandem rear axles, and their rearmost axle steers a little
+the other way (`rear_steer`), which with the trucks' wider steering lock
+tightens their turn considerably. Springs and dampers scale with weight, so
 every vehicle rides like the original truck. The dump truck's tub is a set of
 colliders swung about a rear hinge, so the load really slides out under
-gravity. Settings > Game > Debug has an unlimited-money switch for trying
-them all.
+gravity. The front loader's bucket swaps for a **log grapple** (G, while it is
+empty): four fork tines, a toothed back rack and a heavy clamp that Space
+closes over whatever lies across the tines. Settings > Game > Debug has an
+unlimited-money switch for trying them all.
+
+**Gears.** Every vehicle has a gearbox (`gears` in vehicles.json: each gear's
+top speed as a share of the vehicle's). The low gears pull harder - the torque
+at the wheels goes up as the gear comes down (`vehicles.gear_torque_exponent`)
+- which is what gets a loaded truck up a steep hill: a loaded log truck that
+stalled a few metres up a 38-degree slope now climbs it. The automatic shifts
+for the speed being asked for and only brings the extra pull to bear uphill,
+so it pulls away on the flat as gently as it always did. Trucks can be driven
+with a **manual gearbox** instead (Settings > Controls): Shift and Ctrl change
+gear, and the gauge shows the gear.
+
+**Engine and tyres** are upgrades for every vehicle at once, sold in the
+store's Gear bay: a tuned engine, a turbo diesel and a big block (more pull,
+a little more top speed), and all-terrain, mud-terrain and lugged tyres with
+chains (more grip).
+
+**Recovering** a vehicle (C) sets it back on its wheels, at most once a second
+and not while it is down on its outriggers.
+
+**Cranes** run briskly unless you hold fine control (RMB); the joints and the
+target speed are `crane.joint_speed` and `crane.move_speed`. A crane working
+from a truck that is towing a trailer lets the trailer's load loose too, so it
+can lift logs out of the trailer as well as its own bed.
+
+**The winch** hooks whatever the crosshair is on - or, if that is only the
+ground, the log, chunk or tree nearest the line of sight within a metre and a
+half, so it does not take pixel-perfect aim. The ring showing where it will
+catch is drawn only from the driver's seat.
 
 ## Models
 
@@ -547,14 +651,17 @@ them than before.
   Hook either one on to ore still in the ground and reel or hoist: if the
   machine is rated for the pull the chunk needs, it comes out on the line.
   The hook's swing is damped hard, so a load settles under the boom.
-* **Nameplates.** Primitives can only say so much, and a plot is a field of
-  similar boxes, so every placed building, the build ghost and the two landmarks
-  carry a billboarded label. It is a stopgap until the models speak for
-  themselves, and it is the difference between a factory and a guessing game.
-* **The yard** is a fenced pad with a weighbridge, a plank hut with a tin roof
-  and a serving hatch, and a shopkeep in an apron and a hat. **The store** has
-  a parapet, a striped awning over the door, a sign, lit windows, lamps, a
-  bench and crates outside, and shelving, a counter and a land desk inside.
+* **Nameplates.** Back when a plot was a field of similar grey boxes, every
+  building carried a floating label. The models say what they are now, so the
+  labels over buildings, the build ghost and the yard and stores are off by
+  default (Settings > Interface turns them back on); the yard has a painted
+  sign over its hatch, and places out on the map keep their names.
+* **The yard** is a fenced pad with a weighbridge, a plank hut with a tin roof,
+  a serving hatch and a sign, and a shopkeep in an apron and a hat. **The
+  store** has a parapet, a striped awning over the door, a sign, lit windows,
+  lamps, a bench and crates outside, and shelving, a counter and a land desk
+  inside; a shallow ramp across the doorway takes you in without a lip to
+  stub a toe (or a dragged box) on.
 * **Greeble.** All of this detail is built by `Greeble` into one merged,
   flat-shaded, vertex-coloured mesh per model with one shared material (plus a
   glow surface for lamps and crystals), so a busy model is still one draw call.
@@ -599,13 +706,25 @@ a boxed axe on a shelf costs whatever the next level of the axe track costs, a
 T1 machine crate costs that building's unlock price, and a higher tier crate
 that level of its track - every time, since each crate is one machine.
 
-`data/balance.json` holds the game-feel knobs that are not a row in one of
-those tables: reach and drag strength, how many swings a tree or a cut takes,
-hammer cracking, road and bridge speed bonuses, how still a parked vehicle is
-held, crane and loader speeds, the market week, spawn clearance round
-vehicles and the kill plane. Each section has an `_about` line saying what its
-numbers mean. Change a value and restart; anything missing falls back to the
-tuned default, and a test fails if the file names a value nothing reads.
+`data/balance.json` is the constants file: the game-feel knobs that are not a
+row in one of those tables, and multipliers over the ones that are - walking
+speed, reach and drag strength, how many swings a tree or a cut takes, hammer
+cracking; every vehicle's engine, top speed, grip and steering, the gears'
+pull, road and bridge speed bonuses, winch pull and speed, the recovery
+cooldown, how still a parked vehicle is held; crane speed, fine control and
+lifting power; loader speeds; machine speed; the build grid and how much
+material a plan takes; sale prices, the market week and how far cheap and dear
+materials swing; grove size and the home woods; spawn clearance round vehicles
+and the kill plane. Each section has an `_about` line saying what its numbers
+mean. Change a value and restart; anything missing falls back to the tuned
+default, and a test fails if the file names a value nothing reads. (Your own
+settings and keys are not in it: they are in your personal config file.)
+
+`tools/Shot.gd` (scenes/shot.tscn) boots the real world and saves screenshots
+of a named scenario (`-- --shot=roads`, `build`, `plot`, `store`, ...) to
+`user://shots`; run it with a display (or under xvfb-run with
+`--rendering-driver opengl3`). `tools/Climb.gd` (scenes/climb.tscn) drives
+every vehicle up ramps of rising steepness and prints how high each got.
 
 ## Physics design
 

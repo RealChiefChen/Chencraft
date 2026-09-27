@@ -13,7 +13,7 @@ extends StaticBody3D
 ## line leaves as one falling piece with exactly the shape it grew to, the
 ## branches above it come away as their own pieces, and what is left standing
 ## is a shorter tree that can be cut again. Leaves are decoration: they carry no
-## collider and go when the wood they hang on goes.
+## collider, and they are gone when the wood they hang on comes down.
 
 signal felled(tree: ChoppableTree)
 signal limb_cut(tree: ChoppableTree, wood_volume: float)
@@ -577,8 +577,11 @@ func _attach_branch(index: int, piece: LooseItem) -> float:
 	var origin: Vector3 = inv * (global_position + Vector3(0, float(b.height), 0))
 	var dir: Vector3 = inv.basis * (b.dir as Vector3)
 	var visuals: Array = [b.mesh]
+	# The leaves do not come down with it: a felled trunk is bare wood,
+	# branches and all, and the leaves are not worth anything.
 	if b.leaf != null and is_instance_valid(b.leaf):
-		visuals.append(b.leaf)
+		(b.leaf as Node).queue_free()
+	b.leaf = null
 	piece.add_limb(origin, dir, float(b.radius), float(b.length), visuals, Color(0.42, 0.3, 0.2),
 		float(b.get("tip", float(b.radius) * 0.7)))
 	(b.shape as CollisionShape3D).queue_free()

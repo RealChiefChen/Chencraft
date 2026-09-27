@@ -35,6 +35,8 @@ static var ROAD_SPEED_BONUS: float = Balance.num("vehicles.road_speed_bonus", 0.
 static var BRIDGE_SPEED_BONUS: float = ROAD_SPEED_BONUS + Balance.num("vehicles.bridge_extra_bonus", 0.10)
 ## The steepest a road is graded, as rise over run.
 const MAX_GRADE := 0.1
+## How far under the road's level the land under the carriageway is laid.
+const ROAD_SINK := 0.2
 
 @export var half_extent: float = 300.0
 @export var noise_seed: int = 20260921
@@ -73,7 +75,7 @@ var road_paths: Array[Dictionary] = []
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 16
+const GENERATOR_VERSION := 19
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -302,6 +304,8 @@ func water_depth(x: float, z: float) -> float:
 
 ## Spec: roads give a slight speed increase when driven on.
 func is_road(x: float, z: float) -> bool:
+	if not clear_zones.is_empty() and in_clear_zone(x, z):
+		return false
 	if _road_mask.is_empty():
 		return false
 	return _road_mask[_index(int(round(_grid_coord(x))), int(round(_grid_coord(z))))] != 0
@@ -371,6 +375,49 @@ func place(point: Vector3, lift: float = 0.0) -> Vector3:
 func reserve_site(centre: Vector3, radius: float) -> void:
 	build_sites.append({"centre": centre, "radius": radius})
 
+## Squares kept flat, clear and road-free under something built on them - the
+## player's plot, at its biggest: the land is levelled a hand's width under
+## `height` across the whole square (so it never pokes up through the pad),
+## eased back to the country round it over `margin`, and no road is laid
+## across it. {centre, half, height, margin}
+var clear_zones: Array[Dictionary] = []
+
+func reserve_clear_square(centre: Vector3, half: float, height: float, margin: float = 12.0) -> void:
+	clear_zones.append({"centre": centre, "half": half, "height": height, "margin": margin})
+
+## Inside a clear square (plus `pad` metres round it)?
+func in_clear_zone(x: float, z: float, pad: float = 0.0) -> bool:
+	for zone in clear_zones:
+		var c: Vector3 = zone.centre
+		var h := float(zone.half) + pad
+		if absf(x - c.x) <= h and absf(z - c.z) <= h:
+			return true
+	return false
+
+func _flatten_clear_zones() -> void:
+	for zone in clear_zones:
+		var c: Vector3 = zone.centre
+		var half := float(zone.half)
+		var margin := float(zone.margin)
+		var reach := half + margin
+		for iz in range(maxi(0, int(floor(_grid_coord(c.z - reach)))), mini(_cells, int(ceil(_grid_coord(c.z + reach)))) + 1):
+			for ix in range(maxi(0, int(floor(_grid_coord(c.x - reach)))), mini(_cells, int(ceil(_grid_coord(c.x + reach)))) + 1):
+				var x := -half_extent + float(ix) * CELL
+				var z := -half_extent + float(iz) * CELL
+				# Distance out from the square's edge (0 inside it).
+				var out := maxf(absf(x - c.x) - half, absf(z - c.z) - half)
+				if out > margin:
+					continue
+				var index := _index(ix, iz)
+				if out <= CELL:
+					# The square and one grid step past it: level, and a
+					# little under the pad, so no facet reaches up through it.
+					_heights[index] = float(zone.height)
+					_road_mask[index] = 0
+				else:
+					var t: float = clampf((out - CELL) / maxf(0.01, margin - CELL), 0.0, 1.0)
+					_heights[index] = lerpf(float(zone.height), _heights[index], smoothstep(0.0, 1.0, t))
+
 # --- Generation ------------------------------------------------------------
 
 func generate() -> void:
@@ -392,6 +439,10 @@ func generate() -> void:
 		_carve_rivers()
 		_route_roads()
 		_lap("routing")
+		# The plot's square is levelled before the roads are graded as well as
+		# after, so a road running up to it comes down to its level instead of
+		# ending in mid-air at its edge.
+		_flatten_clear_zones()
 		_grade_roads(roads)
 		_lap("rivers+roads")
 		_place_requested_sites()
@@ -400,6 +451,7 @@ func generate() -> void:
 		_plan_caves()
 		_lap("caves")
 		_flatten_sites()
+		_flatten_clear_zones()
 		_save_cache()
 	_build_mesh()
 	_lap("mesh")
@@ -438,7 +490,7 @@ func _fill_row(iz: int, bufs: Array) -> void:
 
 func _cache_key() -> String:
 	var config := [GENERATOR_VERSION, half_extent, noise_seed, islands, regions, features, rivers,
-		roads, build_sites, site_requests, spur_sites, cave_count]
+		roads, build_sites, site_requests, spur_sites, cave_count, clear_zones]
 	return str(hash(var_to_str(config)))
 
 func _load_cache() -> bool:
@@ -794,6 +846,44 @@ func _cells_near(path: Array, reach: float) -> Dictionary:
 		travelled += length
 	return out
 
+## For every grid point within `band` of any stretch of the road, the lowest
+## road level over it: index -> height.
+func _lowest_under_road(path: Array, profile: PackedFloat32Array, span: float, band: float,
+		near: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	# Only other legs of the road count: the stretch a point is nearest to has
+	# set it already, and the few metres either side of that are the same road.
+	var same_leg := band * 3.0
+	var travelled := 0.0
+	for i in path.size() - 1:
+		var a: Vector3 = path[i]
+		var b: Vector3 = path[i + 1]
+		var ab := Vector2(b.x - a.x, b.z - a.z)
+		var length := ab.length()
+		if length < 0.001:
+			continue
+		var x0 := maxi(0, int(floor(_grid_coord(minf(a.x, b.x) - band))))
+		var x1 := mini(_cells, int(ceil(_grid_coord(maxf(a.x, b.x) + band))))
+		var z0 := maxi(0, int(floor(_grid_coord(minf(a.z, b.z) - band))))
+		var z1 := mini(_cells, int(ceil(_grid_coord(maxf(a.z, b.z) + band))))
+		for iz in range(z0, z1 + 1):
+			var z := -half_extent + float(iz) * CELL
+			for ix in range(x0, x1 + 1):
+				var x := -half_extent + float(ix) * CELL
+				var t: float = clampf(Vector2(x - a.x, z - a.z).dot(ab) / (length * length), 0.0, 1.0)
+				var d := Vector2(x - a.x - ab.x * t, z - a.z - ab.y * t).length()
+				if d > band:
+					continue
+				var index := _index(ix, iz)
+				var along := travelled + length * t
+				if near.has(index) and absf(along - float((near[index] as Vector2).y)) < same_leg:
+					continue
+				var h := _profile_height(profile, along, span)
+				if not out.has(index) or h < float(out[index]):
+					out[index] = h
+		travelled += length
+	return out
+
 ## Spec: roads across the land, giving a small speed bonus to drive on.
 ##
 ## The carriageway is graded to one height clean across its width. Blending it
@@ -834,11 +924,30 @@ func _grade_roads(list: Array) -> void:
 			# Flat a cell beyond the carriageway too, so no triangle that
 			# reaches onto the road has a corner up a bank.
 			if d <= ROAD_HALF_WIDTH + CELL:
-				_heights[index] = target
+				# A little under the road's own level: the carriageway is laid
+				# on top (RoadSurface), level across, and on a bend the land
+				# between grid points must not come up through its edge.
+				_heights[index] = target - ROAD_SINK
 				_road_mask[index] = 1
 			else:
 				var t: float = clampf((d - ROAD_HALF_WIDTH - CELL) / ROAD_SHOULDER, 0.0, 1.0)
 				_heights[index] = lerpf(target, _heights[index], smoothstep(0.0, 1.0, t))
+		# Where the road comes back past itself - a hairpin, a switchback, a
+		# tight bend on a hillside - the ground between the two legs belongs
+		# to whichever is nearer, and the other leg's edge would have the land
+		# standing up over it. So under every stretch of carriageway the land
+		# is taken down to that stretch's own level: nothing pokes up through
+		# a road on a turn.
+		var under := _lowest_under_road(path, profile, span, ROAD_HALF_WIDTH + CELL * 0.75, near)
+		for index in under:
+			if bridged and _heights[index] < WATER_LEVEL - 0.05:
+				continue
+			_heights[index] = minf(_heights[index], float(under[index]) - ROAD_SINK)
+		# RoadSurface lays the carriageway at the profile's height.
+		for entry in road_paths:
+			if entry.path == path:
+				entry["profile"] = profile
+				entry["span"] = span
 
 ## The wet stretches of a bridged road, before it is graded: each becomes a
 ## bridge from dry road to dry road.

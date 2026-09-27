@@ -111,11 +111,11 @@ func _physics_process(_delta: float) -> void:
 		Economy.add_money(100000)
 		PlayerState.try_unlock(&"furnace")
 		var built := 0
-		if world.plot.place(GameData.building(&"sawmill"), Vector2i(-9, -5), 0) != null:
+		if world.plot.place(GameData.building(&"sawmill"), Vector2i(-9, -5) * Plot.SUB, 0) != null:
 			built += 1
-		if world.plot.place(GameData.building(&"furnace"), Vector2i(2, -5), 0) != null:
+		if world.plot.place(GameData.building(&"furnace"), Vector2i(2, -5) * Plot.SUB, 0) != null:
 			built += 1
-		if world.plot.place(GameData.building(&"conveyor"), Vector2i(-9, 4), 0) != null:
+		if world.plot.place(GameData.building(&"conveyor"), Vector2i(-9, 4) * Plot.SUB, 0) != null:
 			built += 1
 		PlayerState.try_buy_vehicle()
 		world.spawn_vehicle()

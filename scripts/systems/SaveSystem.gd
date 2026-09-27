@@ -1,17 +1,84 @@
 class_name SaveSystem
 extends RefCounted
 
-## Plot + progress persistence, as a single human-readable JSON document.
+## Plot + progress persistence, as a single human-readable JSON document per
+## save slot. There are several slots (user://saves/slot_1.json and on): the
+## game plays in one at a time, saves and autosaves go to it, and the menus
+## can load, save into, start a new game in, or clear any of them.
 
+## The one save of the days before slots. Read as slot 1 if slot 1 is empty.
 const SAVE_PATH := "user://pinecraft_save.json"
+const SAVE_DIR := "user://saves"
+const SLOTS := 6
 const VERSION := 2
+
+## The slot being played.
+static var slot: int = 1
+## Set once a slot has been picked this run (by the menus, or the newest save
+## at start-up), so a scene reload keeps it.
+static var slot_chosen: bool = false
+
+static func slot_path(n: int) -> String:
+	return "%s/slot_%d.json" % [SAVE_DIR, n]
+
+static func current_path() -> String:
+	_migrate()
+	return slot_path(slot)
+
+## Moves the old single save into slot 1, once, if there is nothing there.
+static var _migrated: bool = false
+static func _migrate() -> void:
+	if _migrated:
+		return
+	_migrated = true
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SAVE_DIR))
+	if FileAccess.file_exists(SAVE_PATH) and not FileAccess.file_exists(slot_path(1)):
+		# Moved, not copied, so a slot 1 cleared later stays cleared.
+		DirAccess.rename_absolute(ProjectSettings.globalize_path(SAVE_PATH), ProjectSettings.globalize_path(slot_path(1)))
+
+## The slot with the newest save in it, or 1 when there are none.
+static func newest_slot() -> int:
+	_migrate()
+	var best := 1
+	var best_time := -1
+	for n in range(1, SLOTS + 1):
+		var p := slot_path(n)
+		if FileAccess.file_exists(p):
+			var t := FileAccess.get_modified_time(p)
+			if t > best_time:
+				best_time = t
+				best = n
+	return best
+
+## Picks the slot to play at start-up: the newest save, unless one was chosen.
+static func choose_start_slot() -> void:
+	if slot_chosen:
+		return
+	slot = newest_slot()
+	slot_chosen = true
+
+## Every slot and what is in it: [{slot, info}] (info empty for an empty slot).
+static func slots() -> Array:
+	_migrate()
+	var out: Array = []
+	for n in range(1, SLOTS + 1):
+		out.append({"slot": n, "info": summary(slot_path(n))})
+	return out
+
+static func any_save() -> bool:
+	for s in slots():
+		if not (s.info as Dictionary).is_empty():
+			return true
+	return false
 
 ## Loose material is only worth remembering when the player owns it and it is
 ## on their land: a trunk they felled and left in the forest is part of the
 ## world, and the world regenerates.
-static func save_game(plot: Plot, player: Node3D = null, path: String = SAVE_PATH,
+static func save_game(plot: Plot, player: Node3D = null, path: String = "",
 		manager: LooseItemManager = null, vehicle: Node3D = null,
 		quests: QuestLog = null) -> bool:
+	if path == "":
+		path = current_path()
 	var doc := {
 		"version": VERSION,
 		"saved_at": Time.get_datetime_string_from_system(true),
@@ -46,16 +113,18 @@ static func save_game(plot: Plot, player: Node3D = null, path: String = SAVE_PAT
 	file.close()
 	return true
 
-static func has_save(path: String = SAVE_PATH) -> bool:
-	return FileAccess.file_exists(path)
+static func has_save(path: String = "") -> bool:
+	return FileAccess.file_exists(path if path != "" else current_path())
 
 ## `vehicle_spawner` is called only when the save says a vehicle was owned. The
 ## truck has to exist before its cargo and pose can be restored, but whether it
 ## exists at all is itself part of the save, so the world hands us the means to
 ## make one rather than making one up front.
-static func load_game(plot: Plot, player: Node3D = null, path: String = SAVE_PATH,
+static func load_game(plot: Plot, player: Node3D = null, path: String = "",
 		manager: LooseItemManager = null, vehicle_spawner: Callable = Callable(),
 		quests: QuestLog = null) -> bool:
+	if path == "":
+		path = current_path()
 	if not FileAccess.file_exists(path):
 		return false
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -133,7 +202,9 @@ static func _loose_from_array(manager: LooseItemManager, entries: Array, plot_id
 						[], Color(0.42, 0.3, 0.2), float(a[8]) if a.size() > 8 else -1.0)
 
 ## What the main menu shows under Continue, read without loading anything.
-static func summary(path: String = SAVE_PATH) -> Dictionary:
+static func summary(path: String = "") -> Dictionary:
+	if path == "":
+		path = current_path()
 	if not FileAccess.file_exists(path):
 		return {}
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -149,6 +220,8 @@ static func summary(path: String = SAVE_PATH) -> Dictionary:
 		"saved_at": String(doc.get("saved_at", "")),
 	}
 
-static func delete_save(path: String = SAVE_PATH) -> void:
+static func delete_save(path: String = "") -> void:
+	if path == "":
+		path = current_path()
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))

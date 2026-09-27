@@ -67,6 +67,12 @@ var _saved: Label
 var _banner: Label
 var journal: Journal
 var inventory: InventoryPanel
+var build_menu: BuildMenu
+var _build_menu_holder: CenterContainer
+## The crane / winch / loader controls, over the gauges while driving.
+var _rig_card: PanelContainer
+var _rig_rows: VBoxContainer
+var _rig_text: String = "<unset>"
 var _hotbar: HBoxContainer
 var _hotbar_sig: String = ""
 var _hotbar_name: Label
@@ -151,7 +157,33 @@ func _ready() -> void:
 	inventory = InventoryPanel.new()
 	_root.add_child(inventory)
 	inventory.mouse_filter = Control.MOUSE_FILTER_STOP
+	_build_menu_holder = CenterContainer.new()
+	UIKit.fill(_build_menu_holder)
+	_build_menu_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_build_menu_holder)
+	build_menu = BuildMenu.new()
+	build_menu.build_system = build_system
+	_build_menu_holder.add_child(build_menu)
+	build_menu.chosen.connect(func(def: BuildingDef):
+		build_system.choose(def)
+		close_build_menu())
+	build_menu.closed.connect(close_build_menu)
+	if build_system != null:
+		build_system.menu_toggled.connect(func(open: bool):
+			if open:
+				build_menu.open()
+				player.set_ui_blocking(true)
+			else:
+				build_menu.visible = false
+				player.set_ui_blocking(journal.visible)
+			_build_sig = "")
 	Settings.changed.connect(func(_k): _apply_settings())
+	# Rebound keys: every keycap on screen is drawn again.
+	Settings.controls_changed.connect(func():
+		_hints_state = ""
+		_prompt_text = "<unset>"
+		_rig_text = "<unset>"
+		_build_sig = "")
 	_apply_settings()
 
 ## Nothing on the HUD should eat a click meant for the world.
@@ -348,8 +380,20 @@ func _build_build_bar() -> void:
 	_build_panel.visible = false
 
 func _build_drive() -> void:
+	var col := UIKit.vbox(8)
+	col.alignment = BoxContainer.ALIGNMENT_END
+	_root.add_child(col)
+	# The rig's controls sit over the gauges, out of the way of the view, and
+	# can be hidden (Settings > Interface, or the hints key).
+	_rig_card = UIKit.panel("Card")
+	_rig_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_rig_rows = UIKit.vbox(3)
+	_rig_card.add_child(_rig_rows)
+	_rig_card.visible = false
+	col.add_child(_rig_card)
 	_drive_panel = UIKit.panel("Card")
-	_root.add_child(_drive_panel)
+	_drive_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(_drive_panel)
 	var row := UIKit.hbox(22)
 	_drive_panel.add_child(row)
 	var speed_col := UIKit.vbox(0)
@@ -375,7 +419,7 @@ func _build_drive() -> void:
 	_drive_state = UIKit.label("", "Small")
 	cargo_col.add_child(_drive_state)
 	row.add_child(cargo_col)
-	_pin(_drive_panel, Control.PRESET_CENTER_BOTTOM)
+	_pin(col, Control.PRESET_CENTER_BOTTOM)
 	_drive_panel.visible = false
 
 func _build_misc() -> void:
@@ -572,7 +616,14 @@ static func _wrapped_key_text(text: String, width: float, size: int = 15) -> HFl
 # --- Journal ---------------------------------------------------------------
 
 func journal_open() -> bool:
-	return (journal != null and journal.visible) or (inventory != null and inventory.visible)
+	return (journal != null and journal.visible) or (inventory != null and inventory.visible) \
+		or (build_menu != null and build_menu.visible)
+
+func close_build_menu() -> void:
+	if build_system != null:
+		build_system.set_menu(false)
+	if build_menu != null:
+		build_menu.visible = false
 
 func open_journal(tab: String) -> void:
 	var i := journal.tab_index(tab)
@@ -586,43 +637,51 @@ func _on_journal_visibility() -> void:
 	if player != null:
 		player.set_ui_blocking(journal.visible)
 
-func _unhandled_key_input(event: InputEvent) -> void:
-	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo:
+func _unhandled_input(event: InputEvent) -> void:
+	var press := (event is InputEventKey or event is InputEventMouseButton) \
+		and event.is_pressed() and not event.is_echo()
+	if not press:
 		return
-	match key.keycode:
-		KEY_TAB, KEY_J:
-			open_journal("Orders")
-		KEY_M:
-			open_journal("Map")
-		KEY_P:
-			open_journal("Market")
-		KEY_U:
-			open_journal("Upgrades")
-		KEY_F1:
-			open_journal("Controls")
-		KEY_I:
-			if journal.visible:
-				journal.visible = false
-			inventory.player = player
-			inventory.toggle()
-		KEY_H:
-			Settings.set_value(&"show_hints", not Settings.flag(&"show_hints"))
-		KEY_F3:
-			show_debug = not show_debug
-		KEY_ESCAPE:
-			if inventory.visible:
-				inventory.visible = false
-			elif journal.visible:
-				journal.visible = false
-			elif build_system != null and build_system.editing():
-				build_system.deselect()
-			elif build_system != null and build_system.active:
-				build_system.set_active(false)
-			elif world != null and world.has_method("pause_game"):
-				world.call("pause_game")
-		_:
-			return
+	var key := event as InputEventKey
+	var escape := key != null and key.keycode == KEY_ESCAPE
+	if build_menu != null and build_menu.visible and Controls.pressed(event, &"build_menu"):
+		close_build_menu()
+	elif Controls.pressed(event, &"journal"):
+		open_journal("Orders")
+	elif Controls.pressed(event, &"map"):
+		open_journal("Map")
+	elif Controls.pressed(event, &"market"):
+		open_journal("Market")
+	elif Controls.pressed(event, &"upgrades"):
+		open_journal("Upgrades")
+	elif Controls.pressed(event, &"help"):
+		open_journal("Controls")
+	elif Controls.pressed(event, &"inventory"):
+		if journal.visible:
+			journal.visible = false
+		inventory.player = player
+		inventory.toggle()
+	elif Controls.pressed(event, &"toggle_hints"):
+		var on := not Settings.flag(&"show_hints")
+		Settings.set_value(&"show_hints", on)
+		Settings.set_value(&"show_rig_banner", on)
+	elif Controls.pressed(event, &"debug"):
+		show_debug = not show_debug
+	elif escape or Controls.pressed(event, &"pause"):
+		if build_menu != null and build_menu.visible:
+			close_build_menu()
+		elif inventory.visible:
+			inventory.visible = false
+		elif journal.visible:
+			journal.visible = false
+		elif build_system != null and build_system.editing():
+			build_system.deselect()
+		elif build_system != null and build_system.active:
+			build_system.set_active(false)
+		elif world != null and world.has_method("pause_game"):
+			world.call("pause_game")
+	else:
+		return
 	get_viewport().set_input_as_handled()
 
 # --- Per frame -------------------------------------------------------------
@@ -648,6 +707,7 @@ func _process(delta: float) -> void:
 	_crosshair.hot = player.last_prompt != "" and not building and not driving
 	_crosshair.visible = not driving or player.steering_load()
 	_set_prompt(_current_prompt(building, driving))
+	_set_rig_text(_rig_prompt(driving) if Settings.flag(&"show_rig_banner") else "")
 
 	_refresh -= delta
 	if _refresh > 0.0:
@@ -680,19 +740,32 @@ func _set_prompt(text: String) -> void:
 		UIKit.fill_key_text(_prompt_rows, text, 17)
 		_ignore_mouse(_prompt_rows)
 
-## Build mode says what it needs to on the build bar. In the truck the prompt
-## is the rig's, and only while it has hold of something.
+## Build mode says what it needs to on the build bar. In the truck the rig's
+## controls go over the gauges instead (see _rig_prompt).
 func _current_prompt(building: bool, driving: bool) -> String:
-	if building:
-		return ""
-	if driving:
-		if player.loader() != null:
-			return player.loader().status_line()
-		var r := player.rig()
-		if r != null and (r.operating or r.anchored or r.outriggers_down):
-			return r.status_line()
+	if building or driving:
 		return ""
 	return player.last_prompt
+
+## The crane, winch or loader's controls while they are in use.
+func _rig_prompt(driving: bool) -> String:
+	if not driving:
+		return ""
+	if player.loader() != null:
+		return player.loader().status_line()
+	var r := player.rig()
+	if r != null and (r.operating or r.anchored or r.outriggers_down):
+		return r.status_line()
+	return ""
+
+func _set_rig_text(text: String) -> void:
+	if text == _rig_text:
+		return
+	_rig_text = text
+	_rig_card.visible = text != ""
+	if text != "":
+		UIKit.fill_key_text(_rig_rows, text, 14)
+		_ignore_mouse(_rig_rows)
 
 ## "07:30" from an hour of the day.
 static func _clock_text(hour: float) -> String:
@@ -749,7 +822,10 @@ func _hint_state(building: bool, driving: bool) -> String:
 	if driving:
 		if player.loader() != null:
 			return "loader"
-		return "crane" if player.steering_load() else "drive"
+		if player.steering_load():
+			return "crane"
+		var truck := player.vehicle as Hauler
+		return "drive_manual" if truck != null and truck.manual_gearbox() else "drive"
 	if player.dragged != null:
 		return "dragging"
 	if player.carried_count() > 0:
@@ -834,13 +910,14 @@ func _update_build_bar() -> void:
 		return
 	_build_slots.visible = true
 	var def := build_system.current()
-	_build_name.text = def.display_name if def != null else "Nothing to build"
-	_build_blurb.text = def.blurb if def != null else "Buy machines at the Store."
+	_build_name.text = def.display_name if def != null else "Nothing in hand"
+	_build_blurb.text = def.blurb if def != null else "%s opens the build menu  ·  %s copies the building you aim at" % [
+		Controls.key(&"build_menu"), Controls.key(&"pick_block")]
 	var err := build_system.last_error
 	_build_error.text = "" if err == "" or err == "no target" else err[0].to_upper() + err.substr(1)
 	_build_error.visible = _build_error.text != ""
-	var sig := "%d:%d:%d:%s" % [build_system.index, build_system.palette.size(), Economy.money / 10,
-		str(PlayerState.spare)]
+	var sig := "%d:%d:%d:%s:%s" % [build_system.index, build_system.palette.size(), Economy.money / 10,
+		str(PlayerState.spare), str(def)]
 	if sig == _build_sig:
 		return
 	_build_sig = sig
@@ -897,6 +974,8 @@ func _update_drive() -> void:
 		_cargo.text = "%s   ·   no load space" % truck.display_name
 		_cargo_bar.value = 0.0
 	var bits: Array[String] = []
+	if not truck.is_trailer and truck.gears.size() > 1:
+		bits.append("gear %s" % truck.gear_label())
 	if truck.input_brake:
 		bits.append("braking")
 	var rg := player.rig()

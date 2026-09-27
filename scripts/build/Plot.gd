@@ -8,7 +8,13 @@ signal buildings_changed(plot: Plot)
 signal vehicle_spawned(vehicle: Node3D)
 signal expanded(tier: int, half_extent: float)
 
+## Buildings are sized in whole metres (a belt is 1 x 1 x 4)...
 const CELL := 1.0
+## ...but placed on a finer grid: a quarter of a metre, sixteen to the square.
+## Records' `cell` is counted in these.
+static var SNAP: float = clampf(Balance.num("build.grid_snap", 0.25), 0.05, 1.0)
+## Grid steps to a metre.
+static var SUB: int = maxi(1, int(round(CELL / SNAP)))
 
 @export var plot_id: int = 0
 
@@ -33,6 +39,23 @@ func setup(p_manager: LooseItemManager, p_plot_id: int = 0) -> void:
 
 func _ready() -> void:
 	_apply_expansion(tier, false)
+	Settings.changed.connect(func(key: StringName):
+		if key == &"show_labels":
+			refresh_labels())
+
+## Name labels over the buildings on, or off, as the setting says.
+func refresh_labels() -> void:
+	var on := Settings.flag(&"show_labels")
+	for rec in placed:
+		var node: Node3D = rec.node
+		if node == null or not is_instance_valid(node):
+			continue
+		var plate := node.get_node_or_null("Nameplate")
+		if on and plate == null:
+			var def: BuildingDef = rec.def
+			Nameplate.attach(node, def.display_name, float(def.size.y) * CELL + 0.7)
+		elif not on and plate != null:
+			plate.queue_free()
 
 # --- Ground ----------------------------------------------------------------
 
@@ -70,6 +93,7 @@ func _apply_expansion(new_tier: int, announce: bool = true) -> void:
 	(_floor_mesh.mesh as BoxMesh).size = Vector3(size, 1.0, size)
 	_floor_mesh.position = _floor_shape.position
 	_floor_material.set_shader_parameter("half_extent", half_extent)
+	_floor_material.set_shader_parameter("snap", SNAP)
 	if announce:
 		expanded.emit(tier, half_extent)
 
@@ -95,6 +119,7 @@ uniform vec3 base : source_color = vec3(0.31, 0.33, 0.29);
 uniform vec3 line : source_color = vec3(0.88, 0.90, 0.80);
 uniform float grid_strength = 0.10;
 uniform float half_extent = 22.0;
+uniform float snap = 0.25;
 varying vec3 local_pos;
 varying vec3 local_normal;
 
@@ -117,7 +142,12 @@ void fragment() {
 		c *= 0.94 + n * 0.08;
 		float fine = grid_line(local_pos.xz, 1.0);
 		float major = grid_line(local_pos.xz / 4.0, 1.6);
-		c = mix(c, line, clamp(fine * grid_strength + major * grid_strength * 1.6, 0.0, 1.0));
+		// The snapping grid inside each metre, faint, and only up close in
+		// build mode (it would shimmer into a grey wash further off).
+		vec2 sp = local_pos.xz / snap;
+		float sub = grid_line(sp, 0.8) * (1.0 - smoothstep(0.12, 0.35, max(fwidth(sp).x, fwidth(sp).y)));
+		float build = clamp((grid_strength - 0.2) * 2.0, 0.0, 1.0);
+		c = mix(c, line, clamp(fine * grid_strength + major * grid_strength * 1.6 + sub * build * 0.22, 0.0, 1.0));
 		float edge = max(abs(local_pos.x), abs(local_pos.z));
 		if (edge > half_extent - 0.7) {
 			float stripe = step(0.5, fract((local_pos.x + local_pos.z) * 0.5));
@@ -139,16 +169,19 @@ func contains_world(world_pos: Vector3, margin: float = 0.0) -> bool:
 	var local := to_local(world_pos)
 	return absf(local.x) <= half_extent + margin and absf(local.z) <= half_extent + margin
 
+## The grid step a world point is in, counted in SNAP steps from the centre.
 func world_to_cell(world_pos: Vector3) -> Vector2i:
 	var local := to_local(world_pos)
-	return Vector2i(int(floor(local.x / CELL)), int(floor(local.z / CELL)))
+	return Vector2i(int(floor(local.x / SNAP + 0.0001)), int(floor(local.z / SNAP + 0.0001)))
 
+## Where a building whose corner is on grid step `cell` stands: the middle of
+## its footprint, on the pad.
 func cell_to_world(cell: Vector2i, size: Vector3i, rot: Variant) -> Vector3:
 	var fp := oriented_size(size, _as_rot(rot))
 	return to_global(Vector3(
-		(float(cell.x) + float(fp.x) * 0.5) * CELL,
+		float(cell.x) * SNAP + float(fp.x) * CELL * 0.5,
 		0.0,
-		(float(cell.y) + float(fp.z) * 0.5) * CELL))
+		float(cell.y) * SNAP + float(fp.z) * CELL * 0.5))
 
 ## A footprint after quarter turns about each axis. Rotation is in 90 degree
 ## steps per axis, so a rotated box still occupies whole cells and the
@@ -180,18 +213,22 @@ static func orientation_basis(rot: Vector3i) -> Basis:
 		float(posmod(rot.y, 4)) * PI * 0.5,
 		float(posmod(rot.z, 4)) * PI * 0.5))
 
+## Every grid step a footprint covers.
 func cells_for(cell: Vector2i, size: Vector3i, rot: Variant) -> Array[Vector2i]:
 	var fp := oriented_size(size, _as_rot(rot))
 	var out: Array[Vector2i] = []
-	for x in fp.x:
-		for z in fp.z:
+	for x in fp.x * SUB:
+		for z in fp.z * SUB:
 			out.append(Vector2i(cell.x + x, cell.y + z))
 	return out
 
+## Is this grid step on the pad? (A margin of a metre on the low sides, where
+## the kerb stripe is.)
 func in_bounds(cell: Vector2i) -> bool:
-	var x := float(cell.x) * CELL
-	var z := float(cell.y) * CELL
-	return absf(x) <= half_extent - CELL and absf(z) <= half_extent - CELL
+	var x := float(cell.x) * SNAP
+	var z := float(cell.y) * SNAP
+	return x >= -(half_extent - CELL) - 0.0001 and x + SNAP <= half_extent + 0.0001 \
+		and z >= -(half_extent - CELL) - 0.0001 and z + SNAP <= half_extent + 0.0001
 
 ## Returns "" when placement is legal, otherwise the reason it is not.
 func placement_error(def: BuildingDef, cell: Vector2i, rot: Variant, check_cost: bool = true,
@@ -202,10 +239,12 @@ func placement_error(def: BuildingDef, cell: Vector2i, rot: Variant, check_cost:
 		if GameData.sold_copy(def.id, def.tier):
 			return "none left - buy another at the store"
 		return "need $%d" % def.cost
-	# Buildings may share space: several things can stand in one cell.
-	for c in cells_for(cell, def.size, rot):
-		if not in_bounds(c):
-			return "outside plot"
+	# Buildings may share space: several things can stand in one cell. Only
+	# the footprint's corners need checking against the edge.
+	var fp := oriented_size(def.size, _as_rot(rot))
+	var far := Vector2i(cell.x + fp.x * SUB - 1, cell.y + fp.z * SUB - 1)
+	if not in_bounds(cell) or not in_bounds(far):
+		return "outside plot"
 	return ""
 
 func can_place(def: BuildingDef, cell: Vector2i, rot: Variant, check_cost: bool = true) -> bool:
@@ -265,9 +304,9 @@ func _spawn_node(def: BuildingDef, cell: Vector2i, orientation: Vector3i, lift: 
 	node.position = to_local(cell_to_world(cell, def.size, orientation)) + Vector3(0, lift, 0)
 	node.basis = orientation_basis(orientation)
 	add_child(node)
-	# The models are primitives and a plot is a field of similar boxes, so
-	# every building says what it is.
-	Nameplate.attach(node, def.display_name, float(def.size.y) * CELL + 0.7)
+	# The models speak for themselves now; a name over each is optional.
+	if Settings.flag(&"show_labels"):
+		Nameplate.attach(node, def.display_name, float(def.size.y) * CELL + 0.7)
 	return node
 
 # --- Editing -----------------------------------------------------------------
@@ -424,7 +463,9 @@ func _instantiate(def: BuildingDef) -> Node3D:
 				_:
 					c = Conveyor.new()
 			c.length = float(def.size.z) * CELL
-			c.width = float(def.size.x) * CELL * 0.9
+			# A borderless belt runs right to the edge of its grid square, so
+			# two laid side by side make one wide deck with no gap.
+			c.width = float(def.size.x) * CELL * (0.9 if def.railed else 1.0)
 			if def.belt == &"bend":
 				c.width = 0.9
 			c.speed = def.speed
@@ -524,7 +565,7 @@ func clear_buildings() -> void:
 ## a world point. Used by belts and splitters to hand items over directly.
 func find_sink_near(world_pos: Vector3, radius: float = 1.2) -> Object:
 	var cell := world_to_cell(world_pos)
-	var span := int(ceil(radius / CELL))
+	var span := int(ceil(radius / SNAP))
 	for dx in range(-span, span + 1):
 		for dz in range(-span, span + 1):
 			for index: int in indices_at_cell(Vector2i(cell.x + dx, cell.y + dz)):
@@ -604,18 +645,20 @@ func to_dict() -> Dictionary:
 		if node != null and node.has_method("to_dict"):
 			entry["state"] = node.call("to_dict")
 		items.append(entry)
-	return {"tier": tier, "buildings": items}
+	return {"tier": tier, "grid": SNAP, "buildings": items}
 
 func from_dict(d: Dictionary) -> void:
 	clear_buildings()
 	_apply_expansion(int(d.get("tier", 0)), false)
+	# Saves from before the finer grid counted cells in whole metres.
+	var scale := maxi(1, int(round(float(d.get("grid", CELL)) / SNAP)))
 	for entry in d.get("buildings", []):
 		var def := PlayerState.def_at_tier(StringName(entry.get("id", "")), int(entry.get("tier", 1)))
 		if def == null:
 			push_warning("Plot: save references unknown building '%s'" % entry.get("id", ""))
 			continue
 		var cell_array: Array = entry.get("cell", [0, 0])
-		var cell := Vector2i(int(cell_array[0]), int(cell_array[1]))
+		var cell := Vector2i(int(cell_array[0]), int(cell_array[1])) * scale
 		# Saves written before three-axis rotation carry a bare yaw.
 		var orientation := Vector3i(0, int(entry.get("yaw", 0)), 0)
 		if entry.has("rot"):

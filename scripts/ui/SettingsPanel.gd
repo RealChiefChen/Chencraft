@@ -44,6 +44,8 @@ func show_page(i: int) -> void:
 			_slider(&"mouse_sensitivity", "Mouse sensitivity", 0.2, 3.0, 0.05, "%.2fx")
 			_toggle(&"invert_y", "Invert mouse Y")
 			_slider(&"fov", "Field of view", 60.0, 100.0, 1.0, "%d°")
+			_toggle(&"manual_gearbox", "Manual gearbox for trucks (change gear yourself)")
+			_bindings()
 		"Video":
 			_toggle(&"fullscreen", "Fullscreen")
 			_toggle(&"vsync", "V-Sync")
@@ -56,6 +58,8 @@ func show_page(i: int) -> void:
 		"Interface":
 			_slider(&"ui_scale", "Interface scale", 0.75, 1.5, 0.05, "%d%%", 100.0)
 			_toggle(&"show_hints", "Key hints in the corner")
+			_toggle(&"show_rig_banner", "Crane / winch / loader controls banner while driving")
+			_toggle(&"show_labels", "Name labels over placed buildings")
 			_toggle(&"minimap", "Minimap")
 			_toggle(&"show_compass", "Compass")
 			_toggle(&"show_tutorial", "Getting-started checklist")
@@ -66,13 +70,91 @@ func show_page(i: int) -> void:
 			_body.add_child(debug)
 			_toggle(&"unlimited_money", "Unlimited money (buying costs nothing)")
 			_toggle(&"demo_lines", "Demo lines: an automated ore line and stone line running by the road east of home")
-			var note := UIKit.label("Settings are kept separately from your save, so starting a new game keeps them.", "Small")
+			var note := UIKit.label("Settings and controls are kept in your own config file, apart from your saves, so starting a new game keeps them.", "Small")
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			_body.add_child(note)
+			_config_buttons()
 
 func _reset() -> void:
+	if PAGES[_page] == "Controls":
+		Settings.reset_controls()
 	Settings.reset_to_defaults()
 	show_page(_page)
+
+## The config file: where it is, open its folder, read it again.
+func _config_buttons() -> void:
+	var row := _row("Config file: %s" % ProjectSettings.globalize_path(Settings.path))
+	row.add_child(UIKit.button("Open folder", func(): Settings.open_config_folder(), "Ghost"))
+	row.add_child(UIKit.button("Reload", func():
+		Settings.reload()
+		show_page(_page), "Ghost"))
+
+# --- Key bindings -----------------------------------------------------------------
+
+## The action being rebound, and its button, while waiting for a key.
+var _capturing: StringName = &""
+var _capture_add: bool = false
+var _capture_button: Button
+
+func _bindings() -> void:
+	var head := UIKit.label("Keys - click one, then press the key or mouse button you want. + adds a second key, x clears it.", "Small")
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_body.add_child(head)
+	_config_buttons()
+	var group := ""
+	for a in Controls.ACTIONS:
+		if String(a[2]) != group:
+			group = String(a[2])
+			_body.add_child(UIKit.label(group, "Subheader"))
+		var id: StringName = a[0]
+		var row := _row(String(a[1]))
+		var key := UIKit.button(Controls.keys_text(id), Callable(), "")
+		key.custom_minimum_size.x = 170
+		key.pressed.connect(_start_capture.bind(id, key, false))
+		row.add_child(key)
+		var add := UIKit.button("+", Callable(), "Ghost")
+		add.tooltip_text = "Add another key for this"
+		add.pressed.connect(_start_capture.bind(id, key, true))
+		row.add_child(add)
+		var clear := UIKit.button("x", func():
+			Settings.bind(id, [])
+			key.text = Controls.keys_text(id), "Ghost")
+		clear.tooltip_text = "Unbind"
+		row.add_child(clear)
+
+func _start_capture(action: StringName, button: Button, add: bool) -> void:
+	if _capture_button != null and is_instance_valid(_capture_button):
+		_capture_button.text = Controls.keys_text(_capturing)
+	_capturing = action
+	_capture_add = add
+	_capture_button = button
+	button.text = "press a key... (Esc cancels)"
+
+func _input(event: InputEvent) -> void:
+	if _capturing == &"":
+		return
+	var press := (event is InputEventKey or event is InputEventMouseButton) and event.is_pressed() \
+		and not event.is_echo()
+	if not press:
+		return
+	get_viewport().set_input_as_handled()
+	var key := event as InputEventKey
+	var action := _capturing
+	_capturing = &""
+	if key != null and key.keycode == KEY_ESCAPE:
+		if is_instance_valid(_capture_button):
+			_capture_button.text = Controls.keys_text(action)
+		return
+	var label := Controls.label_for_event(event)
+	if label == "":
+		return
+	var labels: Array = (Controls.bindings.get(action, []) as Array).duplicate() if _capture_add else []
+	if not labels.has(label):
+		labels.append(label)
+	Settings.bind(action, labels)
+	if is_instance_valid(_capture_button):
+		_capture_button.text = Controls.keys_text(action)
+	_capture_button = null
 
 func _row(title: String) -> HBoxContainer:
 	var shell := UIKit.panel("Row")

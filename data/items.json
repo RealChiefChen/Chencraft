@@ -1521,18 +1521,18 @@
       "path": "wood",
       "raw_item": "wood_pine",
       "final_item": "lumber_pine",
-      "raw": 22,
-      "pre": 28,
-      "final": 48
+      "raw": 150,
+      "pre": 200,
+      "final": 340
     },
     {
       "id": "palm",
       "path": "wood",
       "raw_item": "wood_palm",
       "final_item": "lumber_palm",
-      "raw": 26,
-      "pre": 25,
-      "final": 30,
+      "raw": 180,
+      "pre": 180,
+      "final": 210,
       "note": "Stringy: hardly worth milling"
     },
     {
@@ -1540,36 +1540,36 @@
       "path": "wood",
       "raw_item": "wood_birch",
       "final_item": "lumber_birch",
-      "raw": 30,
-      "pre": 44,
-      "final": 58
+      "raw": 210,
+      "pre": 310,
+      "final": 410
     },
     {
       "id": "spruce",
       "path": "wood",
       "raw_item": "wood_spruce",
       "final_item": "lumber_spruce",
-      "raw": 34,
-      "pre": 42,
-      "final": 70
+      "raw": 240,
+      "pre": 290,
+      "final": 490
     },
     {
       "id": "willow",
       "path": "wood",
       "raw_item": "wood_willow",
       "final_item": "lumber_willow",
-      "raw": 40,
-      "pre": 46,
-      "final": 92
+      "raw": 280,
+      "pre": 320,
+      "final": 640
     },
     {
       "id": "baobab",
       "path": "wood",
       "raw_item": "wood_baobab",
       "final_item": "lumber_baobab",
-      "raw": 40,
-      "pre": 64,
-      "final": 52,
+      "raw": 280,
+      "pre": 450,
+      "final": 360,
       "note": "Spongy: sell it sanded, planks lose value"
     },
     {
@@ -1577,18 +1577,18 @@
       "path": "wood",
       "raw_item": "wood_oak",
       "final_item": "lumber_oak",
-      "raw": 48,
-      "pre": 60,
-      "final": 118
+      "raw": 340,
+      "pre": 420,
+      "final": 830
     },
     {
       "id": "redwood",
       "path": "wood",
       "raw_item": "wood_redwood",
       "final_item": "lumber_redwood",
-      "raw": 50,
-      "pre": 56,
-      "final": 140,
+      "raw": 350,
+      "pre": 390,
+      "final": 980,
       "note": "Sanding does little; the planks are the prize"
     },
     {
@@ -1596,27 +1596,27 @@
       "path": "wood",
       "raw_item": "wood_maple",
       "final_item": "lumber_maple",
-      "raw": 55,
-      "pre": 78,
-      "final": 150
+      "raw": 380,
+      "pre": 550,
+      "final": 1000
     },
     {
       "id": "cherry",
       "path": "wood",
       "raw_item": "wood_cherry",
       "final_item": "lumber_cherry",
-      "raw": 75,
-      "pre": 120,
-      "final": 190
+      "raw": 520,
+      "pre": 840,
+      "final": 1300
     },
     {
       "id": "ironwood",
       "path": "wood",
       "raw_item": "wood_ironwood",
       "final_item": "lumber_ironwood",
-      "raw": 120,
-      "pre": 125,
-      "final": 330,
+      "raw": 840,
+      "pre": 880,
+      "final": 2300,
       "note": "Too hard to sand much; mill it"
     },
     {
@@ -1624,9 +1624,9 @@
       "path": "wood",
       "raw_item": "wood_frost",
       "final_item": "lumber_frost",
-      "raw": 150,
-      "pre": 145,
-      "final": 380,
+      "raw": 1000,
+      "pre": 1000,
+      "final": 2700,
       "note": "Sanding melts the frost a little"
     },
     {
@@ -1634,9 +1634,9 @@
       "path": "wood",
       "raw_item": "wood_spirit",
       "final_item": "lumber_spirit",
-      "raw": 230,
-      "pre": 180,
-      "final": 620,
+      "raw": 1600,
+      "pre": 1300,
+      "final": 4300,
       "note": "Sanding scuffs the glow; planks bring it back"
     },
     {
@@ -1644,9 +1644,9 @@
       "path": "wood",
       "raw_item": "wood_mahogany",
       "final_item": "lumber_mahogany",
-      "raw": 260,
-      "pre": 380,
-      "final": 900,
+      "raw": 1800,
+      "pre": 2700,
+      "final": 6300,
       "note": "Grows in one hidden valley"
     },
     {
@@ -1654,27 +1654,27 @@
       "path": "wood",
       "raw_item": "wood_ember",
       "final_item": "lumber_ember",
-      "raw": 320,
-      "pre": 420,
-      "final": 560
+      "raw": 2200,
+      "pre": 2900,
+      "final": 3900
     },
     {
       "id": "tin",
       "path": "metal",
       "raw_item": "ore_tin",
       "final_item": "ingot_tin",
-      "raw": 380,
-      "pre": 520,
-      "final": 640
+      "raw": 280,
+      "pre": 390,
+      "final": 480
     },
     {
       "id": "zinc",
       "path": "metal",
       "raw_item": "ore_zinc",
       "final_item": "ingot_zinc",
-      "raw": 450,
-      "pre": 520,
-      "final": 1100,
+      "raw": 340,
+      "pre": 390,
+      "final": 820,
       "note": "Dull bar, but refined zinc is in demand"
     },
     {
@@ -1682,18 +1682,18 @@
       "path": "metal",
       "raw_item": "ore_iron",
       "final_item": "ingot_iron",
-      "raw": 600,
-      "pre": 900,
-      "final": 1300
+      "raw": 450,
+      "pre": 680,
+      "final": 980
     },
     {
       "id": "magnetite",
       "path": "metal",
       "raw_item": "ore_magnetite",
       "final_item": "ingot_lodesteel",
-      "raw": 700,
-      "pre": 650,
-      "final": 1500,
+      "raw": 520,
+      "pre": 490,
+      "final": 1100,
       "note": "Smelting kills the magnetism; refining puts it back"
     },
     {
@@ -1701,9 +1701,9 @@
       "path": "metal",
       "raw_item": "ore_copper",
       "final_item": "ingot_copper",
-      "raw": 820,
-      "pre": 1300,
-      "final": 1350,
+      "raw": 620,
+      "pre": 980,
+      "final": 1000,
       "note": "Refining adds almost nothing"
     },
     {
@@ -1711,27 +1711,27 @@
       "path": "metal",
       "raw_item": "ore_nickel",
       "final_item": "ingot_nickel",
-      "raw": 950,
-      "pre": 1400,
-      "final": 2100
+      "raw": 710,
+      "pre": 1000,
+      "final": 1600
     },
     {
       "id": "silver",
       "path": "metal",
       "raw_item": "ore_silver",
       "final_item": "ingot_silver",
-      "raw": 1300,
-      "pre": 2000,
-      "final": 2900
+      "raw": 980,
+      "pre": 1500,
+      "final": 2200
     },
     {
       "id": "tungsten",
       "path": "metal",
       "raw_item": "ore_tungsten",
       "final_item": "ingot_tungsten",
-      "raw": 1400,
-      "pre": 1500,
-      "final": 5200,
+      "raw": 1000,
+      "pre": 1100,
+      "final": 3900,
       "note": "Barely worth smelting - until it is refined"
     },
     {
@@ -1739,18 +1739,18 @@
       "path": "metal",
       "raw_item": "ore_cobalt",
       "final_item": "ingot_cobalt",
-      "raw": 1800,
-      "pre": 2600,
-      "final": 3800
+      "raw": 1400,
+      "pre": 2000,
+      "final": 2800
     },
     {
       "id": "bismuth",
       "path": "metal",
       "raw_item": "ore_bismuth",
       "final_item": "ingot_bismuth",
-      "raw": 2200,
-      "pre": 1300,
-      "final": 1700,
+      "raw": 1600,
+      "pre": 980,
+      "final": 1300,
       "note": "The crystals are worth more than the metal"
     },
     {
@@ -1758,36 +1758,36 @@
       "path": "metal",
       "raw_item": "ore_gold",
       "final_item": "ingot_gold",
-      "raw": 2400,
-      "pre": 3400,
-      "final": 4600
+      "raw": 1800,
+      "pre": 2600,
+      "final": 3400
     },
     {
       "id": "platinum",
       "path": "metal",
       "raw_item": "ore_platinum",
       "final_item": "ingot_platinum",
-      "raw": 3200,
-      "pre": 5000,
-      "final": 7400
+      "raw": 2400,
+      "pre": 3800,
+      "final": 5600
     },
     {
       "id": "sunstone",
       "path": "metal",
       "raw_item": "ore_sunstone",
       "final_item": "ingot_sunsteel",
-      "raw": 4000,
-      "pre": 5700,
-      "final": 8000
+      "raw": 3000,
+      "pre": 4300,
+      "final": 6000
     },
     {
       "id": "starmetal",
       "path": "metal",
       "raw_item": "ore_starmetal",
       "final_item": "ingot_starsteel",
-      "raw": 6000,
-      "pre": 11000,
-      "final": 16000,
+      "raw": 4500,
+      "pre": 8200,
+      "final": 12000,
       "note": "Fell from the sky onto one island"
     },
     {
@@ -1795,18 +1795,18 @@
       "path": "gem",
       "raw_item": "gem_quartz",
       "final_item": "jewel_quartz",
-      "raw": 300,
-      "pre": 520,
-      "final": 700
+      "raw": 220,
+      "pre": 390,
+      "final": 520
     },
     {
       "id": "obsidian",
       "path": "gem",
       "raw_item": "gem_obsidian",
       "final_item": "jewel_obsidian",
-      "raw": 600,
-      "pre": 1100,
-      "final": 800,
+      "raw": 450,
+      "pre": 820,
+      "final": 600,
       "note": "Brittle: cutting chips it, sell it polished"
     },
     {
@@ -1814,9 +1814,9 @@
       "path": "gem",
       "raw_item": "gem_jade",
       "final_item": "jewel_jade",
-      "raw": 900,
-      "pre": 2400,
-      "final": 2500,
+      "raw": 680,
+      "pre": 1800,
+      "final": 1900,
       "note": "All the value is in the polish"
     },
     {
@@ -1824,36 +1824,36 @@
       "path": "gem",
       "raw_item": "gem_amethyst",
       "final_item": "jewel_amethyst",
-      "raw": 1200,
-      "pre": 1600,
-      "final": 3200
+      "raw": 900,
+      "pre": 1200,
+      "final": 2400
     },
     {
       "id": "emerald",
       "path": "gem",
       "raw_item": "gem_emerald",
       "final_item": "jewel_emerald",
-      "raw": 2600,
-      "pre": 3000,
-      "final": 8500
+      "raw": 2000,
+      "pre": 2200,
+      "final": 6400
     },
     {
       "id": "ruby",
       "path": "gem",
       "raw_item": "gem_ruby",
       "final_item": "jewel_ruby",
-      "raw": 3000,
-      "pre": 4200,
-      "final": 9500
+      "raw": 2200,
+      "pre": 3200,
+      "final": 7100
     },
     {
       "id": "diamond",
       "path": "gem",
       "raw_item": "gem_diamond",
       "final_item": "jewel_diamond",
-      "raw": 5000,
-      "pre": 5000,
-      "final": 22000,
+      "raw": 3800,
+      "pre": 3800,
+      "final": 16000,
       "note": "Polish does nothing; the cut is everything"
     },
     {
@@ -1861,9 +1861,9 @@
       "path": "wood",
       "raw_item": "wood_glowcap",
       "final_item": "lumber_glowcap",
-      "raw": 180,
-      "pre": 170,
-      "final": 520,
+      "raw": 1300,
+      "pre": 1200,
+      "final": 3600,
       "note": "Fungal caves only. Spongy until it is planked"
     },
     {
@@ -1871,9 +1871,9 @@
       "path": "gem",
       "raw_item": "gem_sapphire",
       "final_item": "jewel_sapphire",
-      "raw": 2800,
-      "pre": 3500,
-      "final": 9000,
+      "raw": 2100,
+      "pre": 2600,
+      "final": 6800,
       "note": "Ice caves only"
     }
   ]

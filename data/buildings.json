@@ -4,7 +4,7 @@
       "id": "conveyor",
       "display_name": "Conveyor",
       "kind": "conveyor",
-      "cost": 200,
+      "cost": 210,
       "size": [
         1,
         1,
@@ -17,7 +17,7 @@
       "id": "conveyor_fast",
       "display_name": "Fast Conveyor",
       "kind": "conveyor",
-      "cost": 700,
+      "cost": 850,
       "size": [
         1,
         1,
@@ -30,7 +30,7 @@
       "id": "splitter",
       "display_name": "3-Way Splitter",
       "kind": "splitter",
-      "cost": 450,
+      "cost": 510,
       "size": [
         2,
         1,
@@ -42,7 +42,7 @@
       "id": "filter",
       "display_name": "Filter",
       "kind": "filter",
-      "cost": 1000,
+      "cost": 1300,
       "size": [
         2,
         1,
@@ -56,7 +56,7 @@
       "kind": "conveyor",
       "belt": "bend",
       "turn": -1,
-      "cost": 300,
+      "cost": 330,
       "size": [
         2,
         1,
@@ -71,7 +71,7 @@
       "kind": "conveyor",
       "belt": "bend",
       "turn": 1,
-      "cost": 300,
+      "cost": 330,
       "size": [
         2,
         1,
@@ -84,7 +84,7 @@
       "id": "splitter_t",
       "display_name": "T Splitter",
       "kind": "splitter",
-      "cost": 400,
+      "cost": 450,
       "size": [
         2,
         1,
@@ -97,7 +97,7 @@
       "display_name": "3-into-1 Merger",
       "kind": "conveyor",
       "belt": "merge",
-      "cost": 500,
+      "cost": 580,
       "size": [
         3,
         1,
@@ -111,7 +111,7 @@
       "display_name": "Aligning Belt",
       "kind": "conveyor",
       "belt": "align",
-      "cost": 500,
+      "cost": 580,
       "size": [
         1,
         1,
@@ -124,7 +124,7 @@
       "id": "sawmill",
       "display_name": "Planker",
       "kind": "inline",
-      "cost": 450,
+      "cost": 510,
       "size": [
         2,
         3,
@@ -137,7 +137,7 @@
       "id": "sander",
       "display_name": "Sander",
       "kind": "inline",
-      "cost": 600,
+      "cost": 710,
       "size": [
         2,
         3,
@@ -150,7 +150,7 @@
       "id": "furnace",
       "display_name": "Smelter",
       "kind": "inline",
-      "cost": 1200,
+      "cost": 1600,
       "size": [
         2,
         3,
@@ -163,7 +163,7 @@
       "id": "refiner",
       "display_name": "Refiner",
       "kind": "inline",
-      "cost": 3000,
+      "cost": 5300,
       "size": [
         2,
         3,
@@ -176,7 +176,7 @@
       "id": "gem_polisher",
       "display_name": "Gem Polisher",
       "kind": "inline",
-      "cost": 1400,
+      "cost": 1900,
       "size": [
         2,
         3,
@@ -189,7 +189,7 @@
       "id": "gem_cutter",
       "display_name": "Gem Cutter",
       "kind": "inline",
-      "cost": 2000,
+      "cost": 3100,
       "size": [
         2,
         3,
@@ -202,7 +202,7 @@
       "id": "workbench",
       "display_name": "Workbench",
       "kind": "machine",
-      "cost": 3500,
+      "cost": 6600,
       "size": [
         4,
         3,
@@ -216,7 +216,7 @@
       "id": "storage",
       "display_name": "Storage Bin",
       "kind": "storage",
-      "cost": 400,
+      "cost": 450,
       "size": [
         2,
         2,
@@ -229,7 +229,7 @@
       "id": "crusher",
       "display_name": "Crusher",
       "kind": "inline",
-      "cost": 850,
+      "cost": 1100,
       "size": [
         2,
         3,
@@ -320,7 +320,7 @@
         3,
         1
       ],
-      "cost": 40,
+      "cost": 41,
       "kind": "schematic",
       "shape": "garage",
       "blurb": "A wide doorway with a door that swings up overhead - big enough for a truck. Fill it with material; then [E] opens and shuts it."
@@ -329,7 +329,7 @@
       "id": "vehicle_pad",
       "display_name": "Hauler Pad",
       "kind": "pad",
-      "cost": 5000,
+      "cost": 11000,
       "size": [
         4,
         1,
@@ -343,7 +343,7 @@
       "display_name": "Quad Bike Pad",
       "kind": "pad",
       "vehicle": "quad",
-      "cost": 1200,
+      "cost": 1600,
       "size": [
         3,
         1,
@@ -356,7 +356,7 @@
       "display_name": "Pickup Pad",
       "kind": "pad",
       "vehicle": "pickup",
-      "cost": 2500,
+      "cost": 4100,
       "size": [
         4,
         1,
@@ -369,7 +369,7 @@
       "display_name": "Buggy Pad",
       "kind": "pad",
       "vehicle": "buggy",
-      "cost": 3500,
+      "cost": 6600,
       "size": [
         4,
         1,
@@ -382,7 +382,7 @@
       "display_name": "Log Truck Pad",
       "kind": "pad",
       "vehicle": "log_truck",
-      "cost": 12000,
+      "cost": 44000,
       "size": [
         4,
         1,
@@ -395,7 +395,7 @@
       "display_name": "Dump Truck Pad",
       "kind": "pad",
       "vehicle": "dump_truck",
-      "cost": 15000,
+      "cost": 64000,
       "size": [
         4,
         1,
@@ -408,7 +408,7 @@
       "display_name": "Crane Truck Pad",
       "kind": "pad",
       "vehicle": "crane_truck",
-      "cost": 20000,
+      "cost": 110000,
       "size": [
         4,
         1,
@@ -421,7 +421,7 @@
       "display_name": "Utility Trailer Pad",
       "kind": "pad",
       "vehicle": "trailer",
-      "cost": 1500,
+      "cost": 2100,
       "size": [
         3,
         1,
@@ -434,7 +434,7 @@
       "display_name": "Logging Trailer Pad",
       "kind": "pad",
       "vehicle": "log_trailer",
-      "cost": 4500,
+      "cost": 9500,
       "size": [
         4,
         1,
@@ -447,7 +447,7 @@
       "display_name": "Dump Trailer Pad",
       "kind": "pad",
       "vehicle": "dump_trailer",
-      "cost": 5500,
+      "cost": 13000,
       "size": [
         4,
         1,
@@ -460,7 +460,7 @@
       "display_name": "Front Loader Pad",
       "kind": "pad",
       "vehicle": "loader",
-      "cost": 9000,
+      "cost": 28000,
       "size": [
         4,
         1,
@@ -472,7 +472,7 @@
       "id": "conveyor_ramp",
       "display_name": "Belt Ramp",
       "kind": "conveyor",
-      "cost": 350,
+      "cost": 390,
       "size": [
         1,
         3,
@@ -486,7 +486,7 @@
       "id": "conveyor_open",
       "display_name": "Borderless Belt",
       "kind": "conveyor",
-      "cost": 160,
+      "cost": 170,
       "size": [
         1,
         1,
@@ -500,7 +500,7 @@
       "id": "conveyor_long",
       "display_name": "Long Belt",
       "kind": "conveyor",
-      "cost": 400,
+      "cost": 450,
       "size": [
         1,
         1,
@@ -514,7 +514,7 @@
       "id": "conveyor_wide",
       "display_name": "Wide Belt",
       "kind": "conveyor",
-      "cost": 500,
+      "cost": 580,
       "size": [
         2,
         1,
@@ -540,7 +540,7 @@
       "id": "lamp_post",
       "display_name": "Lamp Post",
       "kind": "doodad",
-      "cost": 60,
+      "cost": 61,
       "size": [
         1,
         3,
@@ -552,7 +552,7 @@
       "id": "bench",
       "display_name": "Park Bench",
       "kind": "doodad",
-      "cost": 50,
+      "cost": 51,
       "size": [
         1,
         1,
@@ -600,7 +600,7 @@
       "id": "flag_pole",
       "display_name": "Flag Pole",
       "kind": "doodad",
-      "cost": 120,
+      "cost": 130,
       "size": [
         1,
         5,
@@ -636,7 +636,7 @@
       "id": "garden_gnome",
       "display_name": "Garden Gnome",
       "kind": "doodad",
-      "cost": 150,
+      "cost": 160,
       "size": [
         1,
         1,
@@ -648,7 +648,7 @@
       "id": "statue",
       "display_name": "Lumberjack Statue",
       "kind": "doodad",
-      "cost": 3000,
+      "cost": 5300,
       "size": [
         2,
         4,
@@ -660,7 +660,7 @@
       "id": "fountain",
       "display_name": "Fountain",
       "kind": "doodad",
-      "cost": 2500,
+      "cost": 4100,
       "size": [
         3,
         2,
@@ -672,7 +672,7 @@
       "id": "beacon",
       "display_name": "Crystal Beacon",
       "kind": "doodad",
-      "cost": 1500,
+      "cost": 2100,
       "size": [
         1,
         3,
@@ -684,7 +684,7 @@
       "id": "topiary",
       "display_name": "Topiary Bush",
       "kind": "doodad",
-      "cost": 600,
+      "cost": 710,
       "size": [
         1,
         2,

@@ -13,28 +13,28 @@
         },
         {
           "level": 2,
-          "cost": 120,
+          "cost": 130,
           "label": "Shoulder Strap",
           "capacity_m3": 0.45,
           "lift_kg": 1000.0
         },
         {
           "level": 3,
-          "cost": 650,
+          "cost": 780,
           "label": "Hauling Frame",
           "capacity_m3": 0.95,
           "lift_kg": 1000.0
         },
         {
           "level": 4,
-          "cost": 2600,
+          "cost": 4400,
           "label": "Log Harness",
           "capacity_m3": 1.8,
           "lift_kg": 1000.0
         },
         {
           "level": 5,
-          "cost": 11000,
+          "cost": 38000,
           "label": "Cargo Exo-Rig",
           "capacity_m3": 3.2,
           "lift_kg": 1000.0
@@ -56,21 +56,21 @@
         },
         {
           "level": 2,
-          "cost": 300,
+          "cost": 330,
           "walk": 6.5,
           "sprint": 10.5,
           "label": "Trail Boots"
         },
         {
           "level": 3,
-          "cost": 1500,
+          "cost": 2100,
           "walk": 7.5,
           "sprint": 13.0,
           "label": "Spring Boots"
         },
         {
           "level": 4,
-          "cost": 7000,
+          "cost": 19000,
           "walk": 8.5,
           "sprint": 16.0,
           "label": "Turbo Treads"
@@ -90,21 +90,21 @@
         },
         {
           "level": 2,
-          "cost": 1500,
+          "cost": 2100,
           "label": "Tuned Engine",
           "engine": 1.2,
           "top_speed": 1.05
         },
         {
           "level": 3,
-          "cost": 5000,
+          "cost": 11000,
           "label": "Turbo Diesel",
           "engine": 1.45,
           "top_speed": 1.1
         },
         {
           "level": 4,
-          "cost": 14000,
+          "cost": 57000,
           "label": "Big Block",
           "engine": 1.8,
           "top_speed": 1.16
@@ -123,19 +123,19 @@
         },
         {
           "level": 2,
-          "cost": 1200,
+          "cost": 1600,
           "label": "All-Terrain Tyres",
           "grip": 1.12
         },
         {
           "level": 3,
-          "cost": 4000,
+          "cost": 8000,
           "label": "Mud Terrain Tyres",
           "grip": 1.25
         },
         {
           "level": 4,
-          "cost": 11000,
+          "cost": 38000,
           "label": "Lugged Tyres and Chains",
           "grip": 1.4
         }
@@ -154,14 +154,14 @@
         },
         {
           "level": 2,
-          "cost": 1000,
+          "cost": 1300,
           "hole_scale": 1.35,
           "rate_scale": 1.4,
           "label": "Mill Planker"
         },
         {
           "level": 3,
-          "cost": 2300,
+          "cost": 3700,
           "hole_scale": 1.7,
           "rate_scale": 1.85,
           "label": "Headrig Planker"
@@ -181,14 +181,14 @@
         },
         {
           "level": 2,
-          "cost": 1300,
+          "cost": 1800,
           "hole_scale": 1.35,
           "rate_scale": 1.4,
           "label": "Wide-Belt Sander"
         },
         {
           "level": 3,
-          "cost": 3000,
+          "cost": 5300,
           "hole_scale": 1.7,
           "rate_scale": 1.85,
           "label": "Twin-Head Sander"
@@ -208,14 +208,14 @@
         },
         {
           "level": 2,
-          "cost": 1900,
+          "cost": 2900,
           "hole_scale": 1.35,
           "rate_scale": 1.4,
           "label": "Cone Crusher"
         },
         {
           "level": 3,
-          "cost": 4300,
+          "cost": 8900,
           "hole_scale": 1.7,
           "rate_scale": 1.85,
           "label": "Gyratory Crusher"
@@ -235,14 +235,14 @@
         },
         {
           "level": 2,
-          "cost": 2600,
+          "cost": 4400,
           "hole_scale": 1.35,
           "rate_scale": 1.4,
           "label": "Cupola"
         },
         {
           "level": 3,
-          "cost": 6000,
+          "cost": 15000,
           "hole_scale": 1.7,
           "rate_scale": 1.85,
           "label": "Induction Smelter"
@@ -262,14 +262,14 @@
         },
         {
           "level": 2,
-          "cost": 6500,
+          "cost": 17000,
           "hole_scale": 1.35,
           "rate_scale": 1.4,
           "label": "Electrolytic Refiner"
         },
         {
           "level": 3,
-          "cost": 15000,
+          "cost": 64000,
           "hole_scale": 1.7,
           "rate_scale": 1.85,
           "label": "Zone Refiner"
@@ -289,14 +289,14 @@
         },
         {
           "level": 2,
-          "cost": 7500,
+          "cost": 21000,
           "hole_scale": 1.45,
           "rate_scale": 1.4,
           "label": "Power Bench"
         },
         {
           "level": 3,
-          "cost": 17500,
+          "cost": 84000,
           "hole_scale": 2.0,
           "rate_scale": 1.9,
           "label": "Assembly Line"
@@ -316,14 +316,14 @@
         },
         {
           "level": 2,
-          "cost": 3000,
+          "cost": 5300,
           "hole_scale": 1.35,
           "rate_scale": 1.4,
           "label": "Vibratory Polisher"
         },
         {
           "level": 3,
-          "cost": 7000,
+          "cost": 19000,
           "hole_scale": 1.7,
           "rate_scale": 1.85,
           "label": "Diamond Lap"
@@ -343,14 +343,14 @@
         },
         {
           "level": 2,
-          "cost": 4400,
+          "cost": 9200,
           "hole_scale": 1.35,
           "rate_scale": 1.4,
           "label": "Faceting Rig"
         },
         {
           "level": 3,
-          "cost": 10000,
+          "cost": 33000,
           "hole_scale": 1.7,
           "rate_scale": 1.85,
           "label": "Laser Cutter"
@@ -367,19 +367,19 @@
     },
     {
       "tier": 1,
-      "cost": 2000,
+      "cost": 3100,
       "half_extent": 30.0,
       "item_cap": 260
     },
     {
       "tier": 2,
-      "cost": 9000,
+      "cost": 28000,
       "half_extent": 38.0,
       "item_cap": 320
     },
     {
       "tier": 3,
-      "cost": 32000,
+      "cost": 240000,
       "half_extent": 48.0,
       "item_cap": 400
     }
@@ -387,6 +387,6 @@
   "vehicle": {
     "id": "hauler",
     "display_name": "Flatbed Hauler",
-    "cost": 5000
+    "cost": 11000
   }
 }

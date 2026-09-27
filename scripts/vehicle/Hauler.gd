@@ -70,6 +70,8 @@ var spec: Dictionary = {}
 var style: StringName = &"truck"
 var bed_kind: StringName = &"sides"
 var paint: Color = Color(0.62, 0.20, 0.16)
+## A colour chosen at its pad, in place of the factory paint (alpha 0: none).
+var paint_override: Color = Color(0, 0, 0, 0)
 ## How far back the chase camera sits.
 var camera_distance: float = 9.0
 
@@ -186,6 +188,8 @@ func _apply_spec() -> void:
 	camera_distance = float(spec.get("camera", 9.0))
 	var c: Array = spec.get("paint", [0.62, 0.2, 0.16])
 	paint = Color(c[0], c[1], c[2])
+	if paint_override.a > 0.0:
+		paint = Color(paint_override.r, paint_override.g, paint_override.b)
 	wheel_offsets.clear()
 	_front_z = INF
 	for w in spec.get("wheels", []):

@@ -4726,6 +4726,15 @@ func test_loader_pad_attachment() -> void:
 	check_eq(second.loader.attachment, &"grapple", "respawned loader")
 	var saved := pad.to_dict()
 	check_eq(String(saved.get("attachment", "")), "grapple", "the pad's choice is not saved")
+	# Paint: the next one off the pad comes in the colour chosen.
+	pad.paint = Color(0.08, 0.58, 0.60)
+	var third := pad.spawn() as Hauler
+	await step(3)
+	check(third.paint.is_equal_approx(Color(0.08, 0.58, 0.60)), "the respawned loader is not painted teal")
+	var back := VehiclePad.new()
+	back.from_dict(pad.to_dict())
+	check(back.paint.is_equal_approx(pad.paint), "the pad's paint is not saved")
+	back.free()
 	done()
 
 func _block(at: Vector3, size: Vector3) -> StaticBody3D:

@@ -24,6 +24,16 @@ var vehicle: Node3D = null
 ## On a loader's pad: what the loader comes out with, a bucket or a log
 ## grapple. Changing it means sending the loader back and spawning it again.
 var attachment: StringName = &"bucket"
+## The colour the next vehicle off this pad is painted (alpha 0: as it comes
+## from the factory).
+var paint: Color = Color(0, 0, 0, 0)
+const PAINTS := [
+	["Factory", Color(0, 0, 0, 0)], ["Fire red", Color(0.80, 0.14, 0.12)], ["Sunset orange", Color(0.95, 0.46, 0.10)],
+	["Lemon", Color(0.96, 0.82, 0.16)], ["Lime", Color(0.45, 0.80, 0.20)], ["Forest", Color(0.12, 0.42, 0.20)],
+	["Teal", Color(0.08, 0.58, 0.60)], ["Sky", Color(0.30, 0.62, 0.95)], ["Navy", Color(0.12, 0.20, 0.52)],
+	["Grape", Color(0.46, 0.22, 0.66)], ["Pink", Color(0.96, 0.44, 0.66)], ["Snow", Color(0.93, 0.93, 0.95)],
+	["Graphite", Color(0.20, 0.21, 0.23)], ["Sand", Color(0.82, 0.70, 0.50)],
+]
 
 var _size: Vector3 = Vector3(4, 0.2, 6)
 
@@ -49,6 +59,7 @@ func spawn() -> Node3D:
 	recall()
 	var truck := Hauler.new()
 	truck.setup(manager, plot_id, def.vehicle if def != null else &"hauler")
+	truck.paint_override = paint
 	truck.terrain = terrain
 	var target: Node3D = host if host != null else get_parent() as Node3D
 	if target == null:
@@ -90,8 +101,7 @@ func status_line() -> String:
 		line = "%s: [E] recall and respawn (it is %.0f m away)" % [def.display_name, distance]
 	else:
 		line = "%s: [E] spawn the %s" % [def.display_name, vehicle_name().to_lower()]
-	if is_loader_pad():
-		line += "\nwith the %s  [R] change" % _attachment_name()
+	line += "\n[R] paint%s" % (" and bucket or grapple (now the %s)" % _attachment_name() if is_loader_pad() else "")
 	return line
 
 func vehicle_name() -> String:
@@ -162,13 +172,16 @@ func _attachment_name() -> String:
 	return "log grapple" if attachment == &"grapple" else "bucket"
 
 func to_dict() -> Dictionary:
-	var d := {"has_vehicle": has_vehicle(), "attachment": String(attachment)}
+	var d := {"has_vehicle": has_vehicle(), "attachment": String(attachment),
+		"paint": [paint.r, paint.g, paint.b, paint.a]}
 	if has_vehicle() and vehicle.has_method("to_dict"):
 		d["vehicle"] = vehicle.call("to_dict")
 	return d
 
 func from_dict(d: Dictionary) -> void:
 	attachment = StringName(String(d.get("attachment", "bucket")))
+	var c: Array = d.get("paint", [0, 0, 0, 0])
+	paint = Color(float(c[0]), float(c[1]), float(c[2]), float(c[3]))
 	if not bool(d.get("has_vehicle", false)):
 		return
 	var truck := spawn()

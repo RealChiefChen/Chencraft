@@ -443,3 +443,13 @@ func shot_machinecfg() -> void:
 	for i in 10:
 		await get_tree().process_frame
 	await snap("machinecfg")
+
+func shot_padpanel() -> void:
+	var pad := world.plot.place(GameData.building(&"pad_loader"), Vector2i(0, 0), 0, false) as VehiclePad
+	await get_tree().process_frame
+	pad.paint = VehiclePad.PAINTS[6][1]
+	world.hud.visible = true
+	world.hud.pad_panel.open(pad)
+	for i in 10:
+		await get_tree().process_frame
+	await snap("padpanel")

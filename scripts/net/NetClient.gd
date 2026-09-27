@@ -284,6 +284,8 @@ func _spawn(e: Dictionary) -> void:
 		"v":
 			var v := Hauler.new()
 			v.setup(world.get("manager"), 0, StringName(e.veh))
+			if e.has("paint"):
+				v.paint_override = Color(float(e.paint[0]), float(e.paint[1]), float(e.paint[2]))
 			v.terrain = world.get("terrain")
 			_mirror.add_child(v)
 			_solid_picture(v)

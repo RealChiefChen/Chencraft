@@ -140,6 +140,16 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 			world.call("return_to_base", p)
 		"build":
 			tell_peer(peer, _guest_build(ev))
+		"pad":
+			var pe: Variant = _nodes.get(int(ev.get("id", -1)), null)
+			if pe != null and String(pe[1]) == "b":
+				var pad := (pe[0] as Dictionary).node as VehiclePad
+				if pad != null:
+					if ev.has("paint"):
+						var c: Array = ev.paint
+						pad.paint = Color(float(c[0]), float(c[1]), float(c[2]), float(c[3]))
+					if ev.has("attachment"):
+						pad.attachment = StringName(String(ev.attachment))
 		"mcfg":
 			var entry: Variant = _nodes.get(int(ev.get("id", -1)), null)
 			if entry != null and String(entry[1]) == "b":
@@ -310,6 +320,7 @@ func _spawn_entry(id: int, thing: Variant, kind: String) -> Dictionary:
 			var v := thing as Hauler
 			e.veh = String(v.vehicle_id)
 			e.x = _pose(v.global_transform)
+			e.paint = [v.paint.r, v.paint.g, v.paint.b]
 		"p":
 			var p := thing as Player
 			var peer := _peer_of(p)

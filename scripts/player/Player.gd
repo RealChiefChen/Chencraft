@@ -16,6 +16,8 @@ signal swung()
 signal wants_to_drive(vehicle: Node3D)
 ## [R] at a machine that can be set to a size: the HUD opens its settings.
 signal machine_config_requested(machine: InlineMachine)
+## [R] at a vehicle pad: the HUD opens its paint and fittings.
+signal pad_config_requested(pad: VehiclePad)
 ## Co-op, on the host: a guest's player was moved here rather than by the
 ## guest (back to base, out of a truck), so the guest must be told.
 signal warped()
@@ -359,7 +361,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_key(event)
 			return
 		# A machine's sizes are set here, on its picture, and sent on.
-		if Controls.pressed(event, &"machine_output") and not driving() and _cycle_machine_output():
+		if Controls.pressed(event, &"machine_output") and not driving() and (_cycle_machine_output() or _cycle_pad_attachment()):
 			return
 		if Net.client_side != null:
 			Net.client_side.call("send_press", event)
@@ -934,9 +936,9 @@ func _aim_exclusions() -> Array[RID]:
 func _cycle_pad_attachment() -> bool:
 	var hit := aim_hit()
 	var pad := _owner_of(hit.get("collider")) as VehiclePad if not hit.is_empty() else null
-	if pad == null or not pad.is_loader_pad():
+	if pad == null:
 		return false
-	interacted.emit(pad.cycle_attachment())
+	pad_config_requested.emit(pad)
 	return true
 
 ## At a machine: steps through the sizes it can make its output in. Returns

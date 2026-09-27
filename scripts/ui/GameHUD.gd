@@ -68,6 +68,7 @@ var _banner: Label
 var journal: Journal
 var inventory: InventoryPanel
 var machine_config: MachineConfigPanel
+var pad_panel: PadPanel
 var build_menu: BuildMenu
 var _build_menu_holder: CenterContainer
 ## The crane / winch / loader controls, over the gauges while driving.
@@ -163,6 +164,11 @@ func _ready() -> void:
 	_root.add_child(machine_config)
 	machine_config.mouse_filter = Control.MOUSE_FILTER_STOP
 	player.machine_config_requested.connect(func(m: InlineMachine): machine_config.open(m))
+	pad_panel = PadPanel.new()
+	pad_panel.player = player
+	_root.add_child(pad_panel)
+	pad_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	player.pad_config_requested.connect(func(p: VehiclePad): pad_panel.open(p))
 	_build_menu_holder = CenterContainer.new()
 	UIKit.fill(_build_menu_holder)
 	_build_menu_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE

@@ -14,7 +14,7 @@ static func detail(kind: String) -> Texture2D:
 	if _cache.has(kind):
 		return _cache[kind]
 	var size := 128
-	var img := Image.create(size, size, false, Image.FORMAT_RGB8)
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var noise := FastNoiseLite.new()
 	noise.seed = hash(kind)
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX

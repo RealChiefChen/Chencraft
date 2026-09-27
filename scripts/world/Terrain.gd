@@ -1670,6 +1670,7 @@ const OCCLUDER_TILE := 32
 const OCCLUDER_SINK := 3.0
 
 func _build_occluders() -> void:
+	return  # disabled: embree avx512 crash on Zen 5 (Godot 4.6.3)
 	if _cells <= 0 or _heights.is_empty():
 		return
 	var tiles := int(ceil(float(_cells) / float(OCCLUDER_TILE)))
@@ -2245,7 +2246,7 @@ func _cave_score(entrance: Vector3, dir: Vector3) -> float:
 func map_image(px_per_cell: int = 2) -> Image:
 	# One pixel per cell, then scaled up: the cells are what the land is made
 	# of, so drawing each several times over only costs time.
-	var img := Image.create(_cells, _cells, false, Image.FORMAT_RGB8)
+	var img := Image.create(_cells, _cells, false, Image.FORMAT_RGBA8)
 	var sun := Vector3(-0.6, 0.75, -0.4).normalized()
 	for iz in _cells:
 		for ix in _cells:

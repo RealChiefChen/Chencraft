@@ -677,3 +677,9 @@ func shot_trees() -> void:
 		cam.global_transform = Transform3D(Basis(), eye).looking_at(at + Vector3(0, h * 0.55, 0), Vector3.UP)
 		await _frames(10)
 		await snap("tree_" + species.to_lower())
+
+func shot_perflog() -> void:
+	world.hud.show_debug = true
+	for i in 200:
+		await get_tree().process_frame
+	await snap("perflog")

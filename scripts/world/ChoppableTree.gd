@@ -75,6 +75,15 @@ var _trunk_mesh: MeshInstance3D
 var _flare_mesh: MeshInstance3D
 var _crown: MeshInstance3D
 var _trunk_shape: CollisionShape3D
+## While nobody has touched it, the whole tree is drawn as this one mesh -
+## every part's shape and colour baked together - instead of a dozen and a
+## half, one draw each. The parts stay built, hidden, and come back the moment
+## the tree is cut.
+var _merged: MeshInstance3D
+var _hidden_parts: Array[MeshInstance3D] = []
+## Set by a field that casts its trees' shadows itself, from a cheap stand-in
+## batched with the rest of its tile: the merged tree then casts none of its own.
+var field_shadows: bool = false
 var _standing: bool = true
 var _rng := RandomNumberGenerator.new()
 ## Set by the first blow. A field only ever retires trees nobody has started on.
@@ -90,6 +99,7 @@ func _ready() -> void:
 ## Lets the spawner decide the tree's form deterministically.
 func seed_form(value: int) -> void:
 	_rng.seed = value
+	_form_seed = value
 
 ## Standing and never cut: safe for a field to take away and grow elsewhere.
 func untouched() -> bool:
@@ -180,6 +190,7 @@ func _build() -> void:
 			"length": length, "cut": 0.0, "cut_at": -1.0, "mesh": mesh, "leaf": foliage, "shape": shape})
 
 	_refresh_trunk()
+	_merge()
 
 ## Rebuilds the trunk mesh and collider from the current height, after a cut has
 ## shortened the tree.
@@ -197,6 +208,120 @@ func _refresh_trunk() -> void:
 		_crown.visible = _standing and (not branches.is_empty() or foliage_style == &"palm" \
 			or foliage_style == &"cap")
 		_crown.position = Vector3(0, trunk_height * 1.02, 0)
+
+static var _merged_material: StandardMaterial3D
+## Merged meshes by species and seed: the same seed grows the same tree, so a
+## tree that goes back to being a note and is built again reuses its mesh.
+static var _merged_cache: Dictionary = {}
+const MERGED_CACHE_MAX := 4000
+var _form_seed: int = 0
+
+## Bakes every visible part into one mesh with its colour in the vertices, and
+## hides the parts. Glowing trees keep their own materials and are left be.
+func _merge() -> void:
+	if leaf_glow > 0.0 or _merged != null:
+		return
+	var key := "%s|%d|%.3f" % [species, _form_seed, trunk_height]
+	var mesh: ArrayMesh = _merged_cache.get(key) if _form_seed != 0 else null
+	var parts: Array[MeshInstance3D] = []
+	if mesh != null:
+		for child in get_children():
+			if child is MeshInstance3D and (child as MeshInstance3D).visible:
+				parts.append(child)
+	else:
+		mesh = _bake(parts)
+		if mesh == null:
+			return
+		if _form_seed != 0:
+			if _merged_cache.size() >= MERGED_CACHE_MAX:
+				_merged_cache.clear()
+			_merged_cache[key] = mesh
+	if _merged_material == null:
+		_merged_material = StandardMaterial3D.new()
+		_merged_material.vertex_color_use_as_albedo = true
+		_merged_material.vertex_color_is_srgb = true
+		_merged_material.roughness = 0.95
+	_merged = MeshInstance3D.new()
+	_merged.name = "Merged"
+	_merged.mesh = mesh
+	_merged.material_override = _merged_material
+	_merged.visibility_range_end = VIEW_RANGE
+	if field_shadows:
+		_merged.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_merged)
+	for part in parts:
+		part.visible = false
+	_hidden_parts = parts
+
+## The visible parts baked into one mesh; `parts` gets the top-level ones.
+func _bake(parts: Array[MeshInstance3D]) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	if not _gather(self, Transform3D(), verts, normals, colors, indices, parts):
+		return null
+	if verts.is_empty():
+		return null
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+## Adds the meshes under `node` (drawn through `xform`) to the arrays. Returns
+## false if some part cannot be baked, in which case nothing is merged.
+func _gather(node: Node, xform: Transform3D, verts: PackedVector3Array, normals: PackedVector3Array,
+		colors: PackedColorArray, indices: PackedInt32Array, top: Array[MeshInstance3D]) -> bool:
+	for child in node.get_children():
+		var mi := child as MeshInstance3D
+		if mi == null or not mi.visible or mi.mesh == null:
+			continue
+		var mat := mi.material_override as StandardMaterial3D
+		if mat == null:
+			return false
+		var at := xform * mi.transform
+		var arrays := mi.mesh.surface_get_arrays(0)
+		var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var n: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var base := verts.size()
+		verts.append_array(at * v)
+		normals.append_array(Transform3D(at.basis, Vector3.ZERO) * n)
+		var c := PackedColorArray()
+		c.resize(v.size())
+		c.fill(mat.albedo_color)
+		colors.append_array(c)
+		var idx = arrays[Mesh.ARRAY_INDEX]
+		if idx == null or (idx as PackedInt32Array).is_empty():
+			for k in v.size():
+				indices.append(base + k)
+		else:
+			for k in (idx as PackedInt32Array):
+				indices.append(base + k)
+		if node == self:
+			top.append(mi)
+		if not _gather(mi, at, verts, normals, colors, indices, top):
+			return false
+	return true
+
+## Drawn as the one merged mesh (untouched, and not a glowing kind)?
+func is_merged() -> bool:
+	return _merged != null
+
+## Back to separate parts, which cutting works on one at a time.
+func _unmerge() -> void:
+	if _merged == null:
+		return
+	_merged.queue_free()
+	_merged = null
+	for part in _hidden_parts:
+		if is_instance_valid(part):
+			part.visible = true
+	_hidden_parts.clear()
 
 func _basis_from_up(up: Vector3) -> Basis:
 	var axis := Vector3.UP.cross(up)
@@ -365,6 +490,7 @@ func cut(damage: float, world_point: Vector3, from: Vector3) -> String:
 	if not _standing:
 		return ""
 	touched = true
+	_unmerge()
 	var index := limb_at(world_point)
 	if index >= 0:
 		return _cut_branch(index, damage, _branch_along(index, world_point))
@@ -460,6 +586,7 @@ func net_state() -> Dictionary:
 ## A guest's copy takes the host's state: a shorter trunk, branches gone or
 ## cut back. It never grows anything back.
 func net_apply(state: Dictionary) -> void:
+	_unmerge()
 	var h := float(state.get("h", trunk_height))
 	if not is_equal_approx(h, trunk_height) or not is_equal_approx(float(state.get("tp", trunk_taper)), trunk_taper):
 		trunk_height = h
@@ -566,6 +693,7 @@ func _sever(height: float, from: Vector3) -> String:
 func fell(from: Vector3 = Vector3.ZERO) -> String:
 	if not _standing:
 		return ""
+	_unmerge()
 	var origin := from if from != Vector3.ZERO else global_position + Vector3(0, 0, 3)
 	return _sever(0.0, origin)
 

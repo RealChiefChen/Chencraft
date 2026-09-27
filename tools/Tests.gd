@@ -29,6 +29,7 @@ func _run_all() -> void:
 	await _test(&"deterministic daily prices", test_prices)
 	await _test(&"felling drops the trunk as it grew", test_chop)
 	await _test(&"branches and trunk are cut separately", test_limb_cutting)
+	await _test(&"an untouched tree is one draw, and comes apart when cut", test_tree_merged)
 	await _test(&"wood is cut wherever the axe lands", test_cut_anywhere)
 	await _test(&"a hammer cracks loose chunks down to fit a machine", test_crack_loose)
 	await _test(&"resource fields fill to a quota and stop", test_resource_field)
@@ -382,6 +383,38 @@ func test_chop() -> void:
 ## Spec: the player cuts through the individual cylinders the tree is made of.
 ## A branch comes off on its own; the trunk is severed at the height of the cut
 ## and what is below it keeps standing.
+## Spec: a forest is hundreds of trees, and a tree of a dozen and a half
+## separate meshes is a dozen and a half draws. Untouched, it is drawn as one;
+## the first swing brings back the parts that cutting works on.
+func test_tree_merged() -> void:
+	_setup()
+	var tree := _make_tree(8.0, 0.34, 0.6, 4)
+	world.add_child(tree)
+	await step(2)
+	var shown := 0
+	for c in tree.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).visible:
+			shown += 1
+	check(tree.is_merged(), "an untouched tree is not merged")
+	check_eq(shown, 1, "an untouched tree draws more than one mesh")
+	var merged: MeshInstance3D = tree.get_node("Merged")
+	check(merged.mesh.get_faces().size() > 100, "the merged mesh is empty")
+	# The whole tree is in it: as tall as the tree and as wide as its crown.
+	var box := merged.mesh.get_aabb()
+	check(box.size.y >= 8.0, "the merged mesh is shorter than the tree (%.1f m)" % box.size.y)
+	var branch: Dictionary = tree.branches[0]
+	var aim: Vector3 = tree.global_position + Vector3(0, float(branch.height), 0) \
+		+ (branch.dir as Vector3) * (tree._joint_reach(branch) - 0.07)
+	tree.cut(10.0, aim, tree.global_position + Vector3(0, 0, 4))
+	await step(2)
+	shown = 0
+	for c in tree.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).visible:
+			shown += 1
+	check(not tree.is_merged(), "a cut tree is still drawn merged")
+	check(shown >= 6, "a cut tree did not get its parts back (%d showing)" % shown)
+	done()
+
 func test_limb_cutting() -> void:
 	_setup()
 	var tree := _make_tree(8.0, 0.34, 0.6, 4)

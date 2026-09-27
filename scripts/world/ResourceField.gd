@@ -55,11 +55,98 @@ var _wake_timer: float = 0.0
 ## field, placed by a MultiMesh - so a forest reads as a forest out to the
 ## horizon without a real tree for every one. Null draws nothing.
 var impostor: Mesh = null
-var _impostors: MultiMeshInstance3D
 var _impostors_dirty: bool = false
+## The notes are kept in square tiles this many metres across, each with its
+## own batch of stand-ins: a tile out of view is not drawn, one past the view
+## distance is not drawn, and a tree waking or sleeping redraws its own tile
+## only. Waking looks at the tiles round the player, not every note.
+const TILE := 200.0
+var _tiles: Dictionary = {}             ## Vector2i -> Array of notes
+var _tile_draws: Dictionary = {}        ## Vector2i -> MultiMeshInstance3D
+## The built, untouched trees' shadows, cast by stand-ins batched per tile:
+## one draw per tile in the shadow pass instead of one (or several) per tree.
+var _shadow_draws: Dictionary = {}      ## Vector2i -> MultiMeshInstance3D
+var _shadowed: Dictionary = {}          ## tree instance id -> tile
+## Height the stand-in mesh was made for, so each stand-in is scaled to its tree.
+var impostor_height: float = 0.0
+var _dirty_tiles: Dictionary = {}       ## Vector2i -> true
+## How far off stand-ins are drawn: the view distance.
+static var impostor_range: float = 600.0
+var _quota_timer: float = 0.0
+## Notes near someone, nearest first, waiting their turn to be built. Building
+## a tree is a millisecond or so; all the fields together build no more than
+## BUILDS_PER_FRAME a frame, so walking or driving into a forest fills it in
+## over a few frames rather than stalling one.
+var _wake_queue: Array = []
+const BUILDS_PER_FRAME := 2
+static var _budget_frame: int = -1
+static var _budget_left: int = 0
+
+## And no more than this many trees behind you go back to notes a frame.
+const SLEEPS_PER_FRAME := 6
+static var _sleep_frame: int = -1
+static var _sleep_left: int = 0
+
+static func _take_sleep() -> bool:
+	var frame := Engine.get_process_frames()
+	if frame != _sleep_frame:
+		_sleep_frame = frame
+		_sleep_left = SLEEPS_PER_FRAME
+	if _sleep_left <= 0:
+		return false
+	_sleep_left -= 1
+	return true
+
+static func _take_build() -> bool:
+	var frame := Engine.get_process_frames()
+	if frame != _budget_frame:
+		_budget_frame = frame
+		_budget_left = BUILDS_PER_FRAME
+	if _budget_left <= 0:
+		return false
+	_budget_left -= 1
+	return true
+var _full: bool = false
 ## Every standing spot, built or noted, bucketed by `min_spacing` squares, so
 ## checking a new spot's spacing looks at its neighbours, not the whole field.
 var _grid: Dictionary = {}              ## Vector2i -> Array of Vector3
+
+func _tile_of(p: Vector3) -> Vector2i:
+	return Vector2i(floori(p.x / TILE), floori(p.z / TILE))
+
+## A note goes into the list and its tile, with where its stand-in stands.
+func _add_note(note: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(note.seed)
+	var sc := rng.randf_range(0.85, 1.15)
+	note["xform"] = Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * sc), note.position)
+	var key := _tile_of(note.position)
+	note["tile"] = key
+	note["i"] = dormant.size()
+	dormant.append(note)
+	if not _tiles.has(key):
+		_tiles[key] = []
+	(_tiles[key] as Array).append(note)
+	_dirty_tiles[key] = true
+	_impostors_dirty = true
+
+func _remove_note_at(i: int) -> Dictionary:
+	# Swapped out with the last, so taking one away never shifts the rest.
+	var note: Dictionary = dormant[i]
+	var last: Dictionary = dormant[dormant.size() - 1]
+	dormant.remove_at(dormant.size() - 1)
+	if i < dormant.size():
+		dormant[i] = last
+		last["i"] = i
+	var key: Vector2i = note.get("tile", _tile_of(note.position))
+	var list: Array = _tiles.get(key, [])
+	for k in list.size():
+		if is_same(list[k], note):
+			list.remove_at(k)
+			break
+	_dirty_tiles[key] = true
+	_impostors_dirty = true
+	return note
 
 func _cell_of(p: Vector3) -> Vector2i:
 	var s := maxf(min_spacing, 0.5)
@@ -115,6 +202,8 @@ func setup(p_species: Array, p_builder: Callable, p_sampler: Callable, p_seed: i
 
 func _ready() -> void:
 	set_process(true)
+	# Fields look round at different moments, not all in one frame.
+	_wake_timer = randf() * 0.4
 
 func count() -> int:
 	_prune()
@@ -140,29 +229,83 @@ func prefill() -> int:
 	_refresh_impostors()
 	return placed
 
-## Redraws the stand-ins for the notes as they are now.
+## Redraws the stand-ins in the tiles that changed.
 func _refresh_impostors() -> void:
 	_impostors_dirty = false
 	if impostor == null:
+		_dirty_tiles.clear()
 		return
-	if _impostors == null:
-		_impostors = MultiMeshInstance3D.new()
-		_impostors.name = "Impostors"
-		_impostors.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(_impostors)
+	var shadows_by_tile: Dictionary = {}
+	for node in alive:
+		if is_instance_valid(node) and not node.is_queued_for_deletion() and node is ChoppableTree \
+				and (node as ChoppableTree).is_merged() and (node as ChoppableTree).field_shadows:
+			var key := _tile_of(node.position)
+			if _dirty_tiles.has(key):
+				if not shadows_by_tile.has(key):
+					shadows_by_tile[key] = []
+				(shadows_by_tile[key] as Array).append(node)
+	for key in _dirty_tiles:
+		var notes: Array = _tiles.get(key, [])
+		var xforms: Array = []
+		for note in notes:
+			xforms.append(note.xform)
+		_draw_tile(_tile_draws, key, xforms, "Impostors", GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
+			impostor_range)
+		var casters: Array = []
+		for node in shadows_by_tile.get(key, []):
+			var tree := node as ChoppableTree
+			var sc := tree.trunk_height / impostor_height if impostor_height > 0.0 else 1.0
+			casters.append(Transform3D(Basis().scaled(Vector3(1.0, sc, 1.0)), tree.position))
+			_shadowed[tree.get_instance_id()] = key
+		_draw_tile(_shadow_draws, key, casters, "Shadows", GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY,
+			ChoppableTree.VIEW_RANGE)
+	_dirty_tiles.clear()
+
+func _draw_tile(draws: Dictionary, key: Vector2i, xforms: Array, label: String,
+		shadows: GeometryInstance3D.ShadowCastingSetting, reach: float) -> void:
+	var draw: MultiMeshInstance3D = draws.get(key)
+	if xforms.is_empty():
+		if draw != null:
+			draw.queue_free()
+			draws.erase(key)
+		return
+	if draw == null:
+		draw = MultiMeshInstance3D.new()
+		draw.name = "%s_%d_%d" % [label, key.x, key.y]
+		draw.cast_shadow = shadows
+		if label == "Impostors":
+			draw.add_to_group(&"tree_impostors")
+		add_child(draw)
+		draws[key] = draw
+	draw.visibility_range_end = reach
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = impostor
-	mm.instance_count = dormant.size()
-	var rng := RandomNumberGenerator.new()
-	for i in dormant.size():
-		var note: Dictionary = dormant[i]
-		rng.seed = int(note.seed)
-		var s := rng.randf_range(0.85, 1.15)
-		mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), note.position))
-	_impostors.multimesh = mm
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		mm.set_instance_transform(i, xforms[i])
+	draw.multimesh = mm
+
+## A built tree came, went, or was touched: its tile's shadows are redrawn.
+func _shadows_changed(node: Node3D) -> void:
+	if impostor == null:
+		return
+	var key: Vector2i = _shadowed.get(node.get_instance_id(), _tile_of(node.position))
+	_shadowed.erase(node.get_instance_id())
+	_dirty_tiles[key] = true
+	_impostors_dirty = true
+
+## Microseconds spent in fields this frame (read by the perf harness).
+static var spent_usec: int = 0
+static var built_count: int = 0
+static var slept_count: int = 0
 
 func _process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_step(delta)
+	spent_usec += Time.get_ticks_usec() - t0
+
+func _step(delta: float) -> void:
 	if Net.is_client():
 		return
 	if wake_distance > 0.0:
@@ -170,9 +313,16 @@ func _process(delta: float) -> void:
 		if _wake_timer <= 0.0:
 			_wake_timer = 0.4
 			_wake_and_sleep()
-			if _impostors_dirty:
-				_refresh_impostors()
-	if at_quota():
+		_build_queued()
+	if _impostors_dirty:
+		_refresh_impostors()
+	# Whether it is full only changes when something is used up or grown,
+	# and counting every frame is a waste: every half second will do.
+	_quota_timer -= delta
+	if _quota_timer <= 0.0:
+		_quota_timer = 0.5
+		_full = at_quota()
+	if _full:
 		# Armed while full, so the first loss waits out a refill interval like
 		# any other. Otherwise a felled tree is replaced the same frame it falls.
 		_timer = refill_seconds
@@ -187,6 +337,7 @@ func _process(delta: float) -> void:
 		return
 	_timer = refill_seconds
 	_try_spawn()
+	_quota_timer = 0.0
 
 func _try_spawn() -> Node3D:
 	if species.is_empty() or not builder.is_valid() or not sampler.is_valid():
@@ -202,54 +353,109 @@ func _try_spawn() -> Node3D:
 	total_spawned += 1
 	_grid_add(position)
 	if wake_distance > 0.0 and not _near_focus(to_global(position), wake_distance):
-		dormant.append({"entry": entry, "seed": form_seed, "position": position})
-		_impostors_dirty = true
+		_add_note({"entry": entry, "seed": form_seed, "position": position})
 		return self
 	return _build(entry, form_seed, position)
 
 func _build(entry: Dictionary, form_seed: int, position: Vector3) -> Node3D:
+	built_count += 1
 	var node: Node3D = builder.call(entry, form_seed)
 	if node == null:
 		return null
+	if impostor != null and node is ChoppableTree:
+		(node as ChoppableTree).field_shadows = true
 	node.position = position
 	node.set_meta("form_seed", form_seed)
 	node.set_meta("entry", entry)
 	add_child(node)
 	alive.append(node)
 	_watch(node)
+	if impostor != null and node is ChoppableTree:
+		_dirty_tiles[_tile_of(position)] = true
+		_impostors_dirty = true
 	populated.emit(self, node)
 	return node
 
 ## Builds the notes that have come within reach, a few at a time, and turns
 ## untouched nodes well out of reach back into notes.
 func _wake_and_sleep() -> void:
-	var woken := 0
-	for i in range(dormant.size() - 1, -1, -1):
-		if woken >= 8:
-			break
-		var d: Dictionary = dormant[i]
-		if _near_focus(to_global(d.position), wake_distance):
-			# Not up through a vehicle parked on the spot: it waits until the
-			# vehicle has gone.
-			if vehicle_near(to_global(d.position)):
-				continue
-			dormant.remove_at(i)
-			_build(d.entry, int(d.seed), d.position)
-			woken += 1
-			_impostors_dirty = true
+	# Only the tiles within reach of someone can hold a note to wake.
+	var reach := int(ceil(wake_distance / TILE))
+	var seen: Dictionary = {}
+	for f in _focus_points():
+		var centre := _tile_of(to_local(f))
+		for dx in range(-reach, reach + 1):
+			for dz in range(-reach, reach + 1):
+				seen[centre + Vector2i(dx, dz)] = true
+	var focus_points := _focus_points()
+	var queued: Array = []
+	for key in seen:
+		for d in _tiles.get(key, []):
+			if _near_focus(to_global(d.position), wake_distance):
+				queued.append([_focus_distance(d.position, focus_points), d])
+	# Nearest first: what is right in front of you is built before the rest.
+	queued.sort_custom(func(a, b): return a[0] < b[0])
+	_wake_queue.clear()
+	for q in queued:
+		_wake_queue.append(q[1])
 	for i in range(alive.size() - 1, -1, -1):
 		var node := alive[i]
 		if not is_instance_valid(node) or node.is_queued_for_deletion():
 			continue
+		# Cut into since last look: it casts its own shadow now.
+		if node is ChoppableTree and _shadowed.has(node.get_instance_id()) and not (node as ChoppableTree).is_merged():
+			_shadows_changed(node)
 		if node.has_method("untouched") and not node.call("untouched"):
 			continue
 		if not node.has_meta("form_seed") or _near_focus(node.global_position, wake_distance * 1.35):
 			continue
+		if not _take_sleep():
+			break
 		alive.remove_at(i)
-		dormant.append({"entry": node.get_meta("entry"), "seed": int(node.get_meta("form_seed")),
+		slept_count += 1
+		_shadows_changed(node)
+		_add_note({"entry": node.get_meta("entry"), "seed": int(node.get_meta("form_seed")),
 			"position": node.position})
-		_impostors_dirty = true
 		node.queue_free()
+
+func _focus_distance(p: Vector3, points: Array[Vector3]) -> float:
+	var g := to_global(p)
+	var best := INF
+	for f in points:
+		best = minf(best, Vector2(g.x - f.x, g.z - f.z).length_squared())
+	return best
+
+## Builds from the queue while the frame's budget lasts.
+func _build_queued() -> void:
+	while not _wake_queue.is_empty():
+		var d: Dictionary = _wake_queue[0]
+		var i := int(d.get("i", -1))
+		# Gone meanwhile (retired, or built already).
+		if i < 0 or i >= dormant.size() or not is_same(dormant[i], d):
+			_wake_queue.pop_front()
+			continue
+		# Not up through a vehicle parked on the spot: it waits until the
+		# vehicle has gone.
+		if vehicle_near(to_global(d.position)):
+			_wake_queue.pop_front()
+			continue
+		if not _take_build():
+			return
+		_wake_queue.pop_front()
+		_remove_note_at(i)
+		_build(d.entry, int(d.seed), d.position)
+
+## Where the players are (or the spawn, before there is one).
+func _focus_points() -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for other in extra_focus:
+		if is_instance_valid(other):
+			out.append(other.global_position)
+	if focus != null and is_instance_valid(focus):
+		out.append(focus.global_position)
+	else:
+		out.append(anchor)
+	return out
 
 ## Takes away one untouched node out of the player's reach, if there is one.
 ## Returns what it took, or null.
@@ -258,9 +464,8 @@ func retire_one() -> Node3D:
 	if not dormant.is_empty():
 		var gone: int = _rng.randi() % dormant.size()
 		_grid_remove(dormant[gone].position)
-		dormant.remove_at(gone)
+		_remove_note_at(gone)
 		total_retired += 1
-		_impostors_dirty = true
 		return self
 	var candidates: Array[Node3D] = []
 	for node in alive:
@@ -275,6 +480,7 @@ func retire_one() -> Node3D:
 		return null
 	var node := candidates[_rng.randi() % candidates.size()]
 	alive.erase(node)
+	_shadows_changed(node)
 	_grid_remove(node.position)
 	total_retired += 1
 	retired.emit(self, node)
@@ -328,6 +534,7 @@ func _watch(node: Node3D) -> void:
 
 func _on_consumed(node: Node3D) -> void:
 	alive.erase(node)
+	_shadows_changed(node)
 	_grid_remove(node.position)
 	depleted.emit(self, node)
 	# One frame of grace: the node is mid-signal, and whatever it dropped is

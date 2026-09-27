@@ -747,6 +747,7 @@ func _build_forest() -> void:
 		field.churn_seconds = 30.0
 		field.wake_distance = TREE_WAKE
 		field.impostor = _tree_impostor(kind)
+		field.impostor_height = (float(kind.height[0]) + float(kind.height[1])) * 0.5
 		# Each species grows in groves of its own, with a few strays between.
 		var sampler := _from_pool(pool) if kind.has("site") else _grove_sampler(kind, pool, _groves(pool, String(kind.name)))
 		field.setup([kind], _build_tree, sampler, _rng.randi())
@@ -875,6 +876,7 @@ func _build_starter_forest(species: Array) -> void:
 	field.churn_seconds = 0.0
 	field.wake_distance = TREE_WAKE
 	field.impostor = _tree_impostor(kinds[0])
+	field.impostor_height = (float(kinds[0].height[0]) + float(kinds[0].height[1])) * 0.5
 	field.setup(kinds, _build_tree, sampler, 4242)
 	add_child(field)
 	field.prefill()
@@ -1699,6 +1701,9 @@ func _apply_all_settings() -> void:
 	# plane is lost in it, never a hard edge.
 	environment.fog_depth_begin = reach * 0.6
 	environment.fog_depth_end = reach * 0.98
+	# The far woods are drawn out to the view distance and no further.
+	ResourceField.impostor_range = reach
+	get_tree().call_group(&"tree_impostors", "set", "visibility_range_end", reach)
 	var shadows := int(Settings.value(&"shadows"))
 	sun.shadow_enabled = shadows > 0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if shadows >= 2 \

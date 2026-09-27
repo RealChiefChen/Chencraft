@@ -152,13 +152,19 @@ const FREE_REACH := 420.0
 func _scatter() -> void:
 	set_process(true)
 
+static var spent_usec: int = 0
+
 func _process(_delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_stream()
+	spent_usec += Time.get_ticks_usec() - t0
+
+func _stream() -> void:
 	if terrain == null:
 		return
 	var at := focus.global_position if focus != null and is_instance_valid(focus) else Vector3.ZERO
 	var here := Vector2i(int(floor((at.x + terrain.half_extent) / TILE)), int(floor((at.z + terrain.half_extent) / TILE)))
 	var reach := int(ceil(BUILD_REACH / TILE))
-	var built := 0
 	# Nearest first, and only a couple a frame, so walking never hitches.
 	var wanted: Array = []
 	for dz in range(-reach, reach + 1):
@@ -171,15 +177,25 @@ func _process(_delta: float) -> void:
 				continue
 			wanted.append([Vector2(centre.x - at.x, centre.z - at.z).length(), key])
 	wanted.sort_custom(func(a, b): return a[0] < b[0])
-	for w in wanted:
-		if built >= 2:
-			break
-		_build_tile(w[1])
-		built += 1
+	# One tile at a time, a few rows a frame: a whole tile at once is ten
+	# milliseconds and more, which is a hitch.
+	if _pending.is_empty() and not wanted.is_empty():
+		_pending = _tile_start(wanted[0][1])
+	if not _pending.is_empty():
+		for r in ROWS_PER_FRAME:
+			if int(_pending.row) >= int(_pending.per):
+				break
+			_tile_row(_pending, int(_pending.row))
+			_pending.row = int(_pending.row) + 1
+		if int(_pending.row) >= int(_pending.per):
+			_tile_finish(_pending)
+			_pending = {}
 	for key in _tiles.keys():
 		var c := _tile_centre(key)
 		if Vector2(c.x - at.x, c.z - at.z).length() > FREE_REACH:
 			var node: Node3D = _tiles[key]
+			if not _pending.is_empty() and _pending.key == key:
+				_pending = {}
 			instance_count -= int(node.get_meta("instances", 0))
 			boulder_count -= int(node.get_meta("boulders", 0))
 			node.queue_free()
@@ -200,62 +216,84 @@ func _tile_centre(key: Vector2i) -> Vector3:
 		-terrain.half_extent + (float(key.y) + 0.5) * TILE)
 
 func _build_tile(key: Vector2i) -> void:
+	var state := _tile_start(key)
+	for cz in int(state.per):
+		_tile_row(state, cz)
+	_tile_finish(state)
+
+## A tile being built a few rows a frame while walking: {key, holder, ...}.
+var _pending: Dictionary = {}
+const ROWS_PER_FRAME := 3
+
+func _tile_start(key: Vector2i) -> Dictionary:
 	var holder := Node3D.new()
 	holder.name = "Tile_%d_%d" % [key.x, key.y]
 	add_child(holder)
 	_tiles[key] = holder
-	_rng.seed = hash(key) + 7331
-	var half := terrain.half_extent
-	var buckets: Dictionary = {}
-	var boulders := Greeble.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(key) + 7331
 	var body := StaticBody3D.new()
 	body.name = "Boulders"
 	body.collision_layer = Layers.WORLD
 	body.collision_mask = 0
 	holder.add_child(body)
-	var before_boulders := boulder_count
-	var per := int(TILE / Terrain.CELL)
+	return {"key": key, "holder": holder, "rng": rng, "buckets": {}, "boulders": Greeble.new(),
+		"body": body, "before": boulder_count, "per": int(TILE / Terrain.CELL), "row": 0}
+
+func _tile_row(state: Dictionary, cz: int) -> void:
+	var key: Vector2i = state.key
+	var per: int = state.per
+	var buckets: Dictionary = state.buckets
+	var boulders: Greeble = state.boulders
+	var body: StaticBody3D = state.body
+	_rng = state.rng
+	var half := terrain.half_extent
 	var cells := int(round(half * 2.0 / Terrain.CELL))
-	for cz in per:
-		for cx in per:
-			var ix := key.x * per + cx
-			var iz := key.y * per + cz
-			if ix < 0 or iz < 0 or ix >= cells or iz >= cells:
-				continue
-			var x0 := -half + float(ix) * Terrain.CELL
-			var z0 := -half + float(iz) * Terrain.CELL
-			var centre := Vector3(x0 + Terrain.CELL * 0.5, 0, z0 + Terrain.CELL * 0.5)
-			# Open water between the islands: nothing grows there.
-			if terrain.height_at(centre.x, centre.z) < Terrain.WATER_LEVEL - 1.8:
-				continue
-			var biome := terrain.biome_at(centre.x, centre.z)
-			if not _clear(centre.x, centre.z, 4.0):
-				continue
-			for entry in PLANTING.get(biome, []):
-				var kind: String = entry[0]
-				var n := _count(float(entry[1]))
-				for i in n:
-					var p := Vector3(x0 + _rng.randf() * Terrain.CELL, 0, z0 + _rng.randf() * Terrain.CELL)
-					var depth := terrain.water_depth(p.x, p.z)
-					if kind == "lily":
-						if depth < 0.15 or depth > 1.6:
-							continue
-						p.y = Terrain.WATER_LEVEL + 0.01
-					else:
-						if depth > 0.0 and kind != "reeds":
-							continue
-						if kind == "reeds" and depth > 0.5:
-							continue
-						if terrain.is_road(p.x, p.z) or _steep(p.x, p.z):
-							continue
-						p.y = terrain.height_at(p.x, p.z) - 0.02
-					var s := _rng.randf_range(0.75, 1.3)
-					var xform := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), p)
-					if not buckets.has(kind):
-						buckets[kind] = []
-					(buckets[kind] as Array).append(xform)
-			if _rng.randf() < float(BOULDERS.get(biome, 0.0)) and _clear(centre.x, centre.z, 8.0):
-				_boulder(boulders, body, centre + Vector3(_rng.randf_range(-2, 2), 0, _rng.randf_range(-2, 2)), biome)
+	for cx in per:
+		var ix := key.x * per + cx
+		var iz := key.y * per + cz
+		if ix < 0 or iz < 0 or ix >= cells or iz >= cells:
+			continue
+		var x0 := -half + float(ix) * Terrain.CELL
+		var z0 := -half + float(iz) * Terrain.CELL
+		var centre := Vector3(x0 + Terrain.CELL * 0.5, 0, z0 + Terrain.CELL * 0.5)
+		# Open water between the islands: nothing grows there.
+		if terrain.height_at(centre.x, centre.z) < Terrain.WATER_LEVEL - 1.8:
+			continue
+		var biome := terrain.biome_at(centre.x, centre.z)
+		if not _clear(centre.x, centre.z, 4.0):
+			continue
+		for entry in PLANTING.get(biome, []):
+			var kind: String = entry[0]
+			var n := _count(float(entry[1]))
+			for i in n:
+				var p := Vector3(x0 + _rng.randf() * Terrain.CELL, 0, z0 + _rng.randf() * Terrain.CELL)
+				var depth := terrain.water_depth(p.x, p.z)
+				if kind == "lily":
+					if depth < 0.15 or depth > 1.6:
+						continue
+					p.y = Terrain.WATER_LEVEL + 0.01
+				else:
+					if depth > 0.0 and kind != "reeds":
+						continue
+					if kind == "reeds" and depth > 0.5:
+						continue
+					if terrain.is_road(p.x, p.z) or _steep(p.x, p.z):
+						continue
+					p.y = terrain.height_at(p.x, p.z) - 0.02
+				var s := _rng.randf_range(0.75, 1.3)
+				var xform := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), p)
+				if not buckets.has(kind):
+					buckets[kind] = []
+				(buckets[kind] as Array).append(xform)
+		if _rng.randf() < float(BOULDERS.get(biome, 0.0)) and _clear(centre.x, centre.z, 8.0):
+			_boulder(boulders, body, centre + Vector3(_rng.randf_range(-2, 2), 0, _rng.randf_range(-2, 2)), biome)
+
+func _tile_finish(state: Dictionary) -> void:
+	var buckets: Dictionary = state.buckets
+	var boulders: Greeble = state.boulders
+	var holder: Node3D = state.holder
+	var before_boulders: int = state.before
 	var made := 0
 	for kind in buckets:
 		var list: Array = buckets[kind]

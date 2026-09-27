@@ -1925,11 +1925,9 @@ func add_guest(peer: int, display: String) -> Player:
 	# Off to one side of the spawn, so guests do not land on each other.
 	p.position = Vector3(2.0 + 1.5 * float(guests.size()), 2.0, 12.0)
 	p.position.y = terrain.height_at(p.position.x, p.position.z) + 1.0
-	var avatar := Avatar.new()
-	avatar.setup(display, Avatar.color_for(peer))
-	avatar.rotation.y = 0.0
-	p.add_child(avatar)
 	add_child(p)
+	# They look like you, in their own colour, with their name over them.
+	p.avatar.set_look(display, Avatar.color_for(peer))
 	p.manager = manager
 	p.plot = plot
 	p.store = store
@@ -2018,6 +2016,7 @@ func handle_key(p: Player, event: InputEvent) -> void:
 	if p.build_system != null and p.build_system.active:
 		return
 	if Controls.pressed(event, &"hitch"):
+		p.act(&"lever" if p.driving() else &"use")
 		_tell(p, _toggle_hitch(p))
 	elif Controls.pressed(event, &"enter_vehicle"):
 		# In and out: seated, it gets out (unless it is working the crane's
@@ -2035,6 +2034,7 @@ func handle_key(p: Player, event: InputEvent) -> void:
 			if v != null:
 				drive(v, p)
 	elif Controls.pressed(event, &"unload"):
+		p.act(&"lever" if p.driving() else &"use")
 		var v := vehicle_at_hand(8.0, p)
 		if v != null:
 			if not v.has_bed():
@@ -2044,10 +2044,12 @@ func handle_key(p: Player, event: InputEvent) -> void:
 				var how := "tub up" if v.bed_kind == &"tub" else "tailgate down"
 				_tell(p, "%s: tipping out %d piece(s)" % [how, n] if n > 0 else "the bed is empty")
 	elif Controls.pressed(event, &"unload_one"):
+		p.act(&"lever" if p.driving() else &"use")
 		var v := vehicle_at_hand(8.0, p)
 		if v != null and v.unload_one():
 			_tell(p, "dropping one off the back (%d left)" % (v.cargo_count() - 1))
 	elif Controls.pressed(event, &"winch_hook") and not p.driving():
+		p.act(&"use")
 		# The winch from outside the truck: stand by it, aim, hook on.
 		var wv := vehicle_at_hand(10.0, p)
 		if wv == null or wv.rig == null or _distance_to(wv, p) > 10.0:
@@ -2055,12 +2057,14 @@ func handle_key(p: Player, event: InputEvent) -> void:
 		else:
 			_tell(p, p.hook_winch(wv.rig))
 	elif Controls.pressed(event, &"outriggers") and not p.driving():
+		p.act(&"use")
 		var ov := vehicle_at_hand(10.0, p)
 		if ov == null or ov.rig == null or not ov.rig.has_crane() or _distance_to(ov, p) > 10.0:
 			_tell(p, "stand by a crane truck to put its outriggers out")
 		else:
 			_tell(p, p.toggle_outriggers(ov.rig))
 	elif Controls.pressed(event, &"recover"):
+		p.act(&"lever" if p.driving() else &"use")
 		var v := vehicle_at_hand(8.0, p)
 		if v != null:
 			var said := v.try_recover()

@@ -361,7 +361,15 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 			var veh := -1
 			if p.driving() and is_instance_valid(p.vehicle):
 				veh = int(_ids.get(_key_of(p.vehicle, "v"), -1))
-			return {"pitch": snappedf(p.camera.rotation.x, 0.05), "veh": veh, "tool": String(p.selected_tool())}
+			var st := {"pitch": snappedf(p.camera.rotation.x, 0.05), "veh": veh, "tool": String(p.selected_tool()),
+				"held": p.held.size(), "build": p.build_system != null and p.build_system.active}
+			# What the lumberjack is doing, so every machine draws him the same.
+			if p.dragged != null and is_instance_valid(p.dragged):
+				var at := p.drag_point()
+				st.drag = [snappedf(at.x, 0.05), snappedf(at.y, 0.05), snappedf(at.z, 0.05), snappedf(p.dragged.mass, 1.0)]
+			if p.avatar != null:
+				st.g = [p.avatar.gesture_count, String(p.avatar.last_gesture)]
+			return st
 	return null
 
 static func _unpose(x: PackedFloat32Array) -> Transform3D:

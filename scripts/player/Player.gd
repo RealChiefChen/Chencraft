@@ -108,6 +108,15 @@ func remote_press(event: InputEvent) -> void:
 	if _on_mouse_action(event):
 		return
 	_on_key(event)
+
+## The lumberjack himself, posed from what you are doing (see PlayerAvatar).
+var avatar: PlayerAvatar
+## Looking over his shoulder rather than out of his eyes (the camera-view key).
+var third_person: bool = false
+## How far behind and to the side the camera sits in third person.
+const THIRD_PERSON_DISTANCE := 3.4
+const THIRD_PERSON_SHOULDER := 0.55
+var _tp_distance: float = THIRD_PERSON_DISTANCE
 var _ui_blocking: bool = false
 
 @onready var camera: Camera3D = $Camera3D
@@ -129,6 +138,10 @@ func _ready() -> void:
 	_viewmodel.rotation = Vector3(0, PI * 0.5, 0)
 	_viewmodel_pivot.add_child(_viewmodel)
 	swung.connect(_swing_viewmodel)
+	avatar = PlayerAvatar.new(self)
+	add_child(avatar)
+	swung.connect(act.bind(&"swing"))
+	third_person = Settings.flag(&"third_person")
 
 # --- The tool in hand --------------------------------------------------------
 
@@ -138,8 +151,10 @@ var _viewmodel_tool: StringName = &"<none>"
 var _viewmodel_tween: Tween
 const VIEWMODEL_REST := Vector3(-0.45, 0.35, -0.35)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_update_view(delta)
 	var tool := selected_tool() if not driving() and not (build_system != null and build_system.active) else &""
+	_viewmodel_pivot.visible = not third_person
 	if tool == _viewmodel_tool:
 		return
 	_viewmodel_tool = tool
@@ -159,6 +174,48 @@ func _swing_viewmodel() -> void:
 	_viewmodel_tween = create_tween()
 	_viewmodel_tween.tween_property(_viewmodel_pivot, "rotation", VIEWMODEL_REST + Vector3(-1.2, 0.2, 0.3), t * 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	_viewmodel_tween.tween_property(_viewmodel_pivot, "rotation", VIEWMODEL_REST, t * 0.6).set_trans(Tween.TRANS_SINE)
+
+## A move for the lumberjack to make: a gesture name from PlayerAvatar.
+func act(kind: StringName) -> void:
+	if avatar != null:
+		avatar.play(kind)
+
+# --- First and third person --------------------------------------------------
+
+func set_third_person(on: bool) -> void:
+	third_person = on
+	Settings.set_value(&"third_person", on)
+	if not on and not driving() and not camera.top_level:
+		camera.position = Vector3(0, 1.65, 0)
+		camera.rotation.y = 0.0
+		camera.rotation.z = 0.0
+
+## On foot in third person, the camera hangs behind his right shoulder, looking
+## the way you look, and comes in when something is in the way. Driving has its
+## own camera, and build mode flies it.
+func _update_view(delta: float) -> void:
+	if driving() or camera.top_level or not third_person:
+		return
+	var basis := Basis.from_euler(Vector3(camera.rotation.x, global_rotation.y, 0.0))
+	var pivot := global_position + Vector3(0, 1.75, 0) + basis.x * THIRD_PERSON_SHOULDER
+	var skip: Array[RID] = []
+	if dragged != null and is_instance_valid(dragged):
+		skip.append(dragged.get_rid())
+	var clear := _camera_clearance(pivot, basis.z, THIRD_PERSON_DISTANCE, skip)
+	_tp_distance = clear if clear < _tp_distance else move_toward(_tp_distance, clear, 8.0 * delta)
+	camera.global_transform = Transform3D(basis, pivot + basis.z * _tp_distance)
+
+## Where aiming, reach and holding are measured from. In first person that is
+## the camera; in third person it is the point on the camera's line of sight
+## level with his head, so the crosshair still picks what it covers but reach
+## is counted from him rather than from the camera behind him.
+func eye() -> Vector3:
+	var cam := camera.global_position
+	if not third_person or driving() or camera.top_level:
+		return cam
+	var forward := -camera.global_transform.basis.z
+	var head := global_position + Vector3(0, 1.65, 0)
+	return cam + forward * maxf(0.0, (head - cam).dot(forward))
 
 func capture_mouse(capture: bool) -> void:
 	_mouse_captured = capture
@@ -313,6 +370,7 @@ func _on_mouse_action(event: InputEvent) -> bool:
 	if Controls.pressed(event, &"primary"):
 		if building:
 			build_system.try_place()
+			act(&"place")
 		elif driving():
 			pass
 		elif selected_tool() != &"":
@@ -323,6 +381,7 @@ func _on_mouse_action(event: InputEvent) -> bool:
 	if Controls.pressed(event, &"secondary"):
 		if building:
 			build_system.try_remove()
+			act(&"remove")
 		elif driving():
 			pass
 		elif dragged != null:
@@ -332,6 +391,7 @@ func _on_mouse_action(event: InputEvent) -> bool:
 		return true
 	if building and Controls.pressed(event, &"pick_block"):
 		interacted.emit(build_system.pick_block())
+		act(&"use")
 		return true
 	for step in [-1, 1]:
 		if not Controls.pressed(event, &"wheel_up" if step < 0 else &"wheel_down"):
@@ -376,7 +436,11 @@ func cycle_hotbar(step: int) -> void:
 		_release_dragged()
 
 func _on_key(event: InputEvent) -> void:
+	if Controls.pressed(event, &"camera_view"):
+		set_third_person(not third_person)
+		return
 	if driving() and _on_driving_key(event):
+		act(&"lever")
 		return
 	var building := build_system != null and build_system.active
 	if building:
@@ -425,8 +489,10 @@ func _on_key(event: InputEvent) -> void:
 	if turning_held() and (Controls.pressed(event, &"turn_ccw") or Controls.pressed(event, &"turn_cw")):
 		return
 	if Controls.pressed(event, &"machine_output") and (_cycle_machine_output() or _cycle_pad_attachment()):
+		act(&"use")
 		return
 	if Controls.pressed(event, &"use"):
+		act(&"use")
 		_interact()
 	elif Controls.pressed(event, &"drop_one"):
 		_drop(1)
@@ -527,7 +593,7 @@ func winch_target(r: VehicleRig) -> Dictionary:
 	var hit := aim_hit_far(distance)
 	if not hit.is_empty() and _hookable(hit.collider):
 		return hit
-	var from := camera.global_position
+	var from := eye()
 	var dir := -camera.global_transform.basis.z
 	var along_to := distance if hit.is_empty() else from.distance_to(hit.position) + 1.5
 	var box := BoxShape3D.new()
@@ -576,7 +642,7 @@ func _hookable(collider: Object) -> bool:
 ## What the player is aiming at, further out than arm's reach.
 func aim_hit_far(distance: float) -> Dictionary:
 	var space := get_world_3d().direct_space_state
-	var from := camera.global_position
+	var from := eye()
 	var to := from - camera.global_transform.basis.z * distance
 	var q := PhysicsRayQueryParameters3D.create(from, to)
 	q.exclude = _aim_exclusions()
@@ -632,6 +698,7 @@ func _physics_step(delta: float) -> void:
 		velocity += get_gravity() * delta
 	elif input.just_pressed("jump"):
 		velocity.y = jump_velocity
+		act(&"jump")
 
 	var walk: float = kit_of().stat(&"boots", "walk", 5.5) * WALK_MULT
 	var sprint: float = kit_of().stat(&"boots", "sprint", 8.5) * WALK_MULT
@@ -827,7 +894,7 @@ func work_winch(r: VehicleRig, delta: float) -> void:
 
 func aim_hit() -> Dictionary:
 	var space := get_world_3d().direct_space_state
-	var from := camera.global_position
+	var from := eye()
 	var to := from - camera.global_transform.basis.z * reach
 	var q := PhysicsRayQueryParameters3D.create(from, to, Layers.MASK_RAY_INTERACT, _aim_exclusions())
 	return space.intersect_ray(q)
@@ -1124,6 +1191,7 @@ func pick_up(item: LooseItem) -> bool:
 	item.set_state(LooseItem.State.HELD)
 	held.append(item)
 	carry_changed.emit(held.size(), capacity_m3())
+	act(&"pick_up")
 	return true
 
 ## Store stock has to be paid for before it is yours, so carrying it off a
@@ -1146,6 +1214,8 @@ func _nearest_free_item(radius: float) -> LooseItem:
 	return best
 
 func _drop(count: int, toward: Vector3 = Vector3.ZERO) -> void:
+	if count > 0 and not held.is_empty():
+		act(&"drop")
 	var forward := toward.normalized() if toward.length_squared() > 0.0001 else -camera.global_transform.basis.z
 	for i in mini(count, held.size()):
 		var item: LooseItem = held.pop_back()
@@ -1202,6 +1272,7 @@ func _pull_chunk(rock: OreRock) -> void:
 			rock.pull_required(), move_limit_kg()])
 		return
 	freed.owned = true
+	act(&"grab")
 	interacted.emit("hauled out a %.0f kg chunk" % freed.mass)
 
 ## Takes hold of one piece at `point` (world space; the piece's centre if
@@ -1218,9 +1289,10 @@ func _grab_drag_item(item: LooseItem, point: Variant = null) -> bool:
 	var at: Vector3 = point if point is Vector3 else item.global_position
 	dragged = item
 	_drag_point = item.global_transform.affine_inverse() * at
-	_drag_distance = clampf(camera.global_position.distance_to(at), DRAG_MIN_DISTANCE, reach)
+	_drag_distance = clampf(eye().distance_to(at), DRAG_MIN_DISTANCE, reach)
 	_drag_turn = (_facing().inverse() * item.global_transform.basis).orthonormalized()
 	item.set_state(LooseItem.State.CARRIED)
+	act(&"grab")
 	return true
 
 func _release_dragged() -> void:
@@ -1240,7 +1312,8 @@ func throw_one() -> bool:
 	if not is_instance_valid(item):
 		return false
 	var aim := -camera.global_transform.basis.z
-	var pos := camera.global_position + aim * 0.9 + Vector3.DOWN * 0.2
+	var pos := eye() + aim * 0.9 + Vector3.DOWN * 0.2
+	act(&"throw")
 	item.teleport(Transform3D(LooseItem.lying_basis(rotation.y), pos))
 	item.set_state(LooseItem.State.FREE)
 	var speed := throw_impulse * clampf(25.0 / maxf(item.mass, 1.0), 0.3, 1.2)
@@ -1252,6 +1325,7 @@ func _throw_dragged() -> void:
 		return
 	var item := dragged
 	_release_dragged()
+	act(&"throw")
 	item.apply_central_impulse(-camera.global_transform.basis.z * throw_impulse * minf(item.mass, 60.0) * 0.5)
 
 ## Where the grabbed point is right now.
@@ -1262,7 +1336,7 @@ func drag_point() -> Vector3:
 
 ## Where the hand is trying to put it.
 func drag_target() -> Vector3:
-	return camera.global_position - camera.global_transform.basis.z * _drag_distance
+	return eye() - camera.global_transform.basis.z * _drag_distance
 
 ## The player's facing: yaw only, so looking up and down does not tip what
 ## is in hand.

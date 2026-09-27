@@ -417,8 +417,13 @@ func _state(id: int, s: Variant) -> void:
 			_vehicle_state(node as Hauler, s)
 		"p":
 			var a := node as Avatar
+			var veh: Node3D = _nodes.get(int(s.get("veh", -1)), null) as Node3D
 			if a != null:
-				a.set_pitch(float(s.get("pitch", 0.0)))
+				a.apply_state(s, veh)
+			elif node is Player and (node as Player).avatar != null:
+				# You: what you carry and drag is the host's to say, so the
+				# lumberjack you see in third person takes it from there too.
+				(node as Player).avatar.apply_net_state(s)
 
 ## A building the host has moved, turned or resized: the same here.
 func _reshape(id: int, node: Node3D, g: Array) -> Node3D:

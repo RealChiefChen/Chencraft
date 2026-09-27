@@ -33,6 +33,7 @@ const DEFAULTS := {
 	&"fov": 75.0,
 	&"manual_gearbox": false,
 	&"toggle_sprint": false,
+	&"third_person": false,
 	# Video
 	&"fullscreen": false,
 	&"vsync": true,
@@ -67,6 +68,7 @@ const NOTES := {
 	&"fov": "Field of view in degrees, 60 to 100",
 	&"toggle_sprint": "true: tap sprint to run until you tap it again or stop. false: hold it",
 	&"manual_gearbox": "true: trucks change gear only when you do (gear up / gear down keys). false: automatic",
+	&"third_person": "true: on foot, look over his shoulder instead of out of his eyes (camera-view key)",
 	&"fullscreen": "true for fullscreen",
 	&"vsync": "true to sync to the monitor",
 	&"render_scale": "3D resolution as a share of the window, 0.5 to 1.0",

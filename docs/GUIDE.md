@@ -39,6 +39,7 @@ defaults:
 | Key | Action |
 | --- | --- |
 | WASD / Shift / Space | move, sprint, jump |
+| F2 | first or third person: look out of his eyes or over his shoulder (remembered) |
 | 1-9 / Wheel | take a tool off the hotbar (the same number again puts it away) |
 | LMB, empty hand | hold to drag what you aim at, by the point you grabbed; heave a chunk out of the ground |
 | Wheel (dragging) / RMB (dragging) | pull it closer or push it away / throw it |
@@ -603,8 +604,36 @@ catch is drawn only from the driver's seat.
 
 ## Models
 
-Still no asset files: every mesh is built in code from primitives, just more of
-them than before.
+Nearly every mesh is built in code from primitives. The one exception is you.
+
+* **The player** is a barrel-shaped lumberjack with a huge ginger beard, a red
+  plaid shirt, braces, mittens and a tiny yellow beanie:
+  `assets/models/player.glb`, made in Blender to the game's own rules (flat
+  colours, boxes, eight-sided round parts, rough flat shading) with the
+  source in `player.blend` beside it. The model is six pivots - legs, torso,
+  arms, head - and `PlayerAvatar` poses them in code every frame; nothing is
+  keyframed in the file. Its base pose follows what you are doing: standing
+  (breathing), walking and sprinting (short quick steps, arms swinging), in the
+  air (arms out, windmilling on a long drop, a squash on landing), swimming (a
+  doggy paddle), wading (mittens held up out of the wet), carrying a load
+  (across the chest, leaning back), dragging (reaching for the grabbed point,
+  both hands on anything heavy), holding a tool (over the shoulder), at the
+  wheel (hands on it, turning it as you steer), working a crane or loader
+  (hands on the levers, watching the log) and in build mode (hand on hip,
+  pointing where you look, foot tapping). Over that go one-off gestures: the
+  chop and the hammer blow (up over the head, down hard), pick up, throw, drop,
+  use, grab, a lever pull for anything done from the cab, a fist pump when a
+  building goes down and a shake of the head when one comes off, drawing a
+  tool, and, stood about long enough, a fidget - stroking the beard, a look
+  round, a stretch, a scratch under the hat. In first person only his shadow
+  is drawn; in third person (F2), at the wheel and in build mode, all of him.
+  A closed cab is a solid box, so in a truck he sits hidden inside it; on the
+  quad and the buggy he is out in the open.
+  In co-op everyone is the lumberjack, each in a shirt of their own colour
+  with their name over him (`scripts/net/Avatar.gd` stands in for a player
+  whose game is on another machine). The host sends what each one is
+  carrying, dragging and building and every gesture they make, so all
+  machines draw the same chop at the same moment.
 
 * **The land** is one `ArrayMesh` with a triangle per facet - each triangle
   carries its own vertices and its own normal, which is what makes hills read as

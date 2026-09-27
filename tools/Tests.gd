@@ -120,6 +120,7 @@ func _run_all() -> void:
 	await _test(&"winch and crane respect their power ratings", test_vehicle_rig)
 	await _test(&"a driven truck's settled load is fixed as it lies", test_load_fixed_while_driven)
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
+	await _test(&"vehicles bump into each other", test_vehicles_collide)
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
@@ -4602,6 +4603,28 @@ func test_load_fixed_while_driven() -> void:
 ## Spec: trucks with a hitch tow trailers. A trailer is hooked on at the
 ## ball, follows the truck round corners by itself, brakes when it brakes,
 ## stays upright, and stands on its leg once let go.
+func test_vehicles_collide() -> void:
+	_setup(false)
+	var a := Hauler.new()
+	a.setup(manager, 0, &"pickup")
+	world.add_child(a)
+	a.global_position = Vector3(0, a.spawn_height(), 0)
+	var b := Hauler.new()
+	b.setup(manager, 0, &"dump_truck")
+	world.add_child(b)
+	await step(2)
+	var ahead := -a.global_transform.basis.z
+	b.global_position = Vector3(0, b.spawn_height(), 0) + ahead * 10.0
+	await step(60)
+	a.autopilot = true
+	a.input_throttle = 1.0
+	await step(300)
+	a.input_throttle = 0.0
+	var gap := (b.global_position - a.global_position).dot(ahead)
+	var touch := (a.body_size.z + b.body_size.z) * 0.5
+	check(gap > touch * 0.8, "the pickup drove through the dump truck (gap %.1f m, touching at %.1f)" % [gap, touch])
+	done()
+
 func test_trailers() -> void:
 	for pair in [[&"hauler", &"trailer"], [&"log_truck", &"log_trailer"], [&"dump_truck", &"dump_trailer"]]:
 		_setup(false)

@@ -81,7 +81,7 @@ func _ready() -> void:
 	bucket.name = "Bucket"
 	bucket.top_level = true
 	bucket.sync_to_physics = false
-	bucket.collision_layer = Layers.VEHICLE
+	bucket.collision_layer = Layers.BUCKET
 	bucket.collision_mask = Layers.LOOSE
 	var pm := PhysicsMaterial.new()
 	pm.friction = 0.9

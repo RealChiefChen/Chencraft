@@ -286,7 +286,7 @@ func _ready() -> void:
 	add_to_group(&"vehicles")
 	_apply_spec()
 	collision_layer = Layers.VEHICLE
-	collision_mask = Layers.WORLD | Layers.LOOSE | Layers.MACHINE | Layers.TREE | Layers.PLAYER
+	collision_mask = Layers.WORLD | Layers.LOOSE | Layers.MACHINE | Layers.TREE | Layers.PLAYER | Layers.VEHICLE
 	can_sleep = true
 	continuous_cd = true          # a heavy box at 20+ m/s must never tunnel
 	linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
@@ -1123,9 +1123,7 @@ func hitch(trailer: Hauler) -> String:
 	_hitch_joint.global_position = hitch_point()
 	_hitch_joint.node_a = _hitch_joint.get_path_to(self)
 	_hitch_joint.node_b = _hitch_joint.get_path_to(trailer)
-	add_collision_exception_with(trailer)
-	for w in trailer.wheel_bodies:
-		add_collision_exception_with(w)
+	_ignore_towed(trailer, true)
 	towing = trailer
 	release_hold()
 	trailer.release_hold()
@@ -1141,12 +1139,23 @@ func unhitch() -> Hauler:
 	_hitch_joint = null
 	towing = null
 	if trailer != null and is_instance_valid(trailer):
-		remove_collision_exception_with(trailer)
-		for w in trailer.wheel_bodies:
-			remove_collision_exception_with(w)
+		_ignore_towed(trailer, false)
 		trailer.towed_by = null
 		trailer.set_stand(true)
 	return trailer
+
+## A truck and what it tows do not bump each other, wheels included.
+func _ignore_towed(trailer: Hauler, on: bool) -> void:
+	var mine: Array = [self]
+	mine.append_array(wheel_bodies)
+	var theirs: Array = [trailer]
+	theirs.append_array(trailer.wheel_bodies)
+	for a: PhysicsBody3D in mine:
+		for b: PhysicsBody3D in theirs:
+			if on:
+				a.add_collision_exception_with(b)
+			else:
+				a.remove_collision_exception_with(b)
 
 ## The front leg: down when it stands alone, up when it is hitched.
 func set_stand(down: bool) -> void:
@@ -1180,7 +1189,7 @@ func _build_wheels() -> void:
 		body.top_level = true
 		body.mass = wheel_mass
 		body.collision_layer = Layers.VEHICLE
-		body.collision_mask = Layers.WORLD | Layers.LOOSE | Layers.MACHINE | Layers.TREE
+		body.collision_mask = Layers.WORLD | Layers.LOOSE | Layers.MACHINE | Layers.TREE | Layers.VEHICLE
 		body.physics_material_override = grip
 		body.continuous_cd = true
 		body.angular_damp = 0.3

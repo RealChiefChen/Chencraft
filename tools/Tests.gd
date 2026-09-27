@@ -126,6 +126,7 @@ func _run_all() -> void:
 	await _test(&"a loader's attachment is picked at its pad", test_loader_pad_attachment)
 	await _test(&"plans and belts size to the fine grid", test_fine_scaling)
 	await _test(&"a ramp plan fills into a solid wedge", test_ramp_plan)
+	await _test(&"door plans open and shut", test_door_plans)
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
@@ -4616,6 +4617,35 @@ func test_load_fixed_while_driven() -> void:
 ## Spec: trucks with a hitch tow trailers. A trailer is hooked on at the
 ## ball, follows the truck round corners by itself, brakes when it brakes,
 ## stays upright, and stands on its leg once let go.
+func test_door_plans() -> void:
+	for id in [&"schematic_door", &"schematic_garage"]:
+		_setup()
+		var def := GameData.building(id)
+		check(def != null, "no %s" % id)
+		var door := plot.place(def, Vector2i(0, 0), Vector3i.ZERO, false) as Schematic
+		await step(2)
+		check(door.is_door(), "%s is not a door" % id)
+		var piece := spawn(&"wood_pine", door.global_position + Vector3(0, 4, 0), Solid.cube(door.capacity_m3() + 0.01))
+		await step(1)
+		check(door.accept_item(piece) and door.solid, "%s did not fill" % id)
+		await step(3)
+		var space := world.get_world_3d().direct_space_state
+		# Straight through the doorway, at waist height.
+		var mid := door.global_position + Vector3(0, 1.0, 0)
+		var through := func() -> bool:
+			var q := PhysicsRayQueryParameters3D.create(mid + door.global_transform.basis.z * 2.0, mid - door.global_transform.basis.z * 2.0, Layers.MACHINE)
+			return not space.intersect_ray(q).is_empty()
+		check(through.call(), "a shut %s lets you through" % id)
+		check(door.toggle_door() != "", "%s would not open" % id)
+		await step(60)
+		check(not through.call(), "an open %s is still in the way" % id)
+		var saved := door.to_dict()
+		check(bool(saved.get("open", false)), "the open %s is not saved open" % id)
+		door.toggle_door()
+		await step(60)
+		check(through.call(), "a %s shut again lets you through" % id)
+	done()
+
 func test_ramp_plan() -> void:
 	_setup()
 	var def := GameData.building(&"schematic_ramp")

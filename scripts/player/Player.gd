@@ -1438,6 +1438,9 @@ func _interact() -> void:
 	if target is Store:
 		_use_store(target as Store, hit.get("position", global_position))
 		return
+	if target is Schematic and (target as Schematic).is_door() and (target as Schematic).solid:
+		interacted.emit((target as Schematic).toggle_door())
+		return
 	if target is LooseItem:
 		var shop := _shop_for(target as LooseItem)
 		if shop != null:

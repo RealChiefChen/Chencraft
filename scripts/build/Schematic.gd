@@ -62,6 +62,110 @@ func capacity_m3() -> float:
 func _wedge() -> bool:
 	return def != null and def.shape == &"wedge"
 
+# --- Doors --------------------------------------------------------------------
+
+## A door plan: filled, it becomes a frame with a door in it - a hinged door
+## that swings, or a garage door that swings up overhead - which [E] opens
+## and shuts.
+func is_door() -> bool:
+	return def != null and (def.shape == &"door" or def.shape == &"garage")
+
+var open: bool = false
+## How far open, 0 shut to 1 open; the door is posed from it about its hinge.
+var swing: float = 0.0
+var _hinge: Transform3D
+var _panel_rest: Transform3D
+var _panel: AnimatableBody3D
+var _door_meshes: Array[MeshInstance3D] = []
+var _tween: Tween
+const PANEL := 0.12
+const POST := 0.1
+
+## Opens it if shut, shuts it if open. Returns what to say.
+func toggle_door() -> String:
+	if not is_door() or not solid:
+		return ""
+	set_open(not open)
+	return "%s %s" % [def.display_name.replace("Plan: ", ""), "open" if open else "shut"]
+
+func set_open(on: bool, snap: bool = false) -> void:
+	open = on
+	if _panel == null:
+		return
+	var target := 1.0 if on else 0.0
+	if _tween != null:
+		_tween.kill()
+	# Switched off (a co-op guest's picture of the host's door), it cannot
+	# animate: it is simply put where it is.
+	if snap or not is_inside_tree() or not can_process():
+		_pose_door(target)
+		return
+	_tween = create_tween()
+	_tween.tween_method(_pose_door, swing, target, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+## The door `t` of the way open. The body itself is moved (not a parent it
+## hangs from), so its collision goes with it.
+func _pose_door(t: float) -> void:
+	swing = t
+	var garage := def.shape == &"garage"
+	var turn := Basis(Vector3.RIGHT, -PI * 0.5 * t) if garage else Basis(Vector3.UP, -PI * 0.5 * t)
+	_panel.transform = Transform3D(turn, _hinge.origin) * _panel_rest
+
+func _build_door() -> void:
+	var garage := def.shape == &"garage"
+	var w := _size.x - POST * 2.0
+	var h := _size.y - POST
+	# The frame: two posts and a head, solid.
+	for side in [-1.0, 1.0]:
+		_frame_part(Vector3(POST, _size.y, _size.z * 0.5), Vector3(side * (_size.x * 0.5 - POST * 0.5), _size.y * 0.5, 0))
+	_frame_part(Vector3(_size.x, POST, _size.z * 0.5), Vector3(0, _size.y - POST * 0.5, 0))
+	# The door, on its hinge: down the left post for a door, along the head
+	# for a garage door, which swings up and in overhead.
+	_hinge = Transform3D(Basis(), Vector3(0, h, 0) if garage else Vector3(-w * 0.5, 0, 0))
+	_panel_rest = Transform3D(Basis(), Vector3(0, -h * 0.5, 0) if garage else Vector3(w * 0.5, h * 0.5, 0))
+	_panel = AnimatableBody3D.new()
+	_panel.collision_layer = Layers.MACHINE
+	_panel.collision_mask = Layers.MASK_MACHINE
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(w, h, PANEL)
+	cs.shape = box
+	_panel.add_child(cs)
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(w, h, PANEL)
+	mi.mesh = bm
+	_panel.add_child(mi)
+	_door_meshes.append(mi)
+	# A handle, or the garage door's ribs.
+	var g := Greeble.new()
+	if garage:
+		for i in 4:
+			g.box(Vector3(w * 0.98, 0.04, 0.03), Transform3D(Basis(), Vector3(0, -h * 0.5 + h * (float(i) + 0.5) / 4.0, PANEL * 0.5 + 0.015)), Color(0.2, 0.2, 0.22))
+	else:
+		for face in [-1.0, 1.0]:
+			g.box(Vector3(0.12, 0.04, 0.05), Transform3D(Basis(), Vector3(w * 0.38, 0, face * (PANEL * 0.5 + 0.03))), Color(0.75, 0.7, 0.45))
+	_panel.add_child(g.instance("Trim"))
+	add_child(_panel)
+	for m in _door_meshes:
+		_apply_material(m, 1.0)
+	set_open(open, true)
+
+func _frame_part(size: Vector3, at: Vector3) -> void:
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	cs.shape = box
+	cs.position = at
+	_body.add_child(cs)
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.position = at
+	add_child(mi)
+	_door_meshes.append(mi)
+
 ## The shape's outline mesh at `size`: a box, or a ramp high at its front.
 func _mesh_for(size: Vector3) -> Mesh:
 	if _wedge():
@@ -167,10 +271,14 @@ func _solidify() -> void:
 	if solid:
 		return
 	solid = true
-	_shape.disabled = false
 	_ghost.visible = false
-	_fill.visible = true
-	_apply_material(_fill, 1.0)
+	if is_door():
+		_fill.visible = false
+		_build_door()
+	else:
+		_shape.disabled = false
+		_fill.visible = true
+		_apply_material(_fill, 1.0)
 	if _area != null:
 		_area.queue_free()
 		_area = null
@@ -268,14 +376,17 @@ func _apply_material(mesh: MeshInstance3D, fraction: float) -> void:
 
 func status_line() -> String:
 	if solid:
-		return "%s of %s" % [def.display_name, GameData.item_name(material)]
+		var what := "%s of %s" % [def.display_name.replace("Plan: ", ""), GameData.item_name(material)]
+		if is_door():
+			return "%s  [E] %s" % [what, "shut" if open else "open"]
+		return what
 	if material == &"":
 		return "%s: empty plan, needs %.2f m3 of anything" % [def.display_name, capacity_m3()]
 	return "%s: %.2f / %.2f m3 of %s" % [
 		def.display_name, filled_m3, capacity_m3(), GameData.item_name(material)]
 
 func to_dict() -> Dictionary:
-	return {"filled_m3": filled_m3, "material": String(material)}
+	return {"filled_m3": filled_m3, "material": String(material), "open": open}
 
 func from_dict(d: Dictionary) -> void:
 	filled_m3 = float(d.get("filled_m3", 0.0))
@@ -283,3 +394,5 @@ func from_dict(d: Dictionary) -> void:
 	_refresh()
 	if remaining_m3() <= 0.0001 and filled_m3 > 0.0:
 		_solidify()
+	if is_door() and bool(d.get("open", false)) != open:
+		set_open(bool(d.get("open", false)), not solid)

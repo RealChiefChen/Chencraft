@@ -413,6 +413,8 @@ func _state(id: int, s: Variant) -> void:
 				(node as Node).set("running", bool(s.run))
 			if s.has("d") and (node as Node).has_method("from_dict") and not node is VehiclePad:
 				(node as Node).call("from_dict", s.d)
+				# Whatever that built (a finished plan's door) stays solid too.
+				_keep_solid(node as Node)
 		"v":
 			_vehicle_state(node as Hauler, s)
 		"p":

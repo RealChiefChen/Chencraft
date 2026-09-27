@@ -108,6 +108,12 @@ func _make_all() -> void:
 	_sounds[&"click"] = _wav(_synth(0.04, _click))
 	# Loops: whole numbers of cycles, so they go round without a click.
 	_sounds[&"engine"] = _wav(_synth(0.5, _engine, true), true)
+	# Each vehicle's own voice: [base Hz, harmonic weights, thump, lope Hz,
+	# lope depth, noise, rasp]. Every rate a whole number of cycles in 0.5 s.
+	for voice in ENGINE_VOICES:
+		var v: Array = ENGINE_VOICES[voice]
+		_sounds[StringName("engine_" + String(voice))] = _wav(_synth(0.5, func(t: float, n: float) -> float:
+			return _voice(t, n, v), true), true)
 	_sounds[&"hum"] = _wav(_synth(1.0, _hum, true), true)
 	_sounds[&"grind"] = _wav(_synth(0.6, _grind, true))
 
@@ -173,6 +179,35 @@ static func _engine(t: float, n: float) -> float:
 	var thump := exp(-phase * phase / 0.018)
 	var lope := 0.85 + 0.15 * sin(TAU * 8.0 * t)
 	return (tone * 0.42 + thump * 0.3) * lope + n * 0.12
+
+const ENGINE_VOICES := {
+	# Big diesels: slow, deep, a heavy knock on every firing.
+	&"big_diesel": [26.0, [1.0, 0.55, 0.2, 0.08], 0.38, 6.0, 0.12, 0.14, 0.0],
+	# The loader and crane: diesel with a hydraulic whine over it.
+	&"plant": [30.0, [1.0, 0.45, 0.2, 0.1], 0.3, 4.0, 0.1, 0.12, 0.06],
+	# A pickup's V8: a lumpy burble.
+	&"v8": [40.0, [1.0, 0.6, 0.3, 0.12], 0.26, 8.0, 0.3, 0.1, 0.0],
+	# The hauler: a mid-size diesel.
+	&"diesel": [34.0, [1.0, 0.5, 0.18, 0.06], 0.3, 6.0, 0.14, 0.12, 0.0],
+	# The buggy: a raspy flat-four.
+	&"flat4": [56.0, [1.0, 0.45, 0.35, 0.2], 0.2, 10.0, 0.12, 0.16, 0.18],
+	# The quad: a single-cylinder thumper.
+	&"thumper": [44.0, [1.0, 0.3, 0.15, 0.05], 0.5, 22.0, 0.25, 0.14, 0.08],
+	# The dirt bike: a buzzy two-stroke.
+	&"two_stroke": [90.0, [1.0, 0.7, 0.5, 0.35], 0.12, 12.0, 0.08, 0.1, 0.3],
+}
+
+static func _voice(t: float, n: float, v: Array) -> float:
+	var f: float = v[0]
+	var h: Array = v[1]
+	var tone := 0.0
+	for k in h.size():
+		tone += float(h[k]) * sin(TAU * f * float(k + 1) * t + float(k) * 0.4)
+	var phase := fposmod(t * f, 1.0) - 0.5
+	var thump := exp(-phase * phase / 0.02) * float(v[2])
+	var lope := 1.0 - float(v[4]) + float(v[4]) * sin(TAU * float(v[3]) * t)
+	var rasp := float(v[6]) * (fposmod(t * f * 4.0, 1.0) * 2.0 - 1.0)
+	return (tone * 0.3 + thump + rasp) * lope + n * float(v[5])
 
 ## A machine running.
 static func _hum(t: float, n: float) -> float:

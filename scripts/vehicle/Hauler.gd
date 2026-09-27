@@ -59,6 +59,8 @@ var towed_by: Hauler = null
 var _hitch_joint: PinJoint3D
 var _stand: CollisionShape3D
 var _stand_mesh: Node3D
+## Exhaust smoke from the stack (trucks only).
+var _smoke: CPUParticles3D
 ## How close a trailer's coupling has to be to a hitch to be hooked on.
 const HITCH_REACH := 2.5
 
@@ -254,6 +256,23 @@ func shift_gear(step: int) -> String:
 	gear = clampi(gear + step, 0, box.size() - 1)
 	return "gear %d of %d" % [gear + 1, box.size()]
 
+## Engine speed for the rev counter (and the engine note): idle at a stand,
+## the red line at the top speed of the gear it is in.
+const IDLE_RPM := 800.0
+const REDLINE_RPM := 6000.0
+
+func engine_rpm() -> float:
+	var box := gear_ratios()
+	if box.is_empty():
+		return IDLE_RPM
+	var ratio: float = box[clampi(gear, 0, box.size() - 1)]
+	var gear_top := maxf(0.5, max_speed * speed_scale() * ratio)
+	var v := absf(linear_velocity.dot(-global_transform.basis.z))
+	var rpm := IDLE_RPM + (REDLINE_RPM - IDLE_RPM) * v / gear_top
+	# Revving against the clutch at a stand.
+	rpm = maxf(rpm, IDLE_RPM + absf(input_throttle) * 1200.0)
+	return minf(rpm, REDLINE_RPM * 1.12)
+
 func gear_label() -> String:
 	return "%s%d" % ["M" if manual_gearbox() else "A", gear + 1]
 
@@ -335,7 +354,7 @@ func _ready() -> void:
 	add_to_group(&"vehicles")
 	_apply_spec()
 	if not is_trailer:
-		_engine_sound = Sfx.loop(&"engine")
+		_engine_sound = Sfx.loop(StringName("engine_" + String(engine_voice())))
 		add_child(_engine_sound)
 	collision_layer = Layers.VEHICLE
 	collision_mask = Layers.WORLD | Layers.LOOSE | Layers.MACHINE | Layers.TREE | Layers.PLAYER | Layers.VEHICLE
@@ -768,7 +787,7 @@ func _poll_bed() -> void:
 ## out however the truck is driven. It comes loose again when the driver gets
 ## out, the crane goes to work, or the load is tipped or dropped off.
 func _update_fixed(delta: float) -> void:
-	var manned := driver != null or (towed_by != null and is_instance_valid(towed_by) and towed_by.driver != null)
+	var manned := lead().driver != null
 	var may_fix := manned and not _crane_busy() and _tipping_items().is_empty() \
 		and _tub_angle < 0.001 and _tub_target < 0.001
 	if not may_fix:
@@ -1041,14 +1060,34 @@ var _engine_sound: AudioStreamPlayer3D
 func _engine_note() -> void:
 	if _engine_sound == null:
 		return
+	if _smoke != null:
+		_smoke.emitting = driver != null or autopilot
+		# A black cloud under load, a thin wisp at idle.
+		var pull := absf(input_throttle)
+		_smoke.initial_velocity_max = 1.6 + 2.5 * pull
+		_smoke.scale_amount_max = 0.8 + 1.4 * pull
+		_smoke.color = Color(1, 1, 1, 0.35 + 0.65 * pull)
 	if driver == null and not autopilot:
 		_engine_sound.volume_db = -80.0
 		return
-	var speed := linear_velocity.length()
-	# A rumble that deepens and swells under load rather than a whine that
-	# climbs: the pitch moves over a narrow range, the volume a little.
+	# Pitch follows the revs: it climbs through a gear and drops at a change.
+	var revs := (engine_rpm() - IDLE_RPM) / (REDLINE_RPM - IDLE_RPM)
 	_engine_sound.volume_db = Sfx.sfx_db() - 10.0 + absf(input_throttle) * 2.5
-	_engine_sound.pitch_scale = clampf(0.8 + speed / 40.0 + absf(input_throttle) * 0.15, 0.75, 1.6)
+	_engine_sound.pitch_scale = clampf(0.8 + revs * 0.65, 0.75, 1.6)
+
+## Which engine this vehicle sounds like.
+func engine_voice() -> StringName:
+	var v := String(spec.get("voice", ""))
+	if v != "":
+		return StringName(v)
+	match style:
+		&"bike":
+			return &"two_stroke"
+		&"quad":
+			return &"thumper"
+		&"buggy":
+			return &"flat4"
+	return &"diesel"
 
 # --- Lifted by a crane ------------------------------------------------------------
 
@@ -1280,8 +1319,40 @@ func _lowest_wheel_y() -> float:
 
 # --- Towing ---------------------------------------------------------------------
 
+## Every body that is part of this vehicle, what it tows (and what they tow),
+## and the loads aboard all of them.
+func train_rids() -> Array[RID]:
+	var out: Array[RID] = []
+	var v := lead()
+	var guard := 0
+	while v != null and is_instance_valid(v) and guard < 8:
+		out.append(v.get_rid())
+		for w in v.wheel_bodies:
+			out.append((w as PhysicsBody3D).get_rid())
+		for item in v._load:
+			if is_instance_valid(item):
+				out.append(item.get_rid())
+		if v.loader != null:
+			if v.loader.bucket != null:
+				out.append(v.loader.bucket.get_rid())
+			for item in v.loader.locked_items():
+				if is_instance_valid(item):
+					out.append(item.get_rid())
+		v = v.towing
+		guard += 1
+	return out
+
+## The front of the train this is part of: the truck pulling it all.
+func lead() -> Hauler:
+	var v := self
+	var guard := 0
+	while v.towed_by != null and is_instance_valid(v.towed_by) and guard < 8:
+		v = v.towed_by
+		guard += 1
+	return v
+
 func has_hitch() -> bool:
-	return not is_trailer and hitch_offset != Vector3.ZERO
+	return hitch_offset != Vector3.ZERO
 
 func hitch_point() -> Vector3:
 	return global_transform * hitch_offset
@@ -1297,6 +1368,8 @@ func hitch(trailer: Hauler) -> String:
 		return "the %s has no hitch" % display_name.to_lower()
 	if trailer == null or not trailer.is_trailer:
 		return "that is not a trailer"
+	if trailer == self or trailer == towed_by:
+		return "that is the one pulling it"
 	if towing != null:
 		return "already towing the %s" % towing.display_name.to_lower()
 	if trailer.towed_by != null:
@@ -1486,7 +1559,10 @@ func _drive_wheels() -> void:
 		var uphill := forward.y * signf(throttle if absf(throttle) > 0.05 else 1.0)
 		# (Past a few degrees: pulling away squats the tail and lifts the
 		# nose a little, which is not a hill.)
-		pull = lerpf(1.0, pull, maxf(0.5, clampf((uphill - 0.08) / 0.22, 0.0, 1.0)))
+		var climb := clampf((uphill - 0.08) / 0.22, 0.0, 1.0)
+		# Light runabouts keep the gentle start (a loose load stays aboard).
+		var flat := minf(lerpf(1.0, pull, 0.5), 1.3) if mass > 1000.0 else 1.0
+		pull = lerpf(flat, pull, climb)
 	# An overdrive always pulls less: that is the price of its speed.
 	if ratio > 1.0:
 		pull = minf(pull, pow(1.0 / ratio, GEAR_TORQUE_EXP))
@@ -1562,7 +1638,30 @@ func _clamp_motion() -> void:
 ## Whatever is still in the bed is lifted with it, rather than left where the
 ## truck was and dropped through the deck.
 func recover() -> void:
+	if towed_by != null and is_instance_valid(towed_by):
+		lead().recover()
+		return
 	move_to(Transform3D(Basis.from_euler(Vector3(0, global_rotation.y, 0)), global_position + Vector3(0, 1.2, 0)))
+	# Whatever it tows is righted too, set back on the hitch behind it.
+	var front := self
+	var back := towing
+	var guard := 0
+	while back != null and is_instance_valid(back) and guard < 8:
+		var yaw := _flat_yaw(back)
+		var basis := Basis.from_euler(Vector3(0, yaw, 0))
+		back.move_to(Transform3D(basis, front.hitch_point() - basis * back.tongue_offset + Vector3(0, 0.05, 0)))
+		front = back
+		back = back.towing
+		guard += 1
+
+## Which way a vehicle faces across the ground, even lying on its side.
+static func _flat_yaw(v: Hauler) -> float:
+	var fwd := -v.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.2:
+		fwd = v.global_transform.basis.y
+		fwd.y = 0.0
+	return atan2(-fwd.x, -fwd.z)
 
 ## Puts the truck at `after`, stopped, its wheels under it and its load still
 ## in the bed.

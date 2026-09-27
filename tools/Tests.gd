@@ -82,6 +82,8 @@ func _run_all() -> void:
 	await _test(&"building placement, cost and removal", test_building)
 	await _test(&"buildings sit on the pad, not in it", test_buildings_sit_on_pad)
 	await _test(&"plans fill with material and turn solid", test_schematic)
+	await _test(&"frost wood builds are slippery", test_frost_slip)
+	await _test(&"a ladder plan becomes a ladder", test_ladder_plan)
 	await _test(&"save/load round-trip", test_save_load)
 	await _test(&"the title screen reads the save without loading it", test_save_summary)
 	await _test(&"settings coerce, persist and reset", test_settings)
@@ -97,6 +99,7 @@ func _run_all() -> void:
 	await _test(&"tools come from an inventory onto a hotbar", test_hotbar_tools)
 	await _test(&"build mode edits placed buildings", test_build_edit)
 	await _test(&"dragging a building, its knobs go with it", test_build_knobs_follow)
+	await _test(&"an unfilled plan is picked by aiming at it, and shows what it is made of", test_plan_pick)
 	await _test(&"walls can be thin", test_thin_walls)
 	await _test(&"build mode previews the building itself", test_build_preview)
 	await _test(&"build mode only opens on your own land", test_build_territory)
@@ -123,6 +126,8 @@ func _run_all() -> void:
 	await _test(&"winch and crane respect their power ratings", test_vehicle_rig)
 	await _test(&"a driven truck's settled load is fixed as it lies", test_load_fixed_while_driven)
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
+	await _test(&"trailers chain behind one another", test_trailer_train)
+	await _test(&"the driving camera looks past its own truck, trailer and load", test_chase_camera_clear)
 	await _test(&"the front loader drives up onto the low-loader and rides on it", test_low_loader)
 	await _test(&"vehicles bump into each other", test_vehicles_collide)
 	await _test(&"a hard brake at speed slides", test_handbrake_slide)
@@ -2762,6 +2767,53 @@ func _lowest_collider_y(node: Node) -> float:
 
 ## Spec: a plan is filled by touching material to it, the first material fed to
 ## it is the only one it will take, and it turns solid when it is full.
+func test_ladder_plan() -> void:
+	_setup()
+	Economy.from_dict({"money": 50000, "day": 1})
+	var plan := plot.place(GameData.building(&"schematic_ladder"), Vector2i(0, 0) * Plot.SUB, 0) as Schematic
+	await step(4)
+	check(plan != null and plan.is_ladder(), "no ladder plan")
+	var cap := plan.capacity_m3()
+	check(cap < 0.2, "a ladder takes %.2f m3 - as much as a wall" % cap)
+	check(plan.accept_item(spawn(&"lumber_pine", Vector3(0, 6, 0), Solid.box(Vector3(0.25, cap / 0.0625 + 0.1, 0.25)))), "the plan refused wood")
+	await step(4)
+	check(plan.solid, "the full ladder plan is not solid")
+	var ladder := plan.get_node_or_null("Ladder") as Ladder
+	check(ladder != null, "the finished plan has no ladder")
+	if ladder != null:
+		check(ladder.holds(plan.global_position + Vector3(0, 1.5, 0)), "halfway up is not on the ladder")
+		check(ladder.holds(plan.global_position + Vector3(0, 0.1, 0)), "the foot of the ladder is not on it")
+	done()
+
+func test_frost_slip() -> void:
+	_setup()
+	Economy.from_dict({"money": 50000, "day": 1})
+	var plan := plot.place(GameData.building(&"schematic_slab"), Vector2i(0, 0) * Plot.SUB, 0) as Schematic
+	var pine := plot.place(GameData.building(&"schematic_slab"), Vector2i(12, 0) * Plot.SUB, 0) as Schematic
+	await step(4)
+	var cap := plan.capacity_m3()
+	check(plan.accept_item(spawn(&"lumber_frost", Vector3(0, 6, 0), Solid.box(Vector3(0.25, cap / 0.0625 + 0.1, 0.25)))), "the plan refused frost wood")
+	check(pine.accept_item(spawn(&"lumber_pine", Vector3(12, 6, 0), Solid.box(Vector3(0.25, cap / 0.0625 + 0.1, 0.25)))), "the plan refused pine")
+	await step(4)
+	check(plan.solid and plan.is_slippery(), "a finished frost-wood slab is not slippery")
+	check(not pine.is_slippery(), "pine is slippery")
+	# Walking onto each and letting go of the keys: on frost wood you slide on.
+	var slides: Array[float] = []
+	for slab in [plan, pine]:
+		var player := _make_player()
+		world.add_child(player)
+		player.global_position = (slab as Node3D).global_position + Vector3(0, 1.5, 0)
+		await step(30)
+		player.velocity = Vector3(4.0, 0, 0)
+		var start := player.global_position
+		for i in 20:
+			await step(1)
+		slides.append(player.global_position.distance_to(start))
+		player.queue_free()
+		await step(2)
+	check(slides[0] > slides[1] * 1.8, "no slide on frost wood (%.2f m vs %.2f m)" % [slides[0], slides[1]])
+	done()
+
 func test_schematic() -> void:
 	_setup()
 	Economy.from_dict({"money": 50000, "day": 1})
@@ -3673,6 +3725,42 @@ func test_build_knobs_follow() -> void:
 	bs.free()
 	done()
 
+func test_plan_pick() -> void:
+	_setup()
+	Economy.from_dict({"money": 100000, "day": 1})
+	var player := _make_player()
+	world.add_child(player)
+	await step(2)
+	var bs := BuildSystem.new()
+	world.add_child(bs)
+	bs.setup(plot, player.camera, player)
+	var node := plot.place(GameData.building(&"schematic_wall"), Vector2i(0, 0) * Plot.SUB, 0) as Schematic
+	await step(2)
+	var cap := node.capacity_m3()
+	node.accept_item(spawn(&"lumber_oak", Vector3(0, 6, 0), Solid.box(Vector3(0.25, cap * 0.3 / 0.0625, 0.25))))
+	await step(2)
+	check(not node.solid, "the plan filled up")
+	# Stand back and look straight at the middle of it.
+	var target := node.global_position + Vector3(0, 1.0, 0)
+	player.global_position = target + Vector3(0, -1.0, 6.0)
+	await step(2)
+	player.camera.global_transform = Transform3D(Basis.looking_at(target - (target + Vector3(0, 0, 6)), Vector3.UP), target + Vector3(0, 0, 6))
+	bs.set_active(true)
+	await step(1)
+	bs.toggle_select()
+	check(bs.editing(), "aiming at an unfilled plan did not select it")
+	check(bs.plan_hover_text().contains("Oak"), "hovering a plan does not say it is oak: '%s'" % bs.plan_hover_text())
+	bs.deselect()
+	bs.set_active(false)
+	player.global_position = target + Vector3(0, -1.6, 2.5)
+	player.rotation = Vector3.ZERO
+	player.camera.rotation = Vector3.ZERO
+	await step(2)
+	player._update_prompt()
+	check(player.last_prompt.contains("Oak"), "looking at a plan does not say what it is made of: '%s'" % player.last_prompt)
+	bs.free()
+	done()
+
 func test_build_territory() -> void:
 	_setup()
 	var player := _make_player()
@@ -4463,21 +4551,21 @@ func test_building_copies() -> void:
 	check_eq(PlayerState.spare_count(&"sander"), 1, "taking the sander down did not give the copy back")
 	check_eq(Economy.money, 1000, "taking a bought sander down paid out money")
 	# Tiers are per copy.
-	PlayerState.add_copy(&"crusher", 2)
+	PlayerState.add_copy(&"furnace", 2)
 	var palette := PlayerState.available_buildings()
 	var t2: BuildingDef = null
 	for d in palette:
-		if d.id == &"crusher":
-			check_eq(d.tier, 2, "a T2 crusher box offered a crusher at T%d" % d.tier)
+		if d.id == &"furnace":
+			check_eq(d.tier, 2, "a T2 furnace box offered a furnace at T%d" % d.tier)
 			t2 = d
-	check(t2 != null, "the T2 crusher is not offered to build")
-	check(plot.placement_error(GameData.building(&"crusher"), Vector2i(4, -8) * Plot.SUB, 0) != "",
-		"a T2 crusher made a T1 crusher buildable")
-	var crusher := plot.place(t2, Vector2i(4, -8) * Plot.SUB, 0) as InlineMachine
-	check(crusher != null, "the T2 crusher could not be built")
+	check(t2 != null, "the T2 furnace is not offered to build")
+	check(plot.placement_error(GameData.building(&"furnace"), Vector2i(4, -8) * Plot.SUB, 0) != "",
+		"a T2 furnace made a T1 furnace buildable")
+	var furnace := plot.place(t2, Vector2i(4, -8) * Plot.SUB, 0) as InlineMachine
+	check(furnace != null, "the T2 furnace could not be built")
 	await step(2)
-	if crusher != null:
-		check_eq(crusher.level, 2, "the T2 crusher built at T%d" % crusher.level)
+	if furnace != null:
+		check_eq(furnace.level, 2, "the T2 furnace built at T%d" % furnace.level)
 	# Shapes: free, as many as you like.
 	var block := GameData.building(&"schematic_block")
 	for i in 5:
@@ -4493,9 +4581,9 @@ func test_building_copies() -> void:
 	check_eq(PlayerState.spare_count(&"sander"), 1, "the spare sander was lost in the save")
 	var found := 0
 	for m in plot.inline_machines():
-		if m.def.id == &"crusher":
+		if m.def.id == &"furnace":
 			found = m.level
-	check_eq(found, 2, "the T2 crusher came back as T%d" % found)
+	check_eq(found, 2, "the T2 furnace came back as T%d" % found)
 	done()
 
 func test_unlimited_money() -> void:
@@ -5235,6 +5323,82 @@ func test_low_loader() -> void:
 	check(moved > 8.0, "the low-loader was not towed (%.1f m)" % moved)
 	check(still.y > deck.bed_floor + 0.3 and absf(still.z - deck.bed_mid_z) < 1.5 and absf(still.x) < 1.0,
 		"the loader fell off or slid on the deck (%.1f, %.1f, %.1f)" % [still.x, still.y, still.z])
+	done()
+
+func test_chase_camera_clear() -> void:
+	_setup(false)
+	var player := _make_player()
+	world.add_child(player)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"log_truck")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	var trailer := Hauler.new()
+	trailer.setup(manager, 0, &"log_trailer")
+	world.add_child(trailer)
+	await step(2)
+	var at := truck.hitch_point() - trailer.tongue_offset + Vector3(0, 0, 0.3)
+	trailer.global_position = Vector3(at.x, trailer.spawn_height(), at.z)
+	await step(40)
+	truck.hitch(trailer)
+	# A tall log on the bed, right where the camera looks from.
+	manager.spawn(&"wood_pine", Transform3D(truck.global_transform.basis * LooseItem.lying_basis(0.0),
+		truck.global_transform * Vector3(0, truck.bed_floor + 0.8, truck.bed_mid_z)), 0, Vector3.ZERO, Solid.cylinder(0.5, 0.45, 5.0), true)
+	await step(30)
+	player.enter_vehicle(truck)
+	truck.driver = player
+	for i in 90:
+		player.global_position = truck.seat_transform().origin
+		await step(1)
+	var want := float(truck.get("camera_distance")) if truck.get("camera_distance") != null else player.chase_distance
+	check(truck.cargo_count() >= 1, "the log is not on the truck")
+	check(player._cam_distance > want * 0.9, "the camera was pulled in to %.1f m (of %.1f) by its own truck" % [player._cam_distance, want])
+	player.exit_vehicle()
+	done()
+
+func test_trailer_train() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"hauler")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), -10.0)
+	var first := Hauler.new()
+	first.setup(manager, 0, &"trailer")
+	world.add_child(first)
+	var second := Hauler.new()
+	second.setup(manager, 0, &"trailer")
+	world.add_child(second)
+	var deck := Hauler.new()
+	deck.setup(manager, 0, &"low_loader")
+	world.add_child(deck)
+	await step(2)
+	check(first.has_hitch() and not deck.has_hitch(), "trailers should have hitches, the low-loader not")
+	deck.queue_free()
+	var at := truck.hitch_point() - first.tongue_offset + Vector3(0, 0, 0.3)
+	first.global_position = Vector3(at.x, first.spawn_height(), at.z)
+	await step(30)
+	check_eq(truck.hitch(first), "", "the truck would not take the first trailer")
+	await step(20)
+	var at2 := first.hitch_point() - second.tongue_offset + Vector3(0, 0, 0.3)
+	second.global_position = Vector3(at2.x, second.spawn_height(), at2.z)
+	await step(30)
+	check_eq(first.hitch(second), "", "the trailer would not take a second trailer")
+	check(second.lead() == truck, "the second trailer does not know who pulls it")
+	truck.autopilot = true
+	truck.input_throttle = 0.7
+	await step(180)
+	truck.input_throttle = 0.0
+	truck.input_brake = true
+	await step(120)
+	check(second.global_position.z < -12.0, "the second trailer was not pulled along (z %.1f, first %.1f, truck %.1f)" % [second.global_position.z, first.global_position.z, truck.global_position.z])
+	check(second.tongue_point().distance_to(first.hitch_point()) < 0.3, "the second trailer came off")
+	# Knocked on its side, recovering the truck rights the trailers too.
+	second.move_to(Transform3D(Basis(Vector3.FORWARD, 1.5) * second.global_transform.basis, second.global_position + Vector3(0, 0.5, 0)))
+	await step(10)
+	truck.recover()
+	await step(60)
+	check(second.global_transform.basis.y.dot(Vector3.UP) > 0.95, "recovering left the trailer on its side")
+	check(second.tongue_point().distance_to(first.hitch_point()) < 0.3, "recovering took the trailer off the hitch")
 	done()
 
 func test_trailers() -> void:

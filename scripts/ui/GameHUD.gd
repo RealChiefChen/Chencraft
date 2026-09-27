@@ -59,6 +59,7 @@ var _build_error: Label
 var _build_sig: String = ""
 var _drive_panel: PanelContainer
 var _speed: Label
+var _tacho: Tachometer
 var _cargo: Label
 var _cargo_bar: ProgressBar
 var _drive_state: Label
@@ -417,6 +418,9 @@ func _build_drive() -> void:
 	unit.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	speed_col.add_child(unit)
 	row.add_child(speed_col)
+	_tacho = Tachometer.new()
+	_tacho.visible = false
+	row.add_child(_tacho)
 	var cargo_col := UIKit.vbox(5)
 	cargo_col.custom_minimum_size.x = 220
 	cargo_col.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -947,6 +951,9 @@ func _update_drive() -> void:
 	else:
 		_cargo.text = "%s   ·   no load space" % truck.display_name
 		_cargo_bar.value = 0.0
+	_tacho.visible = truck.manual_gearbox()
+	if _tacho.visible:
+		_tacho.set_reading(truck.engine_rpm(), Hauler.REDLINE_RPM, str(truck.gear + 1))
 	var bits: Array[String] = []
 	if not truck.is_trailer and truck.gears.size() > 1:
 		bits.append("gear %s" % truck.gear_label())

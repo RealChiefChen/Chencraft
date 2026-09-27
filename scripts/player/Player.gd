@@ -740,7 +740,12 @@ func _physics_step(delta: float) -> void:
 	if turning_held():
 		input = Vector2.ZERO
 	var dir := (transform.basis * Vector3(input.x, 0.0, input.y)).normalized()
-	if dir != Vector3.ZERO:
+	if on_ice():
+		# On frost wood: slow to get going, slower to stop.
+		var aim := dir * speed
+		velocity.x = move_toward(velocity.x, aim.x, 2.0 * delta)
+		velocity.z = move_toward(velocity.z, aim.z, 2.0 * delta)
+	elif dir != Vector3.ZERO:
 		velocity.x = dir.x * speed
 		velocity.z = dir.z * speed
 	else:
@@ -863,6 +868,10 @@ func _update_chase_camera(delta: float) -> void:
 		distance = chase_distance
 		if vehicle.get("camera_distance") != null:
 			distance = float(vehicle.get("camera_distance"))
+		# The truck itself, what it tows and what it carries never push the
+		# camera in: only the world around it does.
+		if vehicle is Hauler:
+			skip.append_array((vehicle as Hauler).train_rids())
 	var clear := _camera_clearance(pivot, basis.z, distance, skip)
 	# In at once when something is in the way; back out gently once clear.
 	_cam_distance = clear if clear < _cam_distance else move_toward(_cam_distance, clear, 12.0 * delta)
@@ -937,6 +946,35 @@ func work_winch(r: VehicleRig, delta: float) -> void:
 
 # --- Aiming ----------------------------------------------------------------
 
+## The nearest unfilled plan along the aim, within reach.
+func _aim_plan() -> Dictionary:
+	var from := eye()
+	var q := PhysicsRayQueryParameters3D.create(from, from - camera.global_transform.basis.z * reach, Layers.TRIGGER)
+	q.collide_with_areas = true
+	q.collide_with_bodies = false
+	var skip: Array[RID] = []
+	for attempt in 6:
+		q.exclude = skip
+		var h := get_world_3d().direct_space_state.intersect_ray(q)
+		if h.is_empty():
+			return {}
+		var area := h.collider as Area3D
+		if area != null and area.get_parent() is Schematic:
+			return {"collider": area.get_parent(), "position": h.position, "normal": h.normal}
+		skip.append(h.rid)
+	return {}
+
+## Standing on something slick (a frost-wood build).
+func on_ice() -> bool:
+	if not is_on_floor():
+		return false
+	for i in get_slide_collision_count():
+		var c := get_slide_collision(i)
+		var body := c.get_collider() as Node
+		if body != null and body.has_meta(&"slippery") and c.get_normal().y > 0.6:
+			return true
+	return false
+
 func aim_hit() -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	var from := eye()
@@ -991,8 +1029,15 @@ func _owner_of(collider: Object) -> Node:
 func _update_prompt() -> void:
 	if build_system != null and build_system.active:
 		last_prompt = build_system.status_line()
+		var over := build_system.plan_hover_text()
+		if over != "":
+			last_prompt += "\n" + over
 		return
 	var hit := aim_hit()
+	# A plan not yet filled has nothing solid to aim at: its box counts.
+	var plan_hit := _aim_plan()
+	if not plan_hit.is_empty() and (hit.is_empty() or eye().distance_to(plan_hit.position) < eye().distance_to(hit.position) + 0.3):
+		hit = plan_hit
 	if hit.is_empty():
 		last_prompt = ""
 		return

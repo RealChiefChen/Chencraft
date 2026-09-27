@@ -57,10 +57,30 @@ static var MATERIAL_SHARE: float = Balance.num("build.material_share", 0.05)
 
 ## How much material this shape takes to finish.
 func capacity_m3() -> float:
-	return _size.x * _size.y * _size.z * MATERIAL_SHARE * (0.5 if _wedge() else 1.0)
+	var share := 0.5 if _wedge() else (0.3 if is_ladder() else 1.0)
+	return _size.x * _size.y * _size.z * MATERIAL_SHARE * share
 
 func _wedge() -> bool:
 	return def != null and def.shape == &"wedge"
+
+# --- Ladders ------------------------------------------------------------------
+
+## A ladder plan: filled, it becomes a ladder up the whole height of the plan,
+## climbed like the one up a truck's cab (forward or jump up, back down).
+func is_ladder() -> bool:
+	return def != null and def.shape == &"ladder"
+
+var _ladder: Ladder
+
+func _build_ladder() -> void:
+	if _ladder != null:
+		return
+	_ladder = Ladder.new()
+	_ladder.name = "Ladder"
+	_ladder.size = Vector3(0.7, _size.y + 0.3, maxf(0.9, _size.x))
+	# Its rungs face out of the plan's front, standing on the ground.
+	_ladder.transform = Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(0, _size.y * 0.5 + 0.15, 0))
+	add_child(_ladder)
 
 # --- Doors --------------------------------------------------------------------
 
@@ -275,14 +295,37 @@ func _solidify() -> void:
 	if is_door():
 		_fill.visible = false
 		_build_door()
+	elif is_ladder():
+		_fill.visible = false
+		_build_ladder()
 	else:
 		_shape.disabled = false
 		_fill.visible = true
 		_apply_material(_fill, 1.0)
+	_apply_slip()
 	if _area != null:
 		_area.queue_free()
 		_area = null
 	completed.emit(self)
+
+## Frost wood is slick as ice once it is built with: boots skid on it and
+## tyres barely grip.
+const SLIPPERY := [&"wood_frost", &"lumber_frost"]
+
+func is_slippery() -> bool:
+	return SLIPPERY.has(material)
+
+func _apply_slip() -> void:
+	if _body == null:
+		return
+	if is_slippery():
+		var ice := PhysicsMaterial.new()
+		ice.friction = 0.04
+		_body.physics_material_override = ice
+		_body.set_meta(&"slippery", true)
+	else:
+		_body.physics_material_override = null
+		_body.remove_meta(&"slippery")
 
 ## Taking a shape down gives the material back rather than refunding cash, since
 ## cash never went into it.

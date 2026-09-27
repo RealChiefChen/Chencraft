@@ -100,6 +100,8 @@ static func _truck(v: Hauler, g: Greeble) -> void:
 	var stack := Vector3(hx - 0.2, top, cab.z + hz + 0.1)
 	g.pipe(stack, stack + Vector3(0, cab_size.y + 0.9, 0), 0.08, STEEL.darkened(0.2), 6)
 	g.prism(6, 0.1, 0.1, 0.2, Transform3D(Basis(Vector3.FORWARD, 0.4), stack + Vector3(0, cab_size.y + 0.9, 0)), DARK)
+	v._smoke = _smoke(stack + Vector3(0, cab_size.y + 1.05, 0))
+	v.add_child(v._smoke)
 	g.pipe(Vector3(-size.x * 0.5 - 0.05, -top + 0.25, cab.z - 0.3), Vector3(-size.x * 0.5 - 0.05, -top + 0.25, cab.z + 0.4), 0.2, STEEL, 8)
 	_mudguards(v, g)
 
@@ -182,6 +184,42 @@ static func _buggy(v: Hauler, g: Greeble) -> void:
 ## A trailer: a chassis with side rails, an A-frame drawbar out to the
 ## coupling, mudguards, tail lights and reflectors. Its leg is its own part,
 ## so it can fold away when the trailer is hitched.
+## Diesel smoke out of the stack: black puffs that swell, drift up and thin
+## out. Hauler turns it up with the throttle.
+static func _smoke(at: Vector3) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.name = "Smoke"
+	p.position = at
+	p.amount = 24
+	p.lifetime = 1.6
+	p.local_coords = false
+	p.emitting = false
+	var q := QuadMesh.new()
+	q.size = Vector2(0.35, 0.35)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	q.material = m
+	p.mesh = q
+	p.direction = Vector3.UP
+	p.spread = 12.0
+	p.initial_velocity_min = 1.2
+	p.initial_velocity_max = 2.2
+	p.gravity = Vector3(0, 0.6, 0)
+	p.damping_min = 0.6
+	p.damping_max = 1.0
+	var grow := Curve.new()
+	grow.add_point(Vector2(0, 0.5))
+	grow.add_point(Vector2(1, 3.0))
+	p.scale_amount_curve = grow
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.05, 0.05, 0.05, 0.85))
+	ramp.set_color(1, Color(0.25, 0.25, 0.25, 0.0))
+	p.color_ramp = ramp
+	return p
+
 static func _trailer(v: Hauler, g: Greeble) -> void:
 	var size := v.body_size
 	var paint := v.paint

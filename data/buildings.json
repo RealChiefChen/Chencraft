@@ -301,6 +301,19 @@
       "blurb": "A ramp: a wedge rising toward its front. Fill it with material and it turns solid."
     },
     {
+      "id": "schematic_ladder",
+      "display_name": "Plan: Ladder",
+      "size": [
+        1,
+        3,
+        1
+      ],
+      "cost": 10,
+      "kind": "schematic",
+      "shape": "ladder",
+      "blurb": "A ladder up to a roof or a platform. Fill it with material; then climb it (forward or jump to go up, back to come down)."
+    },
+    {
       "id": "schematic_door",
       "display_name": "Plan: Door",
       "size": [

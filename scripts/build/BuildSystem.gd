@@ -561,13 +561,50 @@ func edit_hint() -> String:
 		parts.append(("[%s]" % names[i]) if i == int(edit_mode) else names[i])
 	return "   ".join(parts) + "      aim at a handle, hold LMB and move the mouse   ·   [Del] remove   ·   [F] done"
 
-## What the crosshair is on: the ray hit against the ground and buildings.
+## What the crosshair is on: the ray hit against the ground and buildings -
+## and plans not yet filled, which have nothing solid to hit, by the box
+## round them, so they are as easy to pick as anything built.
 func _aim_hit() -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	var from := camera.global_position
-	var q := PhysicsRayQueryParameters3D.create(from, from - camera.global_transform.basis.z * REACH,
-		Layers.WORLD | Layers.MACHINE)
-	return space.intersect_ray(q)
+	var to := from - camera.global_transform.basis.z * REACH
+	var q := PhysicsRayQueryParameters3D.create(from, to, Layers.WORLD | Layers.MACHINE)
+	var hit := space.intersect_ray(q)
+	var plan := _aim_plan(from, to)
+	if not plan.is_empty() and (hit.is_empty() or from.distance_to(plan.position) < from.distance_to(hit.position) + 0.3):
+		return plan
+	return hit
+
+## The nearest unfinished plan along the aim, as a hit on the plan itself.
+func _aim_plan(from: Vector3, to: Vector3) -> Dictionary:
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(from, to, Layers.TRIGGER)
+	q.collide_with_areas = true
+	q.collide_with_bodies = false
+	var skip: Array[RID] = []
+	for attempt in 6:
+		q.exclude = skip
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return {}
+		var area := hit.collider as Area3D
+		if area != null and area.get_parent() is Schematic and not (area.get_parent() as Schematic).solid:
+			return {"collider": area.get_parent(), "position": hit.position, "normal": hit.normal}
+		skip.append(hit.rid)
+	return {}
+
+## What a plan under the crosshair is made of (or wants), for the HUD.
+func plan_hover_text() -> String:
+	if not active:
+		return ""
+	var hit := _aim_hit()
+	var i := plot.index_at_hit(hit) if not hit.is_empty() else -1
+	if i < 0:
+		return ""
+	var node: Node = plot.placed[i].node
+	if node is Schematic:
+		return (node as Schematic).status_line()
+	return ""
 
 ## Aim ray against the world layer, then snap the footprint so it is centred on
 ## the cell under the crosshair.

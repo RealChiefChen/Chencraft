@@ -27,6 +27,7 @@
     },
     {
       "id": "pickup",
+      "voice": "v8",
       "display_name": "Pickup",
       "blurb": "Fast on the road, with a short bed and a winch on the front bumper.",
       "style": "truck",
@@ -100,6 +101,7 @@
     },
     {
       "id": "log_truck",
+      "voice": "big_diesel",
       "display_name": "Log Truck",
       "blurb": "A long stake bed for whole trunks, a tandem rear axle and a timber crane.",
       "style": "truck",
@@ -126,6 +128,7 @@
     },
     {
       "id": "dump_truck",
+      "voice": "big_diesel",
       "display_name": "Dump Truck",
       "blurb": "A deep steel tub that tips up to pour its load out the back.",
       "style": "truck",
@@ -152,6 +155,7 @@
     },
     {
       "id": "loader",
+      "voice": "plant",
       "display_name": "Front Loader",
       "blurb": "A wheel loader: drop the bucket flat to shove a pile along, or scoop it up, lift it and pour it into a truck. Shift/Ctrl raise and lower the arms, Q/E tip and curl the bucket.",
       "style": "truck",
@@ -177,6 +181,7 @@
     },
     {
       "id": "crane_truck",
+      "voice": "plant",
       "display_name": "Crane Truck",
       "blurb": "A heavy mast crane and a big winch on a low-sided bed.",
       "style": "truck",
@@ -219,6 +224,7 @@
       "suspension_rest": 0.55,
       "com_y": -0.2,
       "tongue": [0, -0.1, -2.6],
+      "hitch": [0, -0.1, 1.95],
       "seat": [0, 0, 0],
       "camera": 8.0,
       "paint": [0.52, 0.54, 0.56],
@@ -244,6 +250,7 @@
       "suspension_rest": 0.7,
       "com_y": -0.3,
       "tongue": [0, -0.15, -4.4],
+      "hitch": [0, -0.15, 3.75],
       "seat": [0, 0, 0],
       "camera": 12.0,
       "paint": [0.28, 0.4, 0.26],
@@ -269,6 +276,7 @@
       "suspension_rest": 0.75,
       "com_y": -0.35,
       "tongue": [0, -0.15, -3.4],
+      "hitch": [0, -0.15, 2.75],
       "seat": [0, 0, 0],
       "camera": 10.0,
       "paint": [0.9, 0.46, 0.12],

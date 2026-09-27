@@ -2267,21 +2267,38 @@ func _toggle_hitch(p: Player = null) -> String:
 		return "stand by a truck and a trailer to hitch them [T]"
 	if not truck.has_hitch():
 		return "the %s has no hitch" % truck.display_name.to_lower()
+	# Trailers with hitches of their own make a train: the free trailer
+	# nearest the back of the train goes on the end, and with none there
+	# the last one comes off.
 	if truck.towing != null:
-		var t := truck.unhitch()
+		var tail := truck
+		while tail.towing != null and is_instance_valid(tail.towing):
+			tail = tail.towing
+		var extra := _free_trailer_near(tail)
+		if extra != null and tail.has_hitch() and \
+				extra.tongue_point().distance_to(tail.hitch_point()) <= Hauler.HITCH_REACH:
+			var e := tail.hitch(extra)
+			return e if e != "" else "hitched the %s behind the %s" % [extra.display_name.to_lower(), tail.display_name.to_lower()]
+		var front := tail.towed_by if tail != truck else truck
+		var t := front.unhitch()
 		return "unhitched the %s" % t.display_name.to_lower()
-	var best: Hauler = null
-	var best_d := INF
-	for v in vehicles():
-		if v.is_trailer and v.towed_by == null:
-			var d := v.tongue_point().distance_to(truck.hitch_point())
-			if d < best_d:
-				best_d = d
-				best = v
+	var best: Hauler = _free_trailer_near(truck)
 	if best == null:
 		return "no trailer to hitch - they are sold at the Store"
 	var err := truck.hitch(best)
 	return err if err != "" else "hitched the %s - [T] to let it go" % best.display_name.to_lower()
+
+## The unhitched trailer whose coupling is nearest `v`'s hitch.
+func _free_trailer_near(v: Hauler) -> Hauler:
+	var best: Hauler = null
+	var best_d := INF
+	for other in vehicles():
+		if other != v and other.is_trailer and other.towed_by == null and other.towing != v:
+			var d := other.tongue_point().distance_to(v.hitch_point())
+			if d < best_d:
+				best_d = d
+				best = other
+	return best
 
 ## Into the driving seat of `v`.
 func drive(v: Hauler, p: Player = null) -> void:

@@ -214,6 +214,10 @@ func _ready() -> void:
 	add_child(manager)
 	manager.register_plot(0, Vector3(0, 6, 0))
 	manager.ground_height = _ground_for_items
+	if Net.is_client():
+		# Every piece here is a copy of one on the host, moved by the host.
+		manager.mirror = true
+		manager.set_physics_process(false)
 
 	plot = Plot.new()
 	plot.name = "Plot"
@@ -269,14 +273,20 @@ func _ready() -> void:
 	add_child(hud)
 
 	var loaded := false
-	if SaveSystem.has_save():
+	if Net.is_client():
+		# A guest plays in the host's world: nothing of its own save is used.
+		autosave = false
+		player.net_view = true
+		player.collision_layer = 0
+		player.collision_mask = 0
+	elif SaveSystem.has_save():
 		loaded = SaveSystem.load_game(plot, player, SaveSystem.SAVE_PATH, manager,
 			_spawn_vehicle_for_load, quests)
 		if loaded:
 			_unstick_player()
 			# Trucks on their pads may come a frame later.
 			_unstick_player.call_deferred()
-	if not loaded:
+	if not loaded and not Net.is_client():
 		# A starting float, so the first sawmill is a few tree-loads away
 		# rather than an hour of hauling.
 		Economy.add_money(STARTING_MONEY)
@@ -289,6 +299,9 @@ func _ready() -> void:
 	add_child(tutorial)
 	tutorial.evaluate()
 	hud.bind_tutorial(tutorial)
+	if leave_reason != "":
+		hud.log_message("left co-op: %s" % leave_reason)
+		leave_reason = ""
 	hud.toast("Welcome back - day %d" % Economy.day if loaded else
 		"You have %s. Fell a tree to get started." % UIKit.money(Economy.money), UITheme.ACCENT)
 
@@ -299,6 +312,13 @@ func _ready() -> void:
 	if staged_load:
 		process_mode = Node.PROCESS_MODE_INHERIT
 		load_progress.emit("Ready", 1.0)
+	if Net.is_client():
+		net_client = NetClient.new()
+		net_client.name = "NetClient"
+		net_client.world = self
+		add_child(net_client)
+	elif Net.is_host():
+		start_hosting()
 	finished_loading.emit()
 
 # --- World construction ----------------------------------------------------
@@ -1186,18 +1206,22 @@ func vehicles() -> Array[Hauler]:
 ## The vehicle you are driving, or else the nearest one within `reach`
 ## (measured to its hull, so a long truck is as easy to get into as a quad).
 ## How far the player stands from a vehicle's body.
-func _distance_to(v: Hauler) -> float:
-	var local := v.global_transform.affine_inverse() * player.global_position
+func _distance_to(v: Hauler, p: Player = null) -> float:
+	if p == null:
+		p = player
+	var local := v.global_transform.affine_inverse() * p.global_position
 	var half := v.body_size * 0.5
 	return Vector3(maxf(absf(local.x) - half.x, 0.0), 0.0, maxf(absf(local.z) - half.z, 0.0)).length()
 
-func vehicle_at_hand(reach: float = 6.0) -> Hauler:
-	if player != null and player.driving():
-		return player.vehicle as Hauler
+func vehicle_at_hand(reach: float = 6.0, p: Player = null) -> Hauler:
+	if p == null:
+		p = player
+	if p != null and p.driving():
+		return p.vehicle as Hauler
 	var best: Hauler = null
 	var best_d := INF
 	for v in vehicles():
-		var local := v.global_transform.affine_inverse() * player.global_position
+		var local := v.global_transform.affine_inverse() * p.global_position
 		var half := v.body_size * 0.5
 		var outside := Vector3(maxf(absf(local.x) - half.x, 0.0), 0.0, maxf(absf(local.z) - half.z, 0.0))
 		var d := outside.length()
@@ -1270,8 +1294,19 @@ func _build_menus() -> void:
 	pause_menu.main_menu_requested.connect(func():
 		quick_save()
 		pause_menu.close()
+		if Net.is_client():
+			Net.leave()
+			host_gone()
+			return
 		show_main_menu())
 	pause_menu.quit_requested.connect(quit_game)
+	pause_menu.leave_requested.connect(func():
+		if Net.is_client():
+			Net.leave()
+			host_gone()
+		else:
+			stop_hosting()
+			resume_play())
 	add_child(pause_menu)
 
 	var menu_wanted := show_menu and get_tree().current_scene == self and not MainMenu.skip_once
@@ -1294,13 +1329,16 @@ func show_main_menu() -> void:
 		main_menu.quit_requested.connect(quit_game)
 		add_child(main_menu)
 	hud.visible = false
-	get_tree().paused = true
+	if not Net.online():
+		get_tree().paused = true
 	main_menu.open(self)
 
 func pause_game() -> void:
-	if get_tree().paused:
+	if get_tree().paused or (pause_menu.visible and Net.online()):
 		return
-	get_tree().paused = true
+	# In co-op the world goes on for everyone else.
+	if not Net.online():
+		get_tree().paused = true
 	pause_menu.open()
 
 func resume_play() -> void:
@@ -1313,6 +1351,9 @@ func resume_play() -> void:
 	player.capture_mouse(not hud.journal_open())
 
 func quick_save() -> bool:
+	# A guest's world is the host's; saving it here would overwrite their own.
+	if Net.is_client():
+		return false
 	var ok := SaveSystem.save_game(plot, player, SaveSystem.SAVE_PATH, manager, _padless_vehicle(), quests)
 	if ok:
 		hud.flash_saved()
@@ -1352,18 +1393,18 @@ func start_new_game() -> void:
 		get_tree().reload_current_scene())
 
 func quit_game() -> void:
-	if playing:
+	if playing and not Net.is_client():
 		SaveSystem.save_game(plot, player, SaveSystem.SAVE_PATH, manager, _padless_vehicle(), quests)
 	get_tree().quit()
 
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_CLOSE_REQUEST:
-			if playing and hud != null:
+			if playing and hud != null and not Net.is_client():
 				SaveSystem.save_game(plot, player, SaveSystem.SAVE_PATH, manager, _padless_vehicle(), quests)
 		NOTIFICATION_APPLICATION_FOCUS_OUT:
 			# Alt-tab pauses, rather than leaving the truck rolling.
-			if playing and pause_menu != null and not get_tree().paused \
+			if playing and pause_menu != null and not get_tree().paused and not Net.online() \
 					and DisplayServer.get_name() != "headless":
 				pause_game()
 
@@ -1565,43 +1606,66 @@ func _rescue_fallen() -> void:
 		at.y = terrain.height_at(at.x, at.z) + v.spawn_height()
 		v.move_to(Transform3D(Basis.from_euler(Vector3(0, v.global_rotation.y, 0)), at))
 		hud.log_message("the %s fell through the ground - put back on top" % v.display_name.to_lower())
-	if not player.driving():
-		var pp := player.global_position
+	for p in players():
+		if p.driving():
+			continue
+		var pp := p.global_position
 		var under := _ground_for_items(pp)
 		if under != -INF and pp.y < under - UNDER_GROUND:
-			player.global_position = Vector3(pp.x, under + 1.0, pp.z)
-			player.velocity = Vector3.ZERO
+			p.global_position = Vector3(pp.x, under + 1.0, pp.z)
+			p.velocity = Vector3.ZERO
 
 ## Back to where the game starts, by the plot: for when you are stuck out
 ## somewhere, or have fallen through the world. The truck stays where it is.
-func return_to_base() -> void:
-	if player.driving():
-		player.exit_vehicle()
+func return_to_base(p: Player = null) -> void:
+	if p == null:
+		p = player
+	# A guest asking for this from their pause menu has it done on the host.
+	if p == player and Net.is_client():
+		Net.client_side.call("send_event", {"t": "base"})
+		return
+	if p.driving():
+		var riding := p.vehicle as Hauler
+		p.exit_vehicle()
+		if riding != null and is_instance_valid(riding):
+			riding.driver = null
 	var spot := Vector3(0, 0, 12.0)
 	spot.y = terrain.height_at(spot.x, spot.z) + 1.0
-	player.global_position = spot
-	player.velocity = Vector3.ZERO
-	player.rotation.y = PI
-	hud.toast("Back at base", UITheme.GOOD)
+	p.global_position = spot
+	p.velocity = Vector3.ZERO
+	p.rotation.y = PI
+	if p == player:
+		hud.toast("Back at base", UITheme.GOOD)
+	else:
+		_tell(p, "back at base")
 
 func _physics_process(delta: float) -> void:
+	# A co-op guest's world is the host's to run.
+	if Net.is_client():
+		return
+	for g in guests.values():
+		if is_instance_valid(g) and (g as Player).global_position.y < FELL_OUT_Y:
+			return_to_base(g)
 	if player != null and player.global_position.y < FELL_OUT_Y:
 		return_to_base()
 	_rescue_timer -= delta
 	if _rescue_timer <= 0.0 and player != null:
 		_rescue_timer = 0.5
 		_rescue_fallen()
-	# Standing by a truck, its winch answers the reel keys too.
-	if player != null and not player.driving() and playing:
-		var wv := vehicle_at_hand(10.0)
-		if wv != null and wv.rig != null and wv.rig.anchored and _distance_to(wv) <= 10.0:
-			player.work_winch(wv.rig, delta)
-	var riding := player.vehicle as Hauler if player != null and player.driving() else null
-	if riding != null and is_instance_valid(riding):
-		# The player rides the seat; the camera is a child of the player, so
-		# this doubles as the driving camera.
-		player.global_position = riding.seat_transform().origin
-		player.velocity = Vector3.ZERO
+	for p in players():
+		if Net.is_client():
+			break
+		# Standing by a truck, its winch answers the reel keys too.
+		if not p.driving() and playing:
+			var wv := vehicle_at_hand(10.0, p)
+			if wv != null and wv.rig != null and wv.rig.anchored and _distance_to(wv, p) <= 10.0:
+				p.work_winch(wv.rig, delta)
+		var riding := p.vehicle as Hauler if p.driving() else null
+		if riding != null and is_instance_valid(riding):
+			# The player rides the seat; the camera is a child of the player,
+			# so this doubles as the driving camera.
+			p.global_position = riding.seat_transform().origin
+			p.velocity = Vector3.ZERO
 	if not autosave or not playing or not Settings.flag(&"autosave"):
 		return
 	_autosave_timer -= delta
@@ -1613,75 +1677,193 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo or hud.journal_open():
 		return
-	# In build mode Z, X and C turn the ghost; they must not also empty the truck.
-	var building := build_system != null and build_system.active
+	# A co-op guest's keys go to the host, which does what they mean there.
+	if Net.is_client():
+		return
 	match key.keycode:
 		KEY_F5:
 			if quick_save():
 				hud.toast("Saved", UITheme.GOOD)
+			return
 		KEY_F9:
-			quick_load()
+			if not Net.online():
+				quick_load()
+			return
 		KEY_F8:
+			if Net.online():
+				return
 			pause_game()
 			pause_menu.ask("Start a new game?",
 				"Your saved game will be replaced. Settings are kept.", "Start over",
 				start_new_game)
+			return
+	handle_key(player, key)
+
+# --- Co-op ------------------------------------------------------------------------------
+
+var net_client: NetClient
+var _guest_names: Dictionary = {}
+
+## Opens this world to co-op guests (Net.host() has opened the port).
+func start_hosting() -> void:
+	if net_host != null:
+		return
+	net_host = NetHost.new()
+	net_host.name = "NetHost"
+	net_host.world = self
+	add_child(net_host)
+
+## Closes it again: every guest goes.
+func stop_hosting() -> void:
+	for peer in guests.keys():
+		remove_guest(peer)
+	if net_host != null:
+		net_host.queue_free()
+		net_host = null
+	Net.leave()
+
+## A guest's player: a real player in this world, moved by their keys.
+func add_guest(peer: int, display: String) -> Player:
+	if guests.has(peer) and is_instance_valid(guests[peer]):
+		return guests[peer]
+	_guest_names[peer] = display
+	var p := _make_player()
+	p.name = "Guest_%d" % peer
+	p.input.remote = true
+	(p.get_node("Camera3D") as Camera3D).current = false
+	# Off to one side of the spawn, so guests do not land on each other.
+	p.position = Vector3(2.0 + 1.5 * float(guests.size()), 2.0, 12.0)
+	p.position.y = terrain.height_at(p.position.x, p.position.z) + 1.0
+	var avatar := Avatar.new()
+	avatar.setup(display, Avatar.color_for(peer))
+	avatar.rotation.y = 0.0
+	p.add_child(avatar)
+	add_child(p)
+	p.manager = manager
+	p.plot = plot
+	p.store = store
+	p.stores = player.stores.duplicate()
+	p.wants_to_drive.connect(func(v: Node3D): drive(v as Hauler, p))
+	p.interacted.connect(func(m: String): _tell(p, m))
+	guests[peer] = p
+	for field in tree_fields + rock_fields:
+		field.extra_focus.append(p)
+	return p
+
+func remove_guest(peer: int) -> void:
+	var p: Player = guests.get(peer, null)
+	guests.erase(peer)
+	var display: String = _guest_names.get(peer, "A player")
+	_guest_names.erase(peer)
+	if p == null or not is_instance_valid(p):
+		return
+	if p.driving():
+		var riding := p.vehicle as Hauler
+		p.exit_vehicle()
+		if riding != null and is_instance_valid(riding):
+			riding.driver = null
+	p._release_dragged()
+	p._drop(p.held.size())
+	for field in tree_fields + rock_fields:
+		field.extra_focus.erase(p)
+	p.queue_free()
+	hud.log_message("%s left" % display)
+
+func guest_name(peer: int) -> String:
+	return String(_guest_names.get(peer, "Player %d" % peer))
+
+## Guest: the host has gone (or could not be reached). Back to your own world.
+static var leave_reason: String = ""
+func host_gone(reason: String = "") -> void:
+	leave_reason = reason
+	Net.leave()
+	MainMenu.skip_once = false
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/boot.tscn")
+
+## Every player on this game: this machine's, and each co-op guest's.
+func players() -> Array[Player]:
+	var out: Array[Player] = []
+	if player != null:
+		out.append(player)
+	for g in guests.values():
+		if is_instance_valid(g):
+			out.append(g as Player)
+	return out
+
+## Co-op guests' players on the host, by peer id.
+var guests: Dictionary = {}
+var net_host: NetHost
+
+## A message for one player: on this screen, or sent to their game.
+func _tell(p: Player, message: String) -> void:
+	if p == player or p == null:
+		hud.log_message(message)
+	elif net_host != null:
+		net_host.tell(p, message)
+
+## The keys that work on the world round a player: vehicles, hitches, the
+## winch from outside. `p` is this machine's player or a co-op guest's.
+func handle_key(p: Player, key: InputEventKey) -> void:
+	# In build mode Z, X and C turn the ghost; they must not also empty the truck.
+	var building := p.build_system != null and p.build_system.active
+	match key.keycode:
 		KEY_V:
 			if not building:
-				_toggle_vehicle()
+				_toggle_vehicle(p)
 		KEY_T:
 			if not building:
-				hud.log_message(_toggle_hitch())
+				_tell(p, _toggle_hitch(p))
 		KEY_F:
 			# In and out: seated, F gets out (unless it is working the crane's
 			# grapple); on foot, it gets into the vehicle looked at or stood by.
 			if building:
 				pass
-			elif player.driving():
-				var r := player.rig()
+			elif p.driving():
+				var r := p.rig()
 				if r == null or not r.operating:
-					_toggle_vehicle()
+					_toggle_vehicle(p)
 			else:
-				var v := _vehicle_looked_at()
+				var v := _vehicle_looked_at(p)
 				if v == null or v.is_trailer:
-					v = vehicle_at_hand(3.0)
-					if v != null and _distance_to(v) > 3.0:
+					v = vehicle_at_hand(3.0, p)
+					if v != null and _distance_to(v, p) > 3.0:
 						v = null
 				if v != null:
-					drive(v)
+					drive(v, p)
 		KEY_X:
-			var v := vehicle_at_hand(8.0)
+			var v := vehicle_at_hand(8.0, p)
 			if v != null and not building:
 				if not v.has_bed():
-					hud.log_message("the %s has nothing to unload" % v.display_name.to_lower())
+					_tell(p, "the %s has nothing to unload" % v.display_name.to_lower())
 				else:
 					var n := v.unload()
 					var how := "tub up" if v.bed_kind == &"tub" else "tailgate down"
-					hud.log_message("%s: tipping out %d piece(s)" % [how, n] if n > 0 else "the bed is empty")
+					_tell(p, "%s: tipping out %d piece(s)" % [how, n] if n > 0 else "the bed is empty")
 		KEY_Z:
-			var v := vehicle_at_hand(8.0)
+			var v := vehicle_at_hand(8.0, p)
 			if v != null and not building and v.unload_one():
-				hud.log_message("dropping one off the back (%d left)" % (v.cargo_count() - 1))
+				_tell(p, "dropping one off the back (%d left)" % (v.cargo_count() - 1))
 		KEY_Y:
 			# The winch from outside the truck: stand by it, aim, hook on.
-			if not player.driving() and not building:
-				var wv := vehicle_at_hand(10.0)
-				if wv == null or wv.rig == null or _distance_to(wv) > 10.0:
-					hud.log_message("stand by a truck with a winch to use it")
+			if not p.driving() and not building:
+				var wv := vehicle_at_hand(10.0, p)
+				if wv == null or wv.rig == null or _distance_to(wv, p) > 10.0:
+					_tell(p, "stand by a truck with a winch to use it")
 				else:
-					hud.log_message(player.hook_winch(wv.rig))
+					_tell(p, p.hook_winch(wv.rig))
 		KEY_O:
-			if not player.driving() and not building:
-				var ov := vehicle_at_hand(10.0)
-				if ov == null or ov.rig == null or _distance_to(ov) > 10.0:
-					hud.log_message("stand by a truck with outriggers to put them out")
+			if not p.driving() and not building:
+				var ov := vehicle_at_hand(10.0, p)
+				if ov == null or ov.rig == null or _distance_to(ov, p) > 10.0:
+					_tell(p, "stand by a truck with outriggers to put them out")
 				else:
-					hud.log_message(player.toggle_outriggers(ov.rig))
+					_tell(p, p.toggle_outriggers(ov.rig))
 		KEY_C:
-			var v := vehicle_at_hand(8.0)
+			var v := vehicle_at_hand(8.0, p)
 			if v != null and not building:
 				v.recover()
-				hud.toast("%s recovered" % v.display_name, UITheme.ACCENT)
+				_tell(p, "%s recovered" % v.display_name)
 
 ## A save made in the driver's seat (before saves knew better) puts the
 ## player inside the truck: out by the driver's door instead, before the
@@ -1697,8 +1879,10 @@ func _unstick_player() -> void:
 			return
 
 ## The vehicle under the crosshair, if one is within reach.
-func _vehicle_looked_at() -> Hauler:
-	var hit := player.aim_hit()
+func _vehicle_looked_at(p: Player = null) -> Hauler:
+	if p == null:
+		p = player
+	var hit := p.aim_hit()
 	if hit.is_empty():
 		return null
 	var n := hit.collider as Node
@@ -1706,32 +1890,36 @@ func _vehicle_looked_at() -> Hauler:
 		n = n.get_parent()
 	return n as Hauler
 
-func _toggle_vehicle() -> void:
-	if player.driving():
-		var riding := player.vehicle as Hauler
-		player.exit_vehicle()
+func _toggle_vehicle(p: Player = null) -> void:
+	if p == null:
+		p = player
+	if p.driving():
+		var riding := p.vehicle as Hauler
+		p.exit_vehicle()
 		if riding != null and is_instance_valid(riding):
 			riding.driver = null
 			# Out of the driver's door, clear of the body whatever its width.
-			player.global_position = riding.global_position \
+			p.global_position = riding.global_position \
 				+ riding.global_transform.basis.x * (riding.body_size.x * 0.5 + 1.3) + Vector3(0, 1.0, 0)
-			hud.log_message("left the %s" % riding.display_name.to_lower())
+			_tell(p, "left the %s" % riding.display_name.to_lower())
 		return
 	if vehicles().is_empty():
-		hud.log_message("No vehicle yet - they are sold at the Store, and each spawns on its own pad")
+		_tell(p, "No vehicle yet - they are sold at the Store, and each spawns on its own pad")
 		return
-	hud.log_message("look at a vehicle, or stand by it, and press [F] to get in")
+	_tell(p, "look at a vehicle, or stand by it, and press [F] to get in")
 
 ## Hitches the trailer behind the truck you are in (or stand by), or lets it
 ## go. Returns what happened.
-func _toggle_hitch() -> String:
+func _toggle_hitch(p: Player = null) -> String:
+	if p == null:
+		p = player
 	var truck: Hauler = null
-	if player.driving():
-		truck = player.vehicle as Hauler
+	if p.driving():
+		truck = p.vehicle as Hauler
 	else:
 		# Standing by: the truck with a hitch, or the truck a trailer near you
 		# is hitched to.
-		var near := vehicle_at_hand(6.0)
+		var near := vehicle_at_hand(6.0, p)
 		if near != null and near.is_trailer:
 			if near.towed_by != null:
 				truck = near.towed_by
@@ -1764,15 +1952,21 @@ func _toggle_hitch() -> String:
 	return err if err != "" else "hitched the %s - [T] to let it go" % best.display_name.to_lower()
 
 ## Into the driving seat of `v`.
-func drive(v: Hauler) -> void:
-	if v == null or player.driving():
+func drive(v: Hauler, p: Player = null) -> void:
+	if p == null:
+		p = player
+	if v == null or p.driving():
+		return
+	if v.driver != null:
+		_tell(p, "someone else is driving the %s" % v.display_name.to_lower())
 		return
 	if v.is_trailer:
-		hud.log_message("a trailer has no seat - back a truck up to it and hitch it [T]")
+		_tell(p, "a trailer has no seat - back a truck up to it and hitch it [T]")
 		return
-	hauler = v
-	player.enter_vehicle(v)
-	v.driver = player
-	hud.log_message("driving the %s - [F] to get out" % v.display_name.to_lower())
+	if p == player:
+		hauler = v
+	p.enter_vehicle(v)
+	v.driver = p
+	_tell(p, "driving the %s - [F] to get out" % v.display_name.to_lower())
 	if v.cargo_count() > 0:
-		hud.log_message("%d piece(s) in the bed - they ride loose, so mind the corners" % v.cargo_count())
+		_tell(p, "%d piece(s) in the bed - they ride loose, so mind the corners" % v.cargo_count())

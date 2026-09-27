@@ -392,6 +392,35 @@ Quotas follow how much country each species actually has, so a seed that grows
 little swamp gets a few willows rather than an empty field grinding away at a
 region that is not there.
 
+## Co-op
+
+One player hosts their own game; friends join it. Everything is shared: one
+world, one purse, one set of unlocks and upgrades, the host's save.
+
+- **Host:** Main menu (Esc > Main menu) > Co-op > *Host this game*. It opens
+  UDP port 24565; friends outside your network need it forwarded. The page
+  shows your local IP addresses.
+- **Join:** Co-op > type the host's IP > *Join*. Your own world is saved and
+  put aside; the host's is built on your machine and joined. Esc > *Leave
+  co-op* (or the host quitting) brings you back to your own.
+
+How it works: the host runs the whole game - physics, machines, trees, money.
+Each guest is a real `Player` in the host's world, driven by the keys and
+mouse the guest presses (`PlayerInput`), so every action - chopping,
+dragging, the crane, the loader, driving, buying - is the same code as single
+player. The guest's machine builds the same static world from the same seeds
+and draws everything that changes from what the host sends (`NetHost` ->
+`NetClient`): loose pieces, trees and their cuts, rocks and their cracks,
+buildings, vehicles (wheels, crane, bucket, tub), other players, money,
+unlocks and orders. Looking about is instant on the guest; moving goes
+through the host, so it lags by the round trip.
+
+Not yet in co-op: building from a guest's machine (the host builds), the
+guest's inventory screen (hotbar changes), and on-screen aids that live only
+on the host (drag line, crane ghost, winch reticle). Tested end to end by
+`scenes/net_probe.tscn`: a headless host and guest on localhost that join,
+walk, share money, pick up a log and drive a truck.
+
 ## Materials are volumes
 
 Nothing in the game is counted in "items". Every piece is a solid with real
@@ -557,7 +586,8 @@ scripts/ui/        UITheme, UIKit, GameHUD, Compass, Journal, MapView, KeyGuide,
                    MainMenu, PauseMenu, SettingsPanel, StressHUD
 assets/fonts/      Rubik, Lilita One (SIL OFL)
 data/              items, recipes, buildings, upgrades, prices, quests, store, balance
-tools/             Bench, Tests, SmokeWorld, Probe
+scripts/net/       Net (autoload), NetHost, NetClient, PlayerInput, Avatar
+tools/             Bench, Tests, SmokeWorld, Probe, NetProbe
 ```
 
 Everything numeric lives in `data/*.json`: items and their mass, size, colour,

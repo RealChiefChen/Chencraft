@@ -90,9 +90,30 @@ func awake_count() -> int:
 # --- Spawning --------------------------------------------------------------
 
 ## `dims` overrides the item's default size (a felled trunk, a long board).
+## Co-op guest: every piece here is a picture of one on the host, put here
+## by mirror_spawn and moved by the host. Nothing else may make one.
+var mirror: bool = false
+var _mirroring: bool = false
+
+## A guest's copy of one of the host's pieces: placed, frozen, moved from
+## outside. Never recycled for the cap.
+func mirror_spawn(item_id: StringName, xform: Transform3D, dims: Dictionary) -> LooseItem:
+	_mirroring = true
+	var cap := per_plot_cap
+	per_plot_cap = 1 << 30
+	var item := spawn(item_id, xform, 0, Vector3.ZERO, dims, true)
+	per_plot_cap = cap
+	_mirroring = false
+	if item != null:
+		item.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		item.freeze = true
+	return item
+
 func spawn(item_id: StringName, xform: Transform3D, plot_id: int = 0,
 		impulse: Vector3 = Vector3.ZERO, dims: Dictionary = {},
 		owned: bool = false) -> LooseItem:
+	if mirror and not _mirroring:
+		return null
 	var def: ItemDef = GameData.item(item_id)
 	if def == null:
 		push_error("LooseItemManager: unknown item '%s'" % item_id)

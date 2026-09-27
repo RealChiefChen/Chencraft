@@ -857,10 +857,12 @@ func _read_input() -> void:
 		input_steer = 0.0
 		input_brake = true
 		return
-	input_throttle = Input.get_axis("move_back", "move_forward")
-	input_steer = Input.get_axis("move_right", "move_left")
+	# The driver's keys: this machine's, or a co-op guest's.
+	var inp: PlayerInput = driver.get("input") as PlayerInput if driver.get("input") != null else PlayerInput.new()
+	input_throttle = inp.axis("move_back", "move_forward")
+	input_steer = inp.axis("move_right", "move_left")
 	# In a loader Space works the bucket lock, not the brake.
-	input_brake = loader == null and Input.is_action_pressed("jump")
+	input_brake = loader == null and inp.pressed("jump")
 
 ## Stood on its outriggers for the crane: it does not roll, rock or tip, and
 ## the crane's load is carried into the ground.

@@ -379,8 +379,10 @@ func drive(move: Vector3, turn: float, fine: bool, delta: float) -> void:
 
 ## The camera's left and away-from-camera directions, flat in the truck's
 ## frame: W moves the log away from the camera, A to the camera's left.
-func view_axes() -> Array[Vector3]:
-	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+func view_axes(camera: Camera3D = null) -> Array[Vector3]:
+	# The operator's own camera: on a co-op host, a guest's is not the one
+	# on this screen.
+	var cam := camera if camera != null else (get_viewport().get_camera_3d() if is_inside_tree() else null)
 	if cam == null:
 		return [Vector3(1, 0, 0), Vector3(0, 0, 1)]
 	var inv := _frame().basis.inverse()

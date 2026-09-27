@@ -1,0 +1,341 @@
+class_name NetClient
+extends Node
+
+## A co-op guest's end. This world is a picture of the host's: nothing here
+## grows, falls or runs on its own. What the host sends is built and moved
+## here; what the player presses is sent to the host, whose copy of this
+## player does it.
+
+const INPUT_RATE := 30.0
+const WHEEL := NetHost.WHEEL
+
+var world: Node
+var _mirror: Node3D                    ## trees, rocks and vehicles live here
+var _nodes: Dictionary = {}            ## id -> node (or plot record node)
+var _kinds: Dictionary = {}            ## id -> kind
+var _goal: Dictionary = {}             ## id -> Transform3D the host last said
+var _me: int = -1
+var _acc: float = 0.0
+var _last_tick: int = -1
+var _wheels: Dictionary = {}           ## wheel pose id -> RigidBody3D
+var _last_veh: int = -2
+
+func _ready() -> void:
+	Net.client_side = self
+	_mirror = Node3D.new()
+	_mirror.name = "Mirror"
+	world.add_child(_mirror)
+	# Now the world is built, connect (or, already connected, say hello).
+	if multiplayer.multiplayer_peer is ENetMultiplayerPeer \
+			and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+		_hello()
+		return
+	Net.joined.connect(_hello, CONNECT_ONE_SHOT)
+	Net.join_failed.connect(func(reason: String): world.call("host_gone", reason), CONNECT_ONE_SHOT)
+	var err := Net.join(Net.address, Net.port)
+	if err != "":
+		world.call("host_gone", err)
+
+func _hello() -> void:
+	Net.rpc_id(1, "c_hello", Net.player_name)
+	if OS.has_environment("NET_TRACE"):
+		print("[guest] hello sent")
+
+func _exit_tree() -> void:
+	if Net.client_side == self:
+		Net.client_side = null
+
+func on_host_gone() -> void:
+	world.call("host_gone", "the host has gone")
+
+# --- Sending ---------------------------------------------------------------------------
+
+func _physics_process(delta: float) -> void:
+	if not Net.is_client() or multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	_acc += delta
+	if _acc < 1.0 / INPUT_RATE:
+		return
+	_acc = 0.0
+	var p: Player = world.get("player")
+	var state := PlayerInput.capture()
+	if p != null:
+		# Menus and the journal hold nothing down.
+		if p._ui_blocking or not p._mouse_captured:
+			state = {"a": [], "k": [], "b": []}
+		state.yaw = p.rotation.y
+		state.pitch = p.camera.rotation.x
+	Net.rpc_id(1, "c_input", state)
+
+## A key or button pressed here, for the host to act on.
+func send_press(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var k := event as InputEventKey
+		send_event({"t": "key", "code": int(k.keycode), "phys": int(k.physical_keycode)})
+	elif event is InputEventMouseButton:
+		send_event({"t": "btn", "b": int((event as InputEventMouseButton).button_index)})
+
+func send_event(ev: Dictionary) -> void:
+	Net.rpc_id(1, "c_event", ev)
+
+# --- Receiving -------------------------------------------------------------------------
+
+func on_batch(batch: Array) -> void:
+	if OS.has_environment("NET_TRACE") and batch.size() > 20:
+		print("[guest] batch of ", batch.size())
+	for e: Dictionary in batch:
+		match String(e.t):
+			"spawn":
+				_spawn(e)
+			"gone":
+				_gone(int(e.id))
+			"state":
+				_state(int(e.id), e.s)
+			"econ":
+				Economy.from_dict(e.e)
+				PlayerState.from_dict(e.p)
+				var quests: Variant = world.get("quests")
+				if quests != null and not (e.q as Dictionary).is_empty():
+					quests.call("from_dict", e.q)
+			"you":
+				_me = int(e.id)
+				# Moves for this player that came before we knew it was us.
+				_goal.erase(_me)
+				var avatar: Variant = _nodes.get(_me, null)
+				if avatar != null and avatar is Avatar:
+					(avatar as Node).queue_free()
+					_nodes[_me] = world.get("player")
+			"view":
+				_view(e)
+			"msg":
+				var p: Player = world.get("player")
+				if p != null:
+					p.interacted.emit(String(e.m))
+
+var _motion_count := 0
+func on_motion(ids: PackedInt32Array, poses: PackedFloat32Array, tick: int) -> void:
+	_motion_count += ids.size()
+	for i in ids.size():
+		var id := ids[i]
+		var t := Transform3D(Basis(Quaternion(poses[i * 7 + 3], poses[i * 7 + 4], poses[i * 7 + 5], poses[i * 7 + 6])),
+			Vector3(poses[i * 7], poses[i * 7 + 1], poses[i * 7 + 2]))
+		if id == _me:
+			# This player: where the host has it. Which way it looks is ours.
+			var p: Player = world.get("player")
+			if p != null:
+				p.global_position = t.origin
+			continue
+		_goal[id] = t
+	_last_tick = tick
+
+## Moving things glide to where the host last put them.
+var _trace_t := 0.0
+func _process(delta: float) -> void:
+	if OS.has_environment("NET_TRACE"):
+		_trace_t += delta
+		if _trace_t > 2.0:
+			_trace_t = 0.0
+			print("[guest] alive frame=%d nodes=%d me=%d motion=%d pos=%s" % [Engine.get_process_frames(), _nodes.size(), _me, _motion_count, world.get("player").global_position])
+	var k := clampf(delta * 18.0, 0.0, 1.0)
+	for id in _goal:
+		if id == _me:
+			continue
+		var node: Node3D = null
+		if id >= WHEEL:
+			node = _wheels.get(id, null)
+		else:
+			node = _nodes.get(id, null) as Node3D
+		if node == null or not is_instance_valid(node):
+			continue
+		var goal: Transform3D = _goal[id]
+		var now := node.global_transform
+		if now.origin.distance_to(goal.origin) > 6.0:
+			node.global_transform = goal
+			continue
+		var q := now.basis.get_rotation_quaternion().slerp(goal.basis.get_rotation_quaternion(), k)
+		node.global_transform = Transform3D(Basis(q), now.origin.lerp(goal.origin, k))
+	# Loader buckets and cranes follow their vehicle.
+	for id in _kinds:
+		if _kinds[id] == "v":
+			var v := _nodes.get(id, null) as Hauler
+			if v != null and is_instance_valid(v) and v.loader != null:
+				v.loader._pose(true)
+
+func _pose_of(e: Dictionary) -> Transform3D:
+	var x: PackedFloat32Array = e.get("x", PackedFloat32Array([0, 0, 0, 0, 0, 0, 1]))
+	return Transform3D(Basis(Quaternion(x[3], x[4], x[5], x[6])), Vector3(x[0], x[1], x[2]))
+
+func _spawn(e: Dictionary) -> void:
+	var id := int(e.id)
+	if _nodes.has(id):
+		return
+	var kind := String(e.k)
+	var node: Node = null
+	match kind:
+		"i":
+			var manager: LooseItemManager = world.get("manager")
+			var item := manager.mirror_spawn(StringName(e.item), _pose_of(e), Solid.from_dict(e.dims))
+			if item != null:
+				for a in e.get("limbs", []):
+					item.add_limb(Vector3(a[0], a[1], a[2]), Vector3(a[3], a[4], a[5]), float(a[6]), float(a[7]),
+						[], Color(0.42, 0.3, 0.2), float(a[8]) if (a as Array).size() > 8 else -1.0)
+			node = item
+		"t":
+			var tree: Node3D = world.call("_build_tree", e.entry, int(e.seed))
+			_mirror.add_child(tree)
+			tree.global_transform = _pose_of(e)
+			node = tree
+		"r":
+			var rock: Node3D = world.call("_build_rock", e.entry, int(e.seed))
+			_mirror.add_child(rock)
+			rock.global_transform = _pose_of(e)
+			node = rock
+		"b":
+			node = _build(e)
+		"v":
+			var v := Hauler.new()
+			v.setup(world.get("manager"), 0, StringName(e.veh))
+			v.terrain = world.get("terrain")
+			v.process_mode = Node.PROCESS_MODE_DISABLED
+			_mirror.add_child(v)
+			v.global_transform = _pose_of(e)
+			_passive_wheels.call_deferred(v, id)
+			node = v
+		"p":
+			if id == _me:
+				node = world.get("player")
+			else:
+				var a := Avatar.new()
+				a.setup(String(e.get("name", "Player")), Avatar.color_for(int(e.get("peer", 1))))
+				_mirror.add_child(a)
+				a.global_transform = _pose_of(e)
+				node = a
+	if node == null:
+		return
+	_nodes[id] = node
+	_kinds[id] = kind
+
+## A vehicle's wheels, once it has built them: moved by the host too.
+func _passive_wheels(v: Hauler, id: int) -> void:
+	await get_tree().process_frame
+	if not is_instance_valid(v):
+		return
+	for w in v.wheel_bodies.size():
+		var body := v.wheel_bodies[w]
+		body.process_mode = Node.PROCESS_MODE_DISABLED
+		_wheels[id + WHEEL * (w + 1)] = body
+
+func _build(e: Dictionary) -> Node:
+	var plot: Plot = world.get("plot")
+	var def := PlayerState.def_at_tier(StringName(e.def), int(e.get("tier", 1)))
+	if def == null:
+		return null
+	var size := Vector3i(int(e.size[0]), int(e.size[1]), int(e.size[2]))
+	if size != def.size:
+		def = Plot.resized(def, size)
+	var r: Array = e.rot
+	var node := plot.place(def, Vector2i(int(e.cell[0]), int(e.cell[1])), Vector3i(int(r[0]), int(r[1]), int(r[2])),
+		false, float(e.get("lift", 0.0)))
+	if node != null:
+		# Only a picture: the host's machines do the work.
+		node.process_mode = Node.PROCESS_MODE_DISABLED
+	return node
+
+func _gone(id: int) -> void:
+	var node: Variant = _nodes.get(id, null)
+	var kind: String = _kinds.get(id, "")
+	_nodes.erase(id)
+	_kinds.erase(id)
+	_goal.erase(id)
+	if node == null or not is_instance_valid(node):
+		return
+	match kind:
+		"i":
+			(world.get("manager") as LooseItemManager).despawn(node as LooseItem)
+		"b":
+			(world.get("plot") as Plot).drop_record(node as Node3D)
+		"p":
+			if id != _me:
+				(node as Node).queue_free()
+		"v":
+			var v := node as Hauler
+			for w in v.wheel_bodies.size():
+				_wheels.erase(id + WHEEL * (w + 1))
+				if is_instance_valid(v.wheel_bodies[w]):
+					v.wheel_bodies[w].queue_free()
+			v.queue_free()
+		_:
+			(node as Node).queue_free()
+
+func _state(id: int, s: Variant) -> void:
+	var node: Variant = _nodes.get(id, null)
+	if node == null or not is_instance_valid(node) or s == null:
+		return
+	match String(_kinds.get(id, "")):
+		"t":
+			(node as ChoppableTree).net_apply(s)
+		"r":
+			(node as OreRock).net_apply(s)
+		"i":
+			var item := node as LooseItem
+			var want: Array = s.get("l", [])
+			if want.size() != item.limbs.size() or item.limbs_to_array() != want:
+				item.clear_limbs()
+				for a in want:
+					item.add_limb(Vector3(a[0], a[1], a[2]), Vector3(a[3], a[4], a[5]), float(a[6]), float(a[7]),
+						[], Color(0.42, 0.3, 0.2), float(a[8]) if (a as Array).size() > 8 else -1.0)
+		"b":
+			if s.has("run") and (node as Node).get("running") != null:
+				(node as Node).set("running", bool(s.run))
+		"v":
+			_vehicle_state(node as Hauler, s)
+		"p":
+			var a := node as Avatar
+			if a != null:
+				a.set_pitch(float(s.get("pitch", 0.0)))
+
+func _vehicle_state(v: Hauler, s: Dictionary) -> void:
+	if s.has("tub") and v.bed_kind == &"tub":
+		v._tub_angle = float(s.tub)
+		v._pose_tub(v._tub_angle)
+	if s.has("rig") and v.rig != null:
+		var r := v.rig
+		var rs: Dictionary = s.rig
+		r.joints = (rs.j as Dictionary).duplicate()
+		r.operating = bool(rs.op)
+		r.outriggers_down = bool(rs.out)
+		r.folding = bool(rs.fold)
+		r.anchored = bool(rs.anch)
+		r.target_yaw = float(rs.get("ty", 0.0))
+		r.target = rs.get("tg", r.target)
+		r._draw()
+	if s.has("ld") and v.loader != null:
+		var l := v.loader
+		l.lift = float(s.ld[0])
+		l.tilt = float(s.ld[1])
+		l.locked = bool(s.ld[2])
+		l.thumb_angle = float(s.ld[3])
+		if l._thumb != null:
+			l._thumb.rotation = Vector3(l.thumb_angle, 0, 0)
+		l._pose(true)
+
+## This player's own state on the host: what the HUD shows.
+func _view(e: Dictionary) -> void:
+	var p: Player = world.get("player")
+	if p == null:
+		return
+	p.last_prompt = String(e.get("prompt", ""))
+	p.selected_slot = int(e.get("slot", -1))
+	p.net_carry = e.get("carry", [0, 0.0])
+	var veh := int(e.get("veh", -1))
+	if veh == _last_veh:
+		return
+	_last_veh = veh
+	if veh < 0:
+		if p.vehicle != null:
+			p.vehicle = null
+			p.camera.position = Vector3(0, 1.65, 0)
+			p.camera.rotation.z = 0.0
+	else:
+		var v: Variant = _nodes.get(veh, null)
+		p.vehicle = v as Node3D if v != null and is_instance_valid(v) else null

@@ -71,6 +71,24 @@ var last_prompt: String = ""
 
 var _swing_cd: float = 0.0
 var _mouse_captured: bool = false
+## Where this player's keys and buttons come from: the keyboard, or a co-op
+## guest's game.
+var input := PlayerInput.new()
+
+## Co-op, on a guest's machine: this player is a view of its copy on the
+## host. It looks about here (so the mouse is instant) but moves where the
+## host says, and its keys and clicks are sent to the host to act on.
+var net_view: bool = false
+## What the host says is on the rack: [count, volume].
+var net_carry: Array = [0, 0.0]
+
+## On the host: a key or button a co-op guest pressed, acted on as if pressed
+## here.
+func remote_press(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		_on_mouse_button(event as InputEventMouseButton)
+	elif event is InputEventKey and event.pressed:
+		_on_key(event as InputEventKey)
 var _ui_blocking: bool = false
 
 @onready var camera: Camera3D = $Camera3D
@@ -125,7 +143,8 @@ func _swing_viewmodel() -> void:
 
 func capture_mouse(capture: bool) -> void:
 	_mouse_captured = capture
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if capture else Input.MOUSE_MODE_VISIBLE
+	if not input.remote:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if capture else Input.MOUSE_MODE_VISIBLE
 
 ## Set by the HUD while a menu is open, so clicks do not chop trees behind it.
 func set_ui_blocking(blocking: bool) -> void:
@@ -155,6 +174,8 @@ func move_limit_kg() -> float:
 	return PlayerState.track_value(&"carry", "move_kg", 1000.0)
 
 func carried_volume() -> float:
+	if net_view:
+		return float(net_carry[1])
 	var total := 0.0
 	for item in held:
 		if is_instance_valid(item):
@@ -162,6 +183,8 @@ func carried_volume() -> float:
 	return total
 
 func carried_count() -> int:
+	if net_view:
+		return int(net_carry[0])
 	return held.size()
 
 func driving() -> bool:
@@ -226,6 +249,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		camera.rotation.x = clampf(camera.rotation.x, -1.45, 1.45)
 		return
 	if _ui_blocking:
+		return
+	if net_view:
+		# A guest's presses are the host's to act on.
+		if (event is InputEventMouseButton and event.pressed) or (event is InputEventKey and event.pressed and not event.echo):
+			if not _mouse_captured and event is InputEventMouseButton:
+				capture_mouse(true)
+				return
+			if Net.client_side != null:
+				Net.client_side.call("send_press", event)
 		return
 	if event is InputEventMouseButton and event.pressed:
 		_on_mouse_button(event as InputEventMouseButton)
@@ -445,6 +477,15 @@ func _said(problem: String, success: String) -> String:
 # --- Movement --------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
+	_physics_step(delta)
+	input.end_frame()
+
+func _physics_step(delta: float) -> void:
+	if net_view:
+		# Where the body is comes from the host; only the camera is ours.
+		if driving():
+			_update_chase_camera(delta)
+		return
 	_swing_cd = maxf(0.0, _swing_cd - delta)
 	if driving():
 		_update_rack()
@@ -460,14 +501,14 @@ func _physics_process(delta: float) -> void:
 
 	if not is_on_floor():
 		velocity += get_gravity() * delta
-	elif Input.is_action_just_pressed("jump"):
+	elif input.just_pressed("jump"):
 		velocity.y = jump_velocity
 
 	var walk := PlayerState.stat(&"boots", "walk", 5.5)
 	var sprint := PlayerState.stat(&"boots", "sprint", 8.5)
 	# Hauling a full rack slows you down: the reason to build belts.
 	var load_factor: float = 1.0 - 0.35 * clampf(carried_volume() / maxf(0.01, capacity_m3()), 0.0, 1.0)
-	var speed: float = (sprint if Input.is_action_pressed("sprint") else walk) * load_factor
+	var speed: float = (sprint if input.pressed("sprint") else walk) * load_factor
 	# Spec: the player bobs slowly across water rather than swimming it.
 	var depth := water_depth()
 	if depth > WADE_DEPTH:
@@ -479,8 +520,8 @@ func _physics_process(delta: float) -> void:
 			velocity.y = maxf(velocity.y, 2.4)
 
 	var input := Vector2(
-		Input.get_axis("move_left", "move_right"),
-		Input.get_axis("move_forward", "move_back"))
+		input.axis("move_left", "move_right"),
+		input.axis("move_forward", "move_back"))
 	# Holding Shift with something in hand, WASD turn it instead.
 	if turning_held():
 		input = Vector2.ZERO
@@ -567,9 +608,9 @@ func _update_vehicle_controls(delta: float) -> void:
 	if l != null:
 		# Shift raises the arms, Ctrl lowers them; E curls the bucket back,
 		# Q tips it forward.
-		var curl := (1.0 if Input.is_physical_key_pressed(KEY_E) else 0.0) \
-			- (1.0 if Input.is_physical_key_pressed(KEY_Q) else 0.0)
-		l.drive(Input.get_axis("lower", "sprint"), curl, delta)
+		var curl := (1.0 if input.key(KEY_E) else 0.0) \
+			- (1.0 if input.key(KEY_Q) else 0.0)
+		l.drive(input.axis("lower", "sprint"), curl, delta)
 	var r := rig()
 	if r == null:
 		return
@@ -581,18 +622,18 @@ func _update_vehicle_controls(delta: float) -> void:
 		return
 	# W takes the log away from the camera, S toward it, A and D to the
 	# camera's left and right - turned into the truck's frame.
-	var axes := r.view_axes()
-	var move := axes[0] * Input.get_axis("move_right", "move_left") \
-		+ axes[1] * Input.get_axis("move_back", "move_forward") \
-		+ Vector3.UP * Input.get_axis("lower", "sprint")
-	var turn := (1.0 if Input.is_physical_key_pressed(KEY_Q) else 0.0) \
-		- (1.0 if Input.is_physical_key_pressed(KEY_E) else 0.0)
-	r.drive(move, turn, Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT), delta)
+	var axes := r.view_axes(camera)
+	var move := axes[0] * input.axis("move_right", "move_left") \
+		+ axes[1] * input.axis("move_back", "move_forward") \
+		+ Vector3.UP * input.axis("lower", "sprint")
+	var turn := (1.0 if input.key(KEY_Q) else 0.0) \
+		- (1.0 if input.key(KEY_E) else 0.0)
+	r.drive(move, turn, input.mouse(MOUSE_BUTTON_RIGHT), delta)
 
 func work_winch(r: VehicleRig, delta: float) -> void:
-	if Input.is_action_pressed("winch_in") or (driving() and Input.is_action_pressed("reel")):
+	if input.pressed("winch_in") or (driving() and input.pressed("reel")):
 		r.reel(delta)
-	if Input.is_action_pressed("winch_out"):
+	if input.pressed("winch_out"):
 		r.pay_out(delta)
 
 
@@ -998,7 +1039,7 @@ func _facing() -> Basis:
 
 ## Shift held with something in hand: WASDQE turn it rather than walk.
 func turning_held() -> bool:
-	return dragged != null and not driving() and Input.is_action_pressed("sprint")
+	return dragged != null and not driving() and input.pressed("sprint")
 
 ## The turn the piece is held at: its angle to the player, kept as the player
 ## turns, so it swings round with them like something gripped in both hands.
@@ -1015,17 +1056,17 @@ func _update_drag() -> void:
 	if not is_instance_valid(dragged) or dragged.state != LooseItem.State.CARRIED:
 		dragged = null
 		return
-	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and _mouse_captured and not _hold_for_tests:
+	if not input.mouse(MOUSE_BUTTON_LEFT) and _mouse_captured and not _hold_for_tests:
 		_release_dragged()
 		return
 	var dt := get_physics_process_delta_time()
 	if turning_held():
 		# In the player's frame: W/S tip it over away/toward, A/D turn it
 		# about the vertical, Q/E roll it about the line of sight.
-		var pitch := Input.get_axis("move_back", "move_forward")
-		var yaw := Input.get_axis("move_right", "move_left")
-		var roll := (1.0 if Input.is_physical_key_pressed(KEY_Q) else 0.0) \
-			- (1.0 if Input.is_physical_key_pressed(KEY_E) else 0.0)
+		var pitch := input.axis("move_back", "move_forward")
+		var yaw := input.axis("move_right", "move_left")
+		var roll := (1.0 if input.key(KEY_Q) else 0.0) \
+			- (1.0 if input.key(KEY_E) else 0.0)
 		var spin := Vector3(-pitch, yaw, roll) * DRAG_TURN_RATE * dt
 		if spin.length() > 0.0:
 			_drag_turn = (Basis(spin.normalized(), spin.length()) * _drag_turn).orthonormalized()
@@ -1078,7 +1119,7 @@ func _interact() -> void:
 		return
 	if target is Filter:
 		var f := target as Filter
-		if Input.is_action_pressed("sprint"):
+		if input.pressed("sprint"):
 			f.invert = not f.invert
 		else:
 			f.cycle_filter(1)
@@ -1114,7 +1155,7 @@ func _interact() -> void:
 		yard.sell_all(carried)
 		interacted.emit(yard.last_receipt)
 		return
-	if target is StorageBin and Input.is_action_pressed("sprint"):
+	if target is StorageBin and input.pressed("sprint"):
 		var n := (target as StorageBin).dispense_all()
 		interacted.emit("emptying bin: %d item(s)" % n)
 		return

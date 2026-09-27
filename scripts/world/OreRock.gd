@@ -298,3 +298,23 @@ func _nudge() -> void:
 func status_line() -> String:
 	return "%s chunk  %.2f m3  %.0f kg  needs %.0f kg of pull" % [
 		GameData.item_name(ore_item), volume, mass(), pull_required()]
+
+# --- Co-op ---------------------------------------------------------------------------
+
+## What a guest needs to draw this chunk as it is now.
+func net_state() -> Dictionary:
+	var cs: Array = []
+	for c in cracks:
+		cs.append([float(c.t), float(c.depth)])
+	return {"v": volume, "e": embed, "c": cs}
+
+func net_apply(state: Dictionary) -> void:
+	embed = float(state.get("e", embed))
+	cracks.clear()
+	for c in state.get("c", []):
+		cracks.append({"t": float(c[0]), "depth": float(c[1])})
+	var v := float(state.get("v", volume))
+	if not is_equal_approx(v, volume):
+		set_volume(v)
+	elif is_inside_tree():
+		_refresh_cracks()

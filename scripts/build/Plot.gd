@@ -483,6 +483,17 @@ func remove(node: Node3D) -> bool:
 		return true
 	return false
 
+## Takes a building off the plot with no refund and no side effects: a co-op
+## guest's copy going because the host's went.
+func drop_record(node: Node3D) -> void:
+	for i in placed.size():
+		if placed[i].node == node:
+			placed.remove_at(i)
+			node.queue_free()
+			_reindex()
+			buildings_changed.emit(self)
+			return
+
 func remove_at_hit(hit: Dictionary) -> bool:
 	var index := index_at_hit(hit)
 	if index < 0 or index >= placed.size():

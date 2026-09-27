@@ -176,7 +176,7 @@ func _build() -> void:
 		shape.shape = cyl
 		shape.transform = Transform3D(basis, base + dir * length * 0.5)
 		add_child(shape)
-		branches.append({"height": height, "dir": dir, "radius": radius, "tip": radius * 0.7,
+		branches.append({"id": i, "height": height, "dir": dir, "radius": radius, "tip": radius * 0.7,
 			"length": length, "cut": 0.0, "cut_at": -1.0, "mesh": mesh, "leaf": foliage, "shape": shape})
 
 	_refresh_trunk()
@@ -419,6 +419,14 @@ func _cut_branch_back(index: int, at: float) -> float:
 	if manager != null:
 		manager.spawn(wood_item, Transform3D(global_transform.basis * basis,
 			global_transform * (base + dir * (at + (length - at) * 0.5))), plot_id, dir * 0.4, outer)
+	_shorten_branch(b, at, r_cut)
+	return Solid.volume(outer)
+
+## Redraws a branch cut back to `at` metres, its end radius now `r_cut`.
+func _shorten_branch(b: Dictionary, at: float, r_cut: float) -> void:
+	var dir: Vector3 = b.dir
+	var base := Vector3(0, float(b.height), 0)
+	var basis := _basis_from_up(dir)
 	b.length = at
 	b.tip = r_cut
 	b.cut = 0.0
@@ -438,7 +446,42 @@ func _cut_branch_back(index: int, at: float) -> float:
 	cyl.height = at
 	shape.shape = cyl
 	shape.transform = Transform3D(basis, base + dir * at * 0.5)
-	return Solid.volume(outer)
+
+# --- Co-op ---------------------------------------------------------------------------
+
+## What a guest needs to draw this tree as it now stands: the trunk and each
+## branch still on it.
+func net_state() -> Dictionary:
+	var bs: Array = []
+	for b in branches:
+		bs.append([int(b.get("id", -1)), float(b.length), float(b.get("tip", float(b.radius) * 0.7))])
+	return {"h": trunk_height, "tp": trunk_taper, "b": bs}
+
+## A guest's copy takes the host's state: a shorter trunk, branches gone or
+## cut back. It never grows anything back.
+func net_apply(state: Dictionary) -> void:
+	var h := float(state.get("h", trunk_height))
+	if not is_equal_approx(h, trunk_height) or not is_equal_approx(float(state.get("tp", trunk_taper)), trunk_taper):
+		trunk_height = h
+		trunk_taper = float(state.get("tp", trunk_taper))
+		_refresh_trunk()
+	var keep: Dictionary = {}
+	for e in state.get("b", []):
+		keep[int(e[0])] = e
+	for i in range(branches.size() - 1, -1, -1):
+		var b: Dictionary = branches[i]
+		var id := int(b.get("id", -1))
+		if not keep.has(id):
+			for part in [b.mesh, b.leaf, b.shape]:
+				if part != null and is_instance_valid(part):
+					(part as Node).queue_free()
+			branches.remove_at(i)
+			continue
+		var e: Array = keep[id]
+		if float(e[1]) < float(b.length) - 0.001:
+			_shorten_branch(b, float(e[1]), float(e[2]))
+	if branches.is_empty() and _crown != null and foliage_style != &"palm" and foliage_style != &"cap":
+		_crown.visible = false
 
 ## Severs the trunk at `height`. Everything above leaves; what is below stays
 ## standing and can be cut again.

@@ -15,6 +15,7 @@ GameData="*res://scripts/systems/GameData.gd"
 Economy="*res://scripts/systems/Economy.gd"
 PlayerState="*res://scripts/systems/PlayerState.gd"
 Settings="*res://scripts/systems/Settings.gd"
+Net="*res://scripts/net/Net.gd"
 
 [display]
 window/size/viewport_width=1600

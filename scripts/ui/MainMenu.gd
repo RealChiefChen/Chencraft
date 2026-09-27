@@ -80,6 +80,7 @@ func _ready() -> void:
 	_save_line = UIKit.label("", "Muted", 15)
 	_buttons.add_child(_save_line)
 	_menu_button("New Game", _on_new_game)
+	_menu_button("Co-op", func(): _open_page("Co-op", _coop_page()))
 	_menu_button("Settings", func(): _open_page("Settings", SettingsPanel.new()))
 	_menu_button("Controls", func(): _open_page("Controls", KeyGuide.sheet()))
 	_menu_button("Quit", func(): quit_requested.emit())
@@ -161,6 +162,78 @@ func _open_page(title: String, content: Control) -> void:
 	col.add_child(content)
 	_page = card
 	_page_host.add_child(card)
+
+# --- Co-op ------------------------------------------------------------------------------
+
+var _coop_status: Label
+
+## Host this game for friends, or join someone else's. Everything is shared:
+## one world, one purse, one set of unlocks.
+func _coop_page() -> Control:
+	var col := UIKit.vbox(14)
+	col.add_child(UIKit.label("Play together, on the host's world. Everything is shared - money, unlocks, vehicles, the lot.", "Muted", 15))
+	var name_row := UIKit.hbox(10)
+	name_row.add_child(UIKit.label("Your name", "", 16))
+	var name_edit := LineEdit.new()
+	name_edit.text = Net.player_name
+	name_edit.custom_minimum_size.x = 260
+	name_edit.text_changed.connect(func(t: String): Net.player_name = t.strip_edges() if t.strip_edges() != "" else "Player")
+	name_row.add_child(name_edit)
+	col.add_child(name_row)
+
+	col.add_child(UIKit.label("Host", "Header", 20))
+	if Net.is_host():
+		col.add_child(UIKit.label("Hosting on port %d. Friends join with your IP address: %s" % [Net.port, _local_addresses()], "", 15))
+		col.add_child(UIKit.button("Stop hosting", func():
+			if world != null:
+				world.call("stop_hosting")
+			_open_page("Co-op", _coop_page()), ""))
+	else:
+		col.add_child(UIKit.label("Opens this game to friends. They need your IP address, and port %d open or forwarded if they are not on your network." % Net.PORT, "Muted", 14))
+		col.add_child(UIKit.button("Host this game", _on_host, ""))
+
+	col.add_child(UIKit.label("Join", "Header", 20))
+	var join_row := UIKit.hbox(10)
+	var address := LineEdit.new()
+	address.placeholder_text = "host's IP address"
+	address.text = Net.address
+	address.custom_minimum_size.x = 260
+	join_row.add_child(address)
+	join_row.add_child(UIKit.button("Join", func(): _on_join(address.text), ""))
+	col.add_child(join_row)
+	col.add_child(UIKit.label("Joining leaves your own world (it is saved) and plays in the host's.", "Muted", 14))
+	_coop_status = UIKit.label("", "", 15)
+	col.add_child(_coop_status)
+	return col
+
+static func _local_addresses() -> String:
+	var out: Array[String] = []
+	for a in IP.get_local_addresses():
+		if a.contains(".") and not a.begins_with("127.") and not a.begins_with("169.254"):
+			out.append(a)
+	return ", ".join(out) if not out.is_empty() else "(see your network settings)"
+
+func _on_host() -> void:
+	var err := Net.host()
+	if err != "":
+		_coop_status.text = err
+		return
+	if world != null:
+		world.call("start_hosting")
+	_open_page("Co-op", _coop_page())
+
+func _on_join(address: String) -> void:
+	address = address.strip_edges()
+	if address == "":
+		_coop_status.text = "type the host's IP address"
+		return
+	if world != null and not Net.is_client():
+		world.call("quick_save")
+	# The host's world is built here first, then this game connects to it.
+	Net.prepare_join(address)
+	skip_once = true
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/boot.tscn")
 
 func _close_page() -> void:
 	if _page != null and is_instance_valid(_page):

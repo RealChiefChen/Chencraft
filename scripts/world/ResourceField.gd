@@ -39,6 +39,8 @@ signal retired(field: ResourceField, node: Node3D)
 
 ## The player, or whatever the distances above are measured from. Optional.
 var focus: Node3D
+## More players the distances are measured from (co-op guests on the host).
+var extra_focus: Array[Node3D] = []
 ## Where distances are measured from until there is a focus: the spawn.
 var anchor: Vector3 = Vector3.ZERO
 ## Past this distance a node is kept as a note - what it is, its seed and where
@@ -88,6 +90,9 @@ func at_quota() -> bool:
 ## Fills the field to its quota in one go. Used when the world is first built,
 ## where paced spawning would just mean walking into an empty forest.
 func prefill() -> int:
+	# A co-op guest grows nothing of its own: the host says what stands where.
+	if Net.is_client():
+		return 0
 	var placed := 0
 	# Bounded by more than the quota because spacing rejects some candidates,
 	# but bounded, so a region too small for its quota cannot spin forever.
@@ -99,6 +104,8 @@ func prefill() -> int:
 	return placed
 
 func _process(delta: float) -> void:
+	if Net.is_client():
+		return
 	if wake_distance > 0.0:
 		_wake_timer -= delta
 		if _wake_timer <= 0.0:
@@ -219,6 +226,11 @@ func vehicle_near(point: Vector3) -> bool:
 	return false
 
 func _near_focus(point: Vector3, distance: float) -> bool:
+	# Co-op: every player counts, so a field wakes round a guest out on their
+	# own as well as round the host.
+	for other in extra_focus:
+		if is_instance_valid(other) and Vector2(point.x - other.global_position.x, point.z - other.global_position.z).length() < distance:
+			return true
 	var f := anchor
 	if focus != null and is_instance_valid(focus):
 		f = focus.global_position

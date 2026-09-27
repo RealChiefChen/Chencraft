@@ -10,6 +10,7 @@ signal save_requested
 signal load_requested
 signal main_menu_requested
 signal quit_requested
+signal leave_requested
 
 var _root: Control
 var _card: PanelContainer
@@ -55,7 +56,7 @@ func _show_main() -> void:
 	_clear()
 	_on_subpage = false
 	_card.custom_minimum_size = Vector2(420, 0)
-	_content.add_child(UIKit.label("Paused", "Header", 44))
+	_content.add_child(UIKit.label("Paused" if not Net.online() else ("Hosting co-op" if Net.is_host() else "Co-op"), "Header", 44))
 	_stats = UIKit.label("Day %d   ·   %s   ·   earned %s so far" % [
 		Economy.day, UIKit.money(Economy.money), UIKit.money(Economy.total_earned)], "Muted")
 	_content.add_child(_stats)
@@ -64,8 +65,14 @@ func _show_main() -> void:
 	_add("Return to base", func(): home_requested.emit())
 	_add("Settings", func(): _show_page("Settings", SettingsPanel.new()))
 	_add("Controls", func(): _show_page("Controls", KeyGuide.sheet()))
-	_add_row([["Save  [F5]", func(): save_requested.emit()],
-		["Load  [F9]", _confirm_load]])
+	if Net.is_client():
+		# The host's world, saved on the host's machine.
+		_add("Leave co-op", func(): leave_requested.emit())
+	else:
+		_add_row([["Save  [F5]", func(): save_requested.emit()],
+			["Load  [F9]", _confirm_load]])
+	if Net.is_host():
+		_add("Stop hosting (%d playing with you)" % Net.guests().size(), func(): leave_requested.emit())
 	_content.add_child(HSeparator.new())
 	_add_row([["Main menu", func(): main_menu_requested.emit()],
 		["Quit to desktop", func(): quit_requested.emit()]])

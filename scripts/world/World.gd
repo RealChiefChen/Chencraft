@@ -1331,10 +1331,10 @@ func _padless_vehicle() -> Node3D:
 ## A pad replaces its own vehicle; if that is the one being driven, the driver
 ## is put back on their feet first.
 func _on_vehicle_spawned(vehicle: Node3D) -> void:
-	if player != null and player.driving():
-		var riding: Node3D = player.vehicle
-		if riding == null or not is_instance_valid(riding) or riding.is_queued_for_deletion():
-			player.exit_vehicle()
+	for p in players():
+		var riding: Variant = p.vehicle
+		if riding != null and (not is_instance_valid(riding) or (riding as Node).is_queued_for_deletion()):
+			p.exit_vehicle()
 	if player == null or not player.driving():
 		hauler = vehicle as Hauler
 

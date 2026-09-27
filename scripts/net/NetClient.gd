@@ -281,8 +281,8 @@ func _spawn(e: Dictionary) -> void:
 			var v := Hauler.new()
 			v.setup(world.get("manager"), 0, StringName(e.veh))
 			v.terrain = world.get("terrain")
-			v.process_mode = Node.PROCESS_MODE_DISABLED
 			_mirror.add_child(v)
+			_solid_picture(v)
 			v.global_transform = _pose_of(e)
 			_passive_wheels.call_deferred(v, id)
 			node = v
@@ -307,7 +307,8 @@ func _passive_wheels(v: Hauler, id: int) -> void:
 		return
 	for w in v.wheel_bodies.size():
 		var body := v.wheel_bodies[w]
-		body.process_mode = Node.PROCESS_MODE_DISABLED
+		if id != _local_veh:
+			_solid_picture(body)
 		_wheels[id + WHEEL * (w + 1)] = body
 
 func _build(e: Dictionary) -> Node:
@@ -322,9 +323,36 @@ func _build(e: Dictionary) -> Node:
 	var node := plot.place(def, Vector2i(int(e.cell[0]), int(e.cell[1])), Vector3i(int(r[0]), int(r[1]), int(r[2])),
 		false, float(e.get("lift", 0.0)))
 	if node != null:
-		# Only a picture: the host's machines do the work.
-		node.process_mode = Node.PROCESS_MODE_DISABLED
+		# Only a picture: the host's machines do the work. Still solid.
+		_solid_picture(node)
 	return node
+
+## Switched off - nothing in it runs - but still there to walk into, stand
+## on and aim at.
+static func _solid_picture(node: Node) -> void:
+	node.process_mode = Node.PROCESS_MODE_DISABLED
+	_keep_solid(node)
+
+static func _keep_solid(node: Node) -> void:
+	if node is CollisionObject3D:
+		(node as CollisionObject3D).disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
+	if node is RigidBody3D:
+		(node as RigidBody3D).freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		(node as RigidBody3D).freeze = true
+	for child in node.get_children():
+		_keep_solid(child)
+
+## The id the host knows a building (or anything) here by, or -1.
+func id_of(node: Node) -> int:
+	for id in _nodes:
+		if _nodes[id] == node:
+			return id
+	return -1
+
+## Asks the host to build, take down or change a building.
+func send_build(ev: Dictionary) -> void:
+	ev.t = "build"
+	send_event(ev)
 
 func _gone(id: int) -> void:
 	var node: Variant = _nodes.get(id, null)
@@ -373,6 +401,8 @@ func _state(id: int, s: Variant) -> void:
 					item.add_limb(Vector3(a[0], a[1], a[2]), Vector3(a[3], a[4], a[5]), float(a[6]), float(a[7]),
 						[], Color(0.42, 0.3, 0.2), float(a[8]) if (a as Array).size() > 8 else -1.0)
 		"b":
+			if s.has("g"):
+				node = _reshape(id, node as Node3D, s.g)
 			if s.has("run") and (node as Node).get("running") != null:
 				(node as Node).set("running", bool(s.run))
 			if s.has("d") and (node as Node).has_method("from_dict") and not node is VehiclePad:
@@ -383,6 +413,31 @@ func _state(id: int, s: Variant) -> void:
 			var a := node as Avatar
 			if a != null:
 				a.set_pitch(float(s.get("pitch", 0.0)))
+
+## A building the host has moved, turned or resized: the same here.
+func _reshape(id: int, node: Node3D, g: Array) -> Node3D:
+	var plot: Plot = world.get("plot")
+	var index := -1
+	for i in plot.placed.size():
+		if plot.placed[i].node == node:
+			index = i
+			break
+	if index < 0:
+		return node
+	var rec: Dictionary = plot.placed[index]
+	var cell := Vector2i(int(g[0]), int(g[1]))
+	var rot := Vector3i(int(g[2]), int(g[3]), int(g[4]))
+	var size := Vector3i(int(g[5]), int(g[6]), int(g[7]))
+	var lift := float(g[8])
+	if rec.cell == cell and rec.rot == rot and (rec.def as BuildingDef).size == size \
+			and is_equal_approx(float(rec.get("lift", 0.0)), lift):
+		return node
+	plot.edit(index, cell, rot, size, lift)
+	var fresh: Node3D = plot.placed[index].node
+	if fresh != null and fresh != node:
+		_solid_picture(fresh)
+		_nodes[id] = fresh
+	return fresh
 
 ## Whether this is the vehicle driven here, or one of its wheels.
 func _is_local(id: int) -> bool:
@@ -400,6 +455,7 @@ func _drive_here(id: int, v: Hauler) -> void:
 	v.process_mode = Node.PROCESS_MODE_INHERIT
 	for body in v.wheel_bodies:
 		body.process_mode = Node.PROCESS_MODE_INHERIT
+		body.freeze = false
 	v.freeze = v.planted
 	v.linear_velocity = Vector3.ZERO
 	v.angular_velocity = Vector3.ZERO
@@ -414,9 +470,9 @@ func _let_go() -> void:
 	v.net_mirror = false
 	if v.rig != null:
 		v.rig.net_mirror = false
-	v.process_mode = Node.PROCESS_MODE_DISABLED
+	_solid_picture(v)
 	for body in v.wheel_bodies:
-		body.process_mode = Node.PROCESS_MODE_DISABLED
+		_solid_picture(body)
 
 func _vehicle_state(v: Hauler, s: Dictionary) -> void:
 	var here: bool = _local_veh >= 0 and _nodes.get(_local_veh, null) == v

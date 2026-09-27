@@ -207,7 +207,18 @@ func carried_count() -> int:
 	return held.size()
 
 func driving() -> bool:
-	return vehicle != null
+	return vehicle != null and is_instance_valid(vehicle)
+
+## The vehicle went from under the player (a pad sent it back and made a new
+## one): on their feet again, solid, where they sat.
+func _vehicle_gone() -> void:
+	vehicle = null
+	velocity = Vector3.ZERO
+	collision_layer = 0 if net_view else Layers.PLAYER
+	collision_mask = Layers.MASK_PLAYER
+	camera.position = Vector3(0, 1.65, 0)
+	camera.rotation.y = 0.0
+	camera.rotation.z = 0.0
 
 ## How deep the water is where the player is standing.
 func water_depth() -> float:
@@ -249,6 +260,10 @@ func steering_load() -> bool:
 # --- Input -----------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	# A co-op guest's player on the host: its keys come from the guest, not
+	# from this keyboard and mouse.
+	if input.remote:
+		return
 	# Editing a building in build mode: the mouse is the gizmo's.
 	if build_system != null and build_system.editing() and not _ui_blocking \
 			and (event is InputEventMouseButton or event is InputEventMouseMotion):
@@ -277,7 +292,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		capture_mouse(true)
 		return
 	if net_view:
-		# A co-op guest's presses are the host's to act on.
+		# A co-op guest builds here - the host is asked to put it up - and
+		# every other press is the host's to act on.
+		var building := build_system != null and build_system.active
+		if building or Controls.pressed(event, &"build_mode"):
+			if not _on_mouse_action(event):
+				_on_key(event)
+			return
 		if Net.client_side != null:
 			Net.client_side.call("send_press", event)
 		return
@@ -572,6 +593,8 @@ func _physics_process(delta: float) -> void:
 	input.end_frame()
 
 func _physics_step(delta: float) -> void:
+	if vehicle != null and not is_instance_valid(vehicle):
+		_vehicle_gone()
 	if net_view and driving():
 		# In a truck the body is where the host has it. Driving it here, the
 		# arms are worked here too.

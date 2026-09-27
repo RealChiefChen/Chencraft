@@ -64,6 +64,16 @@ func recall() -> bool:
 	if not has_vehicle():
 		vehicle = null
 		return false
+	# Whoever is at the wheel is put out by the door first.
+	var driver: Variant = vehicle.get("driver")
+	if driver is Player and is_instance_valid(driver):
+		var p := driver as Player
+		var size: Variant = vehicle.get("body_size")
+		var out := (size as Vector3).x * 0.5 + 1.3 if size is Vector3 else 2.5
+		p.exit_vehicle()
+		vehicle.set("driver", null)
+		p.global_position = vehicle.global_position + vehicle.global_transform.basis.x * out + Vector3(0, 1.0, 0)
+		p.velocity = Vector3.ZERO
 	vehicle.queue_free()
 	vehicle = null
 	return true

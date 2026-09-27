@@ -54,7 +54,12 @@ func on_guest_ready(peer: int, display: String) -> void:
 	if not p.warped.is_connected(_on_warped):
 		p.warped.connect(_on_warped.bind(peer, p))
 	# Everything there is, as it is, then who they are.
+	# Money, unlocks and the size of the land first: the buildings that follow
+	# may stand on land bought since the game began.
 	var batch: Array = []
+	var econ := _econ_for(peer, _econ_entry())
+	_econ_hash[peer] = hash([econ.e, econ.p, econ.q, econ.land])
+	batch.append(econ)
 	for entry in _entities():
 		var fresh := not _ids.has(entry[2])
 		var id := _id_for(entry[0], entry[1], entry[2])
@@ -67,9 +72,6 @@ func on_guest_ready(peer: int, display: String) -> void:
 		var st: Variant = _state_of(entry[0], entry[1])
 		if st != null:
 			batch.append({"t": "state", "id": id, "s": st})
-	var econ := _econ_for(peer, _econ_entry())
-	_econ_hash[peer] = hash([econ.e, econ.p, econ.q, econ.land])
-	batch.append(econ)
 	batch.append({"t": "you", "id": _ids.get(_key_of(p, "p"), -1)})
 	if OS.has_environment("NET_TRACE"):
 		print("[host] sending %d entries, %d bytes" % [batch.size(), var_to_bytes(batch).size()])
@@ -123,9 +125,6 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 		return
 	match String(ev.get("t", "")):
 		"key":
-			if int(ev.code) == KEY_B:
-				tell_peer(peer, "building is done on the host's machine for now")
-				return
 			var k := InputEventKey.new()
 			k.keycode = int(ev.code) as Key
 			k.physical_keycode = int(ev.get("phys", ev.code)) as Key
@@ -139,9 +138,46 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 			p.remote_press(b)
 		"base":
 			world.call("return_to_base", p)
+		"build":
+			tell_peer(peer, _guest_build(ev))
 		"hotbar":
 			if p.kit != null:
 				p.kit.set_hotbar(int(ev.get("slot", -1)), StringName(String(ev.get("id", ""))))
+
+## A guest building on the host's land: put up, taken down, moved. Paid for
+## like the host's own. Returns what to tell them ("" for nothing).
+func _guest_build(ev: Dictionary) -> String:
+	var plot: Plot = world.get("plot")
+	match String(ev.get("op", "")):
+		"place":
+			var def := PlayerState.def_at_tier(StringName(String(ev.get("def", ""))), int(ev.get("tier", 1)))
+			if def == null:
+				return "unknown building"
+			var sz: Array = ev.get("size", [])
+			if sz.size() == 3 and Vector3i(int(sz[0]), int(sz[1]), int(sz[2])) != def.size:
+				def = Plot.resized(def, Vector3i(int(sz[0]), int(sz[1]), int(sz[2])))
+			var c: Array = ev.cell
+			var r: Array = ev.rot
+			var cell := Vector2i(int(c[0]), int(c[1]))
+			var rot := Vector3i(int(r[0]), int(r[1]), int(r[2]))
+			var err := plot.placement_error(def, cell, rot)
+			if err != "":
+				return err
+			return "" if plot.place(def, cell, rot) != null else "could not build that there"
+		"remove", "edit":
+			var entry: Variant = _nodes.get(int(ev.get("id", -1)), null)
+			if entry == null or String(entry[1]) != "b":
+				return "that building has gone"
+			var rec: Dictionary = entry[0]
+			if String(ev.op) == "remove":
+				plot.remove(rec.node)
+				return ""
+			var c: Array = ev.cell
+			var r: Array = ev.rot
+			var sz: Array = ev.size
+			return plot.edit(plot.placed.find(rec), Vector2i(int(c[0]), int(c[1])), Vector3i(int(r[0]), int(r[1]), int(r[2])),
+				Vector3i(int(sz[0]), int(sz[1]), int(sz[2])), float(ev.get("lift", 0.0)))
+	return ""
 
 ## The host moved a guest's player: put the guest there too.
 func _on_warped(peer: int, p: Player) -> void:
@@ -194,13 +230,22 @@ func _entities() -> Array:
 	for rec in plot.placed:
 		var node: Node3D = rec.node
 		if is_instance_valid(node) and not node.is_queued_for_deletion():
-			out.append([rec, "b", _key_of(node, "b")])
+			out.append([rec, "b", _rec_key(rec)])
 	for v: Hauler in world.call("vehicles"):
 		if not v.is_queued_for_deletion():
 			out.append([v, "v", _key_of(v, "v")])
 	for p: Player in world.call("players"):
 		out.append([p, "p", _key_of(p, "p")])
 	return out
+
+## A building keeps its identity when it is moved, turned or resized (which
+## puts up a new node in its place).
+var _next_rec: int = 1
+func _rec_key(rec: Dictionary) -> String:
+	if not rec.has("net"):
+		rec["net"] = _next_rec
+		_next_rec += 1
+	return "b#%d" % int(rec.net)
 
 ## An identity that changes when a pooled piece is reused for a new one.
 func _key_of(node: Object, kind: String) -> String:
@@ -272,8 +317,13 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 		"r":
 			return (thing as OreRock).net_state()
 		"b":
-			var node: Node = (thing as Dictionary).node
-			var s := {}
+			var rec: Dictionary = thing
+			var node: Node = rec.node
+			var def: BuildingDef = rec.def
+			var r: Vector3i = rec.rot
+			# Where it stands and how big: a move or resize shows up here.
+			var s := {"g": [rec.cell.x, rec.cell.y, r.x, r.y, r.z, def.size.x, def.size.y, def.size.z,
+				float(rec.get("lift", 0.0))]}
 			var run: Variant = node.get("running")
 			if run != null:
 				s.run = bool(run)
@@ -281,7 +331,7 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 			# queue. Not a pad's truck, which is sent as a vehicle.
 			if node.has_method("to_dict") and not node is VehiclePad:
 				s.d = node.call("to_dict")
-			return s if not s.is_empty() else null
+			return s
 		"v":
 			var v := thing as Hauler
 			var s := {"tub": v._tub_angle, "held": v.held}

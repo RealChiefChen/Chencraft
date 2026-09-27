@@ -42,6 +42,7 @@ func _host() -> void:
 	_check(bin != null, "the host put up a storage bin")
 	if bin != null:
 		bin.contents.append({"id": &"wood_pine", "dims": Solid.cylinder(0.1, 0.1, 1.0), "owned": true})
+	var built_before := world.plot.placed.size()
 	# Wait for a guest to arrive and look round.
 	var t := 0.0
 	while world.guests.is_empty() and t < 90.0:
@@ -70,6 +71,20 @@ func _host() -> void:
 		await get_tree().create_timer(0.25).timeout
 		t += 0.25
 	_check(guest.selected_slot == 0, "the guest's key press picked a tool on the host (slot %d)" % guest.selected_slot)
+	# The host's own number keys are the host's: the guest's hand stays put.
+	var three := InputEventKey.new()
+	three.keycode = KEY_3
+	three.physical_keycode = KEY_3
+	three.pressed = true
+	Input.parse_input_event(three)
+	await get_tree().create_timer(0.3).timeout
+	_check(guest.selected_slot == 0, "the host's key 3 left the guest's hand alone (slot %d)" % guest.selected_slot)
+	# The guest builds a bin on the host's land.
+	t = 0.0
+	while world.plot.placed.size() == built_before and t < 30.0:
+		await get_tree().create_timer(0.25).timeout
+		t += 0.25
+	_check(world.plot.placed.size() > built_before, "the guest's building went up on the host")
 	# A log at the guest's feet: they pick it up (right mouse, at their end),
 	# once they have seen the tool in hand and the hand is emptied again.
 	await get_tree().create_timer(4.0).timeout
@@ -199,6 +214,33 @@ func _join() -> void:
 		await get_tree().create_timer(0.25).timeout
 		t += 0.25
 	_check(PlayerState.owns_tool(&"steel_axe"), "the axe the host gave this player is in its own inventory")
+	# Build a bin: the host puts it up, and here it is solid.
+	var def := GameData.building(&"storage")
+	client.send_build({"op": "place", "def": "storage", "tier": 1, "size": [def.size.x, def.size.y, def.size.z],
+		"cell": [-20, -40], "rot": [0, 0, 0]})
+	var bin_node: Node3D = null
+	t = 0.0
+	while bin_node == null and t < 15.0:
+		await get_tree().create_timer(0.25).timeout
+		t += 0.25
+		for id in client._kinds:
+			if client._kinds[id] == "b" and client._nodes[id] is StorageBin \
+					and (client._nodes[id] as StorageBin).contents.is_empty():
+				bin_node = client._nodes[id]
+	_check(bin_node != null, "the bin this player built showed up here")
+	if bin_node != null:
+		await get_tree().physics_frame
+		var top := bin_node.global_position + Vector3(0.3, 8.0, 0.3)
+		var q := PhysicsRayQueryParameters3D.create(top, top + Vector3.DOWN * 12.0, Layers.MACHINE)
+		var hit := world.get_world_3d().direct_space_state.intersect_ray(q)
+		var solid := false
+		var n: Node = hit.get("collider") as Node
+		while n != null:
+			if n == bin_node:
+				solid = true
+				break
+			n = n.get_parent()
+		_check(solid, "the bin is solid here")
 	# A key press, acted on by the host: 1 picks the first tool.
 	var key := InputEventKey.new()
 	key.keycode = KEY_1

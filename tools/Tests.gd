@@ -125,6 +125,7 @@ func _run_all() -> void:
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
 	await _test(&"co-op guests keep their own tools and gear", test_guest_kit)
 	await _test(&"co-op a guest's copy of a world is never saved", test_guest_world_not_saved)
+	await _test(&"respawning a truck puts its driver out, solid", test_respawn_with_driver)
 	await _test(&"every balance knob is read by the game", test_balance_file)
 	await _test(&"controls can be rebound and saved", test_controls)
 	await _test(&"build mode opens empty-handed, with a menu and a copy key", test_build_menu_and_pick)
@@ -4679,6 +4680,29 @@ func test_net_address() -> void:
 	check_eq(Net.split_address("10.0.0.2:30000"), ["10.0.0.2", 30000], "an IP with another port")
 	check_eq(Net.split_address("myhost.example.com"), ["myhost.example.com", Net.PORT], "a host name")
 	check_eq(Net.split_address("10.0.0.2:banana"), ["10.0.0.2", Net.PORT], "a junk port falls back")
+	done()
+
+func test_respawn_with_driver() -> void:
+	_setup()
+	Economy.from_dict({"money": 50000, "day": 1})
+	plot.vehicle_host = world
+	PlayerState.try_buy_vehicle()
+	var pad := plot.place(GameData.building(&"vehicle_pad"), Vector2i(2, 2) * Plot.SUB, 0) as VehiclePad
+	await step(4)
+	var truck := pad.spawn() as Hauler
+	await step(10)
+	var p := _make_player()
+	world.add_child(p)
+	await step(2)
+	p.enter_vehicle(truck)
+	truck.driver = p
+	await step(2)
+	pad.spawn()
+	await step(10)
+	check(not p.driving(), "the driver is still in a truck that has gone")
+	check(p.collision_mask != 0, "the driver was left with nothing to stand on")
+	check(p.global_position.y > -5.0, "the driver fell through the world (y=%.1f)" % p.global_position.y)
+	p.queue_free()
 	done()
 
 func test_guest_world_not_saved() -> void:

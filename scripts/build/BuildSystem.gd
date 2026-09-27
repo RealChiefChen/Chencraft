@@ -525,6 +525,13 @@ func _drag_to(mouse: Vector2) -> void:
 	if rec.cell == cell and rec.rot == rot and (rec.def as BuildingDef).size == size \
 			and is_equal_approx(float(rec.get("lift", 0.0)), lift):
 		return
+	if _guest():
+		var new_def: BuildingDef = rec.def if size == (rec.def as BuildingDef).size else Plot.resized(rec.def, size)
+		edit_error = plot.placement_error(new_def, cell, rot, false, selected)
+		if edit_error == "":
+			_ask_host({"op": "edit", "id": _net_id(rec.node), "cell": [cell.x, cell.y],
+				"rot": [rot.x, rot.y, rot.z], "size": [size.x, size.y, size.z], "lift": lift})
+		return
 	edit_error = plot.edit(selected, cell, rot, size, lift)
 	_refresh_gizmo_box()
 
@@ -540,6 +547,9 @@ func remove_selected() -> void:
 		return
 	var node: Node3D = selected_record().node
 	deselect()
+	if _guest():
+		_ask_host({"op": "remove", "id": _net_id(node)})
+		return
 	plot.remove(node)
 
 func edit_hint() -> String:
@@ -613,12 +623,41 @@ func try_place() -> bool:
 	var def := current()
 	if def == null:
 		return false
+	if _guest():
+		if plot.placement_error(def, target_cell, rot) != "":
+			return false
+		_ask_host({"op": "place", "def": String(def.id), "tier": def.tier,
+			"size": [def.size.x, def.size.y, def.size.z], "cell": [target_cell.x, target_cell.y],
+			"rot": [rot.x, rot.y, rot.z]})
+		return true
 	var node := plot.place(def, target_cell, rot)
 	return node != null
+
+# --- Co-op ---------------------------------------------------------------------------
+
+## A co-op guest builds on the host's land: what they do here is asked of the
+## host, which puts it up (and charges for it), and the result comes back.
+func _guest() -> bool:
+	return Net.is_client() and Net.client_side != null
+
+func _ask_host(ev: Dictionary) -> void:
+	Net.client_side.call("send_build", ev)
+
+func _net_id(node: Node) -> int:
+	return int(Net.client_side.call("id_of", node))
 
 func try_remove() -> bool:
 	if not active:
 		return false
+	if _guest():
+		var at := plot.index_at_hit(_aim_hit())
+		if at < 0:
+			var p: Variant = _aim_point()
+			at = plot.index_at_world(p) if p != null else -1
+		if at < 0 or at >= plot.placed.size():
+			return false
+		_ask_host({"op": "remove", "id": _net_id(plot.placed[at].node)})
+		return true
 	var hit := _aim_hit()
 	if not hit.is_empty():
 		return plot.remove_at_hit(hit)

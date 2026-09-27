@@ -22,6 +22,7 @@ var _last_veh: int = -2
 
 func _ready() -> void:
 	Net.client_side = self
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_mirror = Node3D.new()
 	_mirror.name = "Mirror"
 	world.add_child(_mirror)

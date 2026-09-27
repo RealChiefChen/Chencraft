@@ -303,6 +303,7 @@ func _ready() -> void:
 	tutorial.evaluate()
 	hud.bind_tutorial(tutorial)
 	if leave_reason != "":
+		hud.toast("Left co-op: %s" % leave_reason, UITheme.BAD)
 		hud.log_message("left co-op: %s" % leave_reason)
 		leave_reason = ""
 	hud.toast("Welcome back - day %d" % Economy.day if loaded else

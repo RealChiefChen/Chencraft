@@ -118,7 +118,7 @@ static func _patient(peer: ENetMultiplayerPeer, id: int) -> void:
 		return
 	var p := peer.get_peer(id)
 	if p != null:
-		p.set_timeout(64, 20000, 60000)
+		p.set_timeout(64, 45000, 90000)
 
 func _on_failed() -> void:
 	mode = Mode.OFFLINE

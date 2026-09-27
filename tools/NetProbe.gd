@@ -104,21 +104,34 @@ func _host() -> void:
 	Economy.from_dict({"money": start_money})
 
 func _join() -> void:
-	# As the menu does it: build the world as a guest's, then connect.
-	Net.prepare_join("127.0.0.1", PORT)
+	# As the menu does it: connect, and only then build the world as a guest's.
 	var joined := false
-	await _load_world()
-	var waited := 0.0
-	while waited < 60.0:
-		if multiplayer.multiplayer_peer is ENetMultiplayerPeer \
-				and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+	for attempt in 20:
+		Net.join("127.0.0.1", PORT)
+		var result := [0]
+		var ok_cb := func(): result[0] = 1
+		var fail_cb := func(_r: String): result[0] = -1
+		Net.joined.connect(ok_cb, CONNECT_ONE_SHOT)
+		Net.join_failed.connect(fail_cb, CONNECT_ONE_SHOT)
+		var t := 0.0
+		while result[0] == 0 and t < 8.0:
+			await get_tree().create_timer(0.1).timeout
+			t += 0.1
+		for pair in [[Net.joined, ok_cb], [Net.join_failed, fail_cb]]:
+			if (pair[0] as Signal).is_connected(pair[1]):
+				(pair[0] as Signal).disconnect(pair[1])
+		if result[0] == 1:
 			joined = true
 			break
-		await get_tree().create_timer(0.25).timeout
-		waited += 0.25
+		Net.leave()
+		await get_tree().create_timer(1.0).timeout
 	_check(joined, "the guest connected to the host")
 	if not joined:
 		return
+	# A long, blocking build with the connection open: it must survive it.
+	await _load_world()
+	_check(Net.is_client() and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED,
+		"still connected after building the world")
 	var client: NetClient = world.net_client
 	_check(client != null, "the guest's world is in guest mode")
 	# The world arrives.

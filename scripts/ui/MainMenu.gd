@@ -229,17 +229,57 @@ func _on_host() -> void:
 		return
 	if world != null:
 		world.call("start_hosting")
-	_open_page("Co-op", _coop_page())
+		# Straight into play: the world runs for guests while the host plays.
+		world.call("resume_play")
+		var hud: Variant = world.get("hud")
+		if hud != null:
+			hud.call("log_message", "hosting co-op on port %d - friends join with: %s" % [Net.port, _local_addresses()])
 
+var _joining: bool = false
+
+## Connects first, and only then leaves this world for the host's: a join
+## that gets no answer leaves you where you are, with the reason on screen.
 func _on_join(address: String) -> void:
 	address = address.strip_edges()
 	if address == "":
 		_coop_status.text = "type the host's IP address"
 		return
-	if world != null and not Net.is_client():
+	if _joining:
+		return
+	var host_part := address
+	var port := Net.PORT
+	if address.contains(":"):
+		host_part = address.get_slice(":", 0)
+		port = int(address.get_slice(":", 1))
+	var err := Net.join(host_part, port)
+	if err != "":
+		_coop_status.text = err
+		return
+	_joining = true
+	_coop_status.text = "connecting to %s:%d..." % [host_part, port]
+	var result := [0, ""]
+	var ok_cb := func(): result[0] = 1
+	var fail_cb := func(reason: String):
+		result[0] = -1
+		result[1] = reason
+	Net.joined.connect(ok_cb, CONNECT_ONE_SHOT)
+	Net.join_failed.connect(fail_cb, CONNECT_ONE_SHOT)
+	var waited := 0.0
+	while result[0] == 0 and waited < 12.0:
+		await get_tree().create_timer(0.1, true).timeout
+		waited += 0.1
+	for pair in [[Net.joined, ok_cb], [Net.join_failed, fail_cb]]:
+		if (pair[0] as Signal).is_connected(pair[1]):
+			(pair[0] as Signal).disconnect(pair[1])
+	_joining = false
+	if result[0] != 1:
+		Net.leave()
+		_coop_status.text = ("could not join: %s. " % (result[1] if result[1] != "" else "no answer from %s:%d" % [host_part, port])) \
+			+ "Check the host has pressed Host this game, the address is theirs, and their firewall lets the game in (UDP %d)." % port
+		return
+	# Connected: save this world, then build the host's and join it.
+	if world != null:
 		world.call("quick_save")
-	# The host's world is built here first, then this game connects to it.
-	Net.prepare_join(address)
 	skip_once = true
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/boot.tscn")

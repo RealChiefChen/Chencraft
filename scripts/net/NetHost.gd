@@ -30,6 +30,8 @@ var _mail: Dictionary = {}            ## peer -> [entries for them alone]
 
 func _ready() -> void:
 	Net.host_side = self
+	# Guests keep being sent the world while the host sits in a menu.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_physics_priority = 100    # after the world has moved
 
 func _exit_tree() -> void:

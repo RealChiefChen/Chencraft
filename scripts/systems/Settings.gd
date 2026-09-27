@@ -46,6 +46,8 @@ const DEFAULTS := {
 	&"show_hints": true,
 	&"show_rig_banner": true,
 	&"minimap": true,
+	&"minimap_zoom": 1,       ## 0 close .. 3 far
+	&"minimap_rotate": false,
 	&"show_compass": true,
 	&"show_tutorial": true,
 	&"show_fps": false,
@@ -75,6 +77,8 @@ const NOTES := {
 	&"show_hints": "Key hints in the bottom-right corner",
 	&"show_rig_banner": "The crane / winch / loader controls banner while driving",
 	&"minimap": "The minimap under the money",
+	&"minimap_zoom": "Minimap zoom, 0 (closest) to 3 (furthest)",
+	&"minimap_rotate": "true: the minimap turns with you, what is ahead at the top. false: north up",
 	&"show_compass": "The compass along the top",
 	&"show_tutorial": "The getting-started checklist",
 	&"show_fps": "Frame rate readout",

@@ -661,6 +661,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			journal.visible = false
 		inventory.player = player
 		inventory.toggle()
+	elif Controls.pressed(event, &"map_zoom_in") or Controls.pressed(event, &"map_zoom_out"):
+		var step := -1 if Controls.pressed(event, &"map_zoom_in") else 1
+		Settings.set_value(&"minimap_zoom", clampi(int(Settings.value(&"minimap_zoom")) + step, 0, Minimap.SPANS.size() - 1))
 	elif Controls.pressed(event, &"toggle_hints"):
 		var on := not Settings.flag(&"show_hints")
 		Settings.set_value(&"show_hints", on)

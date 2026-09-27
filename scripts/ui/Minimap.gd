@@ -1,15 +1,16 @@
 class_name Minimap
 extends Control
 
-## The minimap in the corner: the land around you from above, north up, the
-## same picture as the journal's map. You are the arrow in the middle, facing
+## The minimap in the corner: the land around you from above - north up, or
+## turned so what is ahead is up - the same picture as the journal's map.
+## It zooms in and out (the settings, or the zoom keys). You are the arrow in the middle, facing
 ## where you look. Your trucks and the places you have found show where they
 ## are; home, the yard and the stores sit on the rim when they are off it,
 ## pointing the way.
 
 const SIDE := 200.0
-## Metres across the square.
-const SPAN := 260.0
+## Metres across the square, at each zoom.
+const SPANS := [120.0, 260.0, 520.0, 1000.0]
 
 var world: Node
 var _texture: Texture2D
@@ -26,9 +27,17 @@ func _process(_delta: float) -> void:
 	if is_visible_in_tree():
 		queue_redraw()
 
+var _span: float = 260.0
+## How far the picture is turned (radians): 0 is north up.
+var _turn: float = 0.0
+
+func span() -> float:
+	return float(SPANS[clampi(int(Settings.value(&"minimap_zoom")), 0, SPANS.size() - 1)])
+
 ## Minimap position of a world point; the player is the centre.
 func _to_mini(p: Vector3, centre: Vector3) -> Vector2:
-	return size * 0.5 + Vector2(p.x - centre.x, p.z - centre.z) * (size.x / SPAN)
+	var d := Vector2(p.x - centre.x, p.z - centre.z).rotated(-_turn)
+	return size * 0.5 + d * (size.x / _span)
 
 func _draw() -> void:
 	if world == null:
@@ -43,15 +52,26 @@ func _draw() -> void:
 	# Sea past the edge of the map.
 	draw_rect(rect, Color(0.16, 0.34, 0.5))
 	var here := player.global_position
+	_span = span()
+	var cam0: Camera3D = player.get("camera")
+	var look := -cam0.global_transform.basis.z
+	_turn = 0.0
+	if Settings.flag(&"minimap_rotate") and Vector2(look.x, look.z).length() > 0.05:
+		# Ahead is up: the map turns the other way from the way you face.
+		_turn = Vector2(look.x, look.z).angle() + PI * 0.5
 	var tex_size := _texture.get_size()
 	var px_per_m := tex_size.x / (terrain.half_extent * 2.0)
 	var centre_px := Vector2(here.x + terrain.half_extent, here.z + terrain.half_extent) * px_per_m
-	var half_px := Vector2.ONE * SPAN * 0.5 * px_per_m
+	# Turned, the corners reach further: take a square big enough to cover them.
+	var cover := _span * (0.75 if _turn != 0.0 else 0.5)
+	var half_px := Vector2.ONE * cover * px_per_m
 	var src := Rect2(centre_px - half_px, half_px * 2.0).intersection(Rect2(Vector2.ZERO, tex_size))
 	if src.has_area():
-		var to_dst := size.x / (half_px.x * 2.0)
-		var dst := Rect2((src.position - (centre_px - half_px)) * to_dst, src.size * to_dst)
+		var to_dst := size.x / (_span * px_per_m)
+		draw_set_transform(size * 0.5, -_turn, Vector2.ONE)
+		var dst := Rect2((src.position - centre_px) * to_dst, src.size * to_dst)
 		draw_texture_rect_region(_texture, dst, src)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# Found places, and the trucks.
 	for poi in world.call("points_of_interest"):
@@ -94,7 +114,7 @@ func _draw() -> void:
 	var cam: Camera3D = player.get("camera")
 	var forward := -cam.global_transform.basis.z
 	var heading := Vector2(forward.x, forward.z)
-	heading = heading.normalized() if heading.length() > 0.05 else Vector2(0, -1)
+	heading = heading.normalized().rotated(-_turn) if heading.length() > 0.05 else Vector2(0, -1)
 	var mid := size * 0.5
 	var side := Vector2(-heading.y, heading.x)
 	var poly := PackedVector2Array([mid + heading * 10.0, mid - heading * 6.0 + side * 6.0,
@@ -104,8 +124,10 @@ func _draw() -> void:
 	for p in poly:
 		inner.append(mid + (p - mid) * 0.72)
 	draw_colored_polygon(inner, UITheme.ACCENT)
-	# North, and the frame.
-	_label("N", Vector2(size.x * 0.5, 14), 13, UITheme.ACCENT)
+	# North (round the rim when the map is turned), and the frame.
+	var north := size * 0.5 + Vector2(0, -(size.y * 0.5 - 12)).rotated(-_turn)
+	_label("N", north + Vector2(0, 5), 13, UITheme.ACCENT)
+	_label("%d m" % int(_span), Vector2(size.x - 26, size.y - 8), 10)
 	draw_rect(rect, Color(0, 0, 0, 0.55), false, 3.0)
 	draw_rect(rect.grow(-1.5), Color(1, 1, 1, 0.14), false, 1.0)
 

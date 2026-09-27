@@ -75,6 +75,8 @@ const ACTIONS := [
 	[&"journal", "Journal", "Menus and game", ["Tab", "J"]],
 	[&"inventory", "Inventory", "Menus and game", ["I"]],
 	[&"map", "Map", "Menus and game", ["M"]],
+	[&"map_zoom_in", "Map and minimap: zoom in", "Menus and game", ["Equal"]],
+	[&"map_zoom_out", "Map and minimap: zoom out", "Menus and game", ["Minus"]],
 	[&"market", "Market", "Menus and game", ["P"]],
 	[&"upgrades", "Upgrades", "Menus and game", ["U"]],
 	[&"help", "Controls list", "Menus and game", ["F1"]],

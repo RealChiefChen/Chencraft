@@ -61,6 +61,8 @@ func show_page(i: int) -> void:
 			_toggle(&"show_rig_banner", "Crane / winch / loader controls banner while driving")
 			_toggle(&"show_labels", "Name labels over placed buildings")
 			_toggle(&"minimap", "Minimap")
+			_choice(&"minimap_zoom", "Minimap zoom", ["Close", "Normal", "Far", "Very far"])
+			_toggle(&"minimap_rotate", "Minimap turns with you (off: north up)")
 			_toggle(&"show_compass", "Compass")
 			_toggle(&"show_tutorial", "Getting-started checklist")
 			_toggle(&"show_fps", "Frame rate")

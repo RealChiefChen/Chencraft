@@ -260,3 +260,13 @@ func shot_axe() -> void:
 	for i in 20:
 		await get_tree().process_frame
 	await snap("axe")
+
+func shot_minimap() -> void:
+	var p := world.player
+	p.rotation.y = 0.8
+	Settings.set_value(&"minimap_rotate", true, false)
+	Settings.set_value(&"minimap_zoom", 2, false)
+	world.hud.visible = true
+	for i in 30:
+		await get_tree().process_frame
+	await snap("minimap")

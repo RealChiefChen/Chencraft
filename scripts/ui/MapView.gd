@@ -4,7 +4,14 @@ extends Control
 ## The map in the journal: the land drawn from above, with home, the yard, the
 ## store, the quarry, your truck, and every place you have found out on it.
 ## Places not yet found show as a question mark, so the map says where to go
-## without saying what is there.
+## without saying what is there. The mouse wheel zooms (about the pointer),
+## dragging moves it about, a double-click puts it back.
+
+const MAX_ZOOM := 8.0
+var zoom: float = 1.0
+## The map's top-left corner in view, as a share of the whole map.
+var offset: Vector2 = Vector2.ZERO
+var _dragging: bool = false
 
 var world: Node
 var _texture: Texture2D
@@ -15,7 +22,40 @@ func _ready() -> void:
 	_font = UITheme.font(600)
 	_bold = UITheme.font(800)
 	custom_minimum_size = Vector2(520, 520)
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	clip_contents = true
+
+func _gui_input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		zoom_by(1.25 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 0.8, mb.position)
+		accept_event()
+	elif mb != null and mb.button_index == MOUSE_BUTTON_LEFT:
+		_dragging = mb.pressed
+		if mb.pressed and mb.double_click:
+			zoom = 1.0
+			offset = Vector2.ZERO
+		accept_event()
+	elif event is InputEventMouseMotion and _dragging:
+		var rect := _map_rect()
+		offset -= (event as InputEventMouseMotion).relative / (rect.size * zoom)
+		_clamp()
+		accept_event()
+	elif Controls.pressed(event, &"map_zoom_in") or Controls.pressed(event, &"map_zoom_out"):
+		zoom_by(1.25 if Controls.pressed(event, &"map_zoom_in") else 0.8, size * 0.5)
+		accept_event()
+
+## Zooms keeping the point under `at` (in this control) where it is.
+func zoom_by(factor: float, at: Vector2) -> void:
+	var rect := _map_rect()
+	var under := offset + (at - rect.position) / (rect.size * zoom)
+	zoom = clampf(zoom * factor, 1.0, MAX_ZOOM)
+	offset = under - (at - rect.position) / (rect.size * zoom)
+	_clamp()
+
+func _clamp() -> void:
+	var view := 1.0 / zoom
+	offset = offset.clamp(Vector2.ZERO, Vector2.ONE * (1.0 - view))
 
 func _process(_delta: float) -> void:
 	if is_visible_in_tree():
@@ -29,7 +69,7 @@ func _to_map(p: Vector3, rect: Rect2) -> Vector2:
 	var terrain: Terrain = world.get("terrain")
 	var t := Vector2((p.x + terrain.half_extent) / (terrain.half_extent * 2.0),
 		(p.z + terrain.half_extent) / (terrain.half_extent * 2.0))
-	return rect.position + t * rect.size
+	return rect.position + (t - offset) * rect.size * zoom
 
 func _draw() -> void:
 	if world == null:
@@ -41,7 +81,7 @@ func _draw() -> void:
 		_texture = world.call("map_texture")
 	var rect := _map_rect()
 	draw_style_box(UITheme.box(Color(0, 0, 0, 0.4), 12, Vector4.ZERO, Color(1, 1, 1, 0.15), 1), rect.grow(4))
-	draw_texture_rect(_texture, rect, false)
+	draw_texture_rect(_texture, Rect2(rect.position - offset * rect.size * zoom, rect.size * zoom), false)
 
 	# Home and the fixed places.
 	var fixed := [
@@ -83,8 +123,9 @@ func _draw() -> void:
 	for v in poly:
 		inner.append(at + (v - at) * 0.75)
 	draw_colored_polygon(inner, UITheme.ACCENT)
-	# North.
+	# North, and how to work it.
 	_text("N", rect.position + Vector2(rect.size.x - 18, 24), 18, UITheme.ACCENT, _bold)
+	_text("wheel or +/- zoom  ·  drag to move  ·  double-click resets", rect.position + Vector2(rect.size.x * 0.5, rect.size.y - 8), 12, UITheme.INK, _font)
 
 func _marker(at: Vector2, label: String, color: Color, radius: float) -> void:
 	var diamond := PackedVector2Array([at + Vector2(0, -radius), at + Vector2(radius, 0),

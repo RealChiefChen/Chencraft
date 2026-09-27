@@ -124,6 +124,7 @@ func _run_all() -> void:
 	await _test(&"a hard brake at speed slides", test_handbrake_slide)
 	await _test(&"a ladder takes you up onto the cab roof", test_cab_ladder)
 	await _test(&"the dirt bike rides upright and leans into turns", test_dirtbike)
+	await _test(&"a crane lifts another vehicle, not its own trailer", test_crane_lifts_vehicle)
 	await _test(&"a piece off the rack can be thrown", test_throw)
 	await _test(&"the player walks up a step but not a wall", test_step_up)
 	await _test(&"a loader's attachment is picked at its pad", test_loader_pad_attachment)
@@ -4789,6 +4790,52 @@ func test_throw() -> void:
 	var flat := Vector2(log_piece.global_position.x - from.x, log_piece.global_position.z - from.z).length()
 	check(flat > 3.0, "the piece only went %.1f m" % flat)
 	p.queue_free()
+	done()
+
+func test_crane_lifts_vehicle() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"crane_truck")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	var quad := Hauler.new()
+	quad.setup(manager, 0, &"quad")
+	world.add_child(quad)
+	await step(2)
+	quad.global_position = truck.global_transform * Vector3(4.5, 0, 0) + Vector3(0, quad.spawn_height(), 0)
+	await step(90)
+	var rig := truck.rig
+	rig.set_operating(true)
+	await step(10)
+	var roof := quad.global_position + Vector3(0, quad.body_size.y * 0.5 + 0.2, 0)
+	rig.target = rig.clamp_target(truck.global_transform.affine_inverse() * roof)
+	for i in 900:
+		await step(1)
+		if rig.jaw_world().distance_to(roof) < 0.4:
+			break
+	check(rig.jaw_world().distance_to(roof) < 1.0, "the crane could not reach the quad (%.1f m off)" % rig.jaw_world().distance_to(roof))
+	check_eq(rig.latch(), "", "the grapple would not take the quad")
+	check(rig.held_vehicle == quad, "the crane is not holding the quad")
+	var low := quad.global_position.y
+	rig.target += Vector3(0, 2.0, 0)
+	await step(180)
+	check(quad.global_position.y > low + 1.0, "the quad did not go up with the crane (%.2f m)" % (quad.global_position.y - low))
+	rig.drop()
+	await step(120)
+	check(not quad.crane_carried, "the quad is still hung up after letting go")
+	check(quad.global_position.y < low + 0.6, "the quad did not come back down")
+	# Its own trailer, or a truck with someone in it, is not for lifting.
+	var trailer := Hauler.new()
+	trailer.setup(manager, 0, &"trailer")
+	world.add_child(trailer)
+	await step(2)
+	truck.towing = trailer
+	check(not rig.can_lift_vehicle(trailer), "the crane may lift its own trailer")
+	truck.towing = null
+	quad.driver = Node3D.new()
+	check(not rig.can_lift_vehicle(quad), "the crane may lift a vehicle with a driver in it")
+	quad.driver.free()
+	quad.driver = null
 	done()
 
 func test_dirtbike() -> void:

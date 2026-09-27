@@ -959,6 +959,39 @@ func _engine_note() -> void:
 	_engine_sound.volume_db = Sfx.sfx_db() - 8.0 + absf(input_throttle) * 3.0
 	_engine_sound.pitch_scale = clampf(0.65 + speed / 16.0 + absf(input_throttle) * 0.25, 0.5, 2.4)
 
+# --- Lifted by a crane ------------------------------------------------------------
+
+## Hanging from another truck's crane: held still, wheels and all, and put
+## wherever the crane has it; let go, it drops and rolls as any vehicle.
+var crane_carried: bool = false
+
+## What a crane has to lift: the vehicle, its wheels and whatever is aboard.
+func lift_mass() -> float:
+	var kg := mass
+	for w in wheel_bodies:
+		kg += w.mass
+	for item in _load:
+		if is_instance_valid(item):
+			kg += item.mass
+	return kg
+
+func set_crane_carried(on: bool) -> void:
+	crane_carried = on
+	release_hold()
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = on or planted
+	for w in wheel_bodies:
+		w.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		w.freeze = on
+		w.sleeping = false
+	sleeping = false
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+
+func carried_to(t: Transform3D) -> void:
+	global_transform = t
+	_snap_wheels()
+
 ## Two wheels: a bike is held up the way a rider holds it up, and leans into
 ## a turn - more the faster it goes. Nothing here stops it pitching over a
 ## lip or taking off; it just does not fall over sideways.
@@ -982,6 +1015,8 @@ func _balance() -> void:
 
 func _physics_process(delta: float) -> void:
 	_engine_note()
+	if crane_carried:
+		return
 	if net_mirror:
 		if driver != null:
 			_read_input()

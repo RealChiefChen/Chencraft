@@ -127,6 +127,10 @@ var _yaw_vel: float = 0.0
 var at_limit: bool = false
 ## The log in the grapple.
 var held: LooseItem = null
+## Another vehicle hanging from the grapple (not this truck, nor what it
+## tows), and where it hangs from the jaws.
+var held_vehicle: Hauler = null
+var _vehicle_hang: Transform3D
 ## The cab, in the truck's frame: the log is kept out of it.
 var cab_box: AABB = AABB()
 var _grab_blend: float = 1.0
@@ -434,9 +438,43 @@ func max_reach() -> float:
 
 ## 1 empty, falling to `at_rating` with the rated load on.
 func _load_factor(at_rating: float) -> float:
-	if held == null or crane_power_kg <= 0.0:
+	if crane_power_kg <= 0.0:
 		return 1.0
-	return lerpf(1.0, at_rating, clampf(held.mass / crane_power_kg, 0.0, 1.0))
+	var kg := held.mass if held != null else (held_vehicle.lift_mass() if _vehicle_ok() else 0.0)
+	return lerpf(1.0, at_rating, clampf(kg / crane_power_kg, 0.0, 1.0))
+
+func _vehicle_ok() -> bool:
+	return held_vehicle != null and is_instance_valid(held_vehicle) and not held_vehicle.is_queued_for_deletion()
+
+## Whether `v` is a vehicle this crane may lift: not its own truck, not what
+## it tows or is towed by, and nobody at its wheel.
+func can_lift_vehicle(v: Hauler) -> bool:
+	if v == null or v == vehicle or v.driver != null:
+		return false
+	var mine := vehicle as Hauler
+	if mine != null and (mine.towing == v or mine.towed_by == v):
+		return false
+	return true
+
+func _take_vehicle(v: Hauler) -> void:
+	held_vehicle = v
+	v.set_crane_carried(true)
+	var hang := Transform3D(_frame().basis * yaw_basis(float(fk().yaw)), jaw_world())
+	_vehicle_hang = hang.affine_inverse() * v.global_transform
+	crane_grabbed.emit(null)
+
+## Hangs the lifted vehicle from the jaws, turning with the grapple.
+func _carry_vehicle() -> void:
+	if not _vehicle_ok():
+		held_vehicle = null
+		return
+	var hang := Transform3D(_frame().basis * yaw_basis(float(fk().yaw)), jaw_world())
+	held_vehicle.carried_to(hang * _vehicle_hang)
+
+func _drop_vehicle() -> void:
+	if _vehicle_ok():
+		held_vehicle.set_crane_carried(false)
+	held_vehicle = null
 
 func _held_half_height() -> float:
 	if held == null:
@@ -529,12 +567,18 @@ func latch() -> String:
 		return "this vehicle has no crane"
 	if not operating:
 		return "work the crane first [R]"
-	if held != null:
+	if held != null or held_vehicle != null:
 		drop()
 		return ""
 	var target_node := _between_jaws()
 	if target_node == null:
 		return "nothing between the jaws - put the grapple on a log"
+	if target_node is Hauler:
+		var v := target_node as Hauler
+		if v.lift_mass() > crane_power_kg:
+			return "the %s is %.0f kg - too heavy for this crane (rated %.0f kg)" % [v.display_name.to_lower(), v.lift_mass(), crane_power_kg]
+		_take_vehicle(v)
+		return ""
 	var item := target_node as LooseItem
 	if target_node is OreRock:
 		var rock := target_node as OreRock
@@ -627,7 +671,7 @@ func _between_jaws() -> Node3D:
 	sphere.radius = GRAB_RADIUS
 	q.shape = sphere
 	q.transform = Transform3D(Basis(), jaw)
-	q.collision_mask = Layers.LOOSE | Layers.TREE
+	q.collision_mask = Layers.LOOSE | Layers.TREE | Layers.VEHICLE
 	var best: Node3D = null
 	var best_d := INF
 	for hit in get_world_3d().direct_space_state.intersect_shape(q, 16):
@@ -637,6 +681,12 @@ func _between_jaws() -> Node3D:
 			n = o
 		elif o is LooseItem and (o as LooseItem).state == LooseItem.State.FREE:
 			n = o
+		elif o is Hauler and can_lift_vehicle(o as Hauler):
+			# A vehicle is picked up by its roof: it counts as near as the
+			# jaws are to its top.
+			var v := o as Hauler
+			if best == null or not (best is LooseItem or best is OreRock):
+				n = v
 		if n != null and n.global_position.distance_to(jaw) < best_d:
 			best_d = n.global_position.distance_to(jaw)
 			best = n
@@ -663,6 +713,10 @@ func _take(item: LooseItem) -> void:
 ## Opens the grapple. A log let go low over the bed and near square to it is
 ## set down square. Returns what it let go of.
 func drop() -> LooseItem:
+	if held_vehicle != null:
+		_drop_vehicle()
+		crane_released.emit(null)
+		return null
 	if held == null:
 		return null
 	var item := held
@@ -677,7 +731,9 @@ func drop() -> LooseItem:
 func holding() -> bool:
 	if held != null and (not is_instance_valid(held) or held.state != LooseItem.State.CAPTURED):
 		held = null
-	return held != null
+	if held_vehicle != null and not _vehicle_ok():
+		held_vehicle = null
+	return held != null or held_vehicle != null
 
 func _settle(item: LooseItem) -> void:
 	if vehicle == null or vehicle.get("bed_half_width") == null:
@@ -823,6 +879,8 @@ func _work_crane(delta: float) -> void:
 		_apply_plant()
 	if held != null:
 		_carry(delta)
+	elif held_vehicle != null:
+		_carry_vehicle()
 
 # --- Outriggers ------------------------------------------------------------------
 

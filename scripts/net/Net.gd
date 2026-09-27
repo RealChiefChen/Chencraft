@@ -65,20 +65,38 @@ func host(p_port: int = PORT) -> String:
 func prepare_join(p_address: String, p_port: int = PORT) -> void:
 	leave()
 	mode = Mode.CLIENT
-	address = p_address
-	port = p_port
+	var at := split_address(p_address, p_port)
+	address = at[0]
+	port = at[1]
+
+## "1.2.3.4", "1.2.3.4:24565" or " host.example.com " -> [host, port].
+static func split_address(text: String, default_port: int = PORT) -> Array:
+	var t := text.strip_edges()
+	var p := default_port
+	# One colon is host:port; more than one is an IPv6 address, left alone.
+	if t.count(":") == 1:
+		var tail := t.get_slice(":", 1).strip_edges()
+		t = t.get_slice(":", 0).strip_edges()
+		if tail.is_valid_int() and int(tail) > 0 and int(tail) < 65536:
+			p = int(tail)
+	return [t, p]
 
 ## Starts joining a host. `joined` or `join_failed` follows.
 func join(p_address: String, p_port: int = PORT) -> String:
 	leave()
+	var at := split_address(p_address, p_port)
+	var host_name: String = at[0]
+	var host_port: int = at[1]
+	if host_name == "":
+		return "type the host's IP address"
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(p_address, p_port)
+	var err := peer.create_client(host_name, host_port)
 	if err != OK:
-		return "could not reach %s:%d (%s)" % [p_address, p_port, error_string(err)]
+		return "could not reach %s:%d (%s) - check the address" % [host_name, host_port, error_string(err)]
 	multiplayer.multiplayer_peer = peer
 	mode = Mode.CLIENT
-	address = p_address
-	port = p_port
+	address = host_name
+	port = host_port
 	return ""
 
 func leave() -> void:

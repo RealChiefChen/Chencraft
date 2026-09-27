@@ -122,6 +122,7 @@ func _run_all() -> void:
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
+	await _test(&"co-op addresses are read with or without a port", test_net_address)
 	await _test(&"every balance knob is read by the game", test_balance_file)
 	await _test(&"controls can be rebound and saved", test_controls)
 	await _test(&"build mode opens empty-handed, with a menu and a copy key", test_build_menu_and_pick)
@@ -4668,6 +4669,14 @@ func test_balance_file() -> void:
 		check(source.contains("\"%s\"" % key), "balance.json sets %s, which nothing reads" % key)
 		check(values[key] is float or values[key] is int, "balance.json %s is not a number" % key)
 	check_near(Terrain.ROAD_SPEED_BONUS, float(values["vehicles.road_speed_bonus"]), 0.0001, "the road bonus is not the file's")
+	done()
+
+func test_net_address() -> void:
+	check_eq(Net.split_address("136.53.206.104"), ["136.53.206.104", Net.PORT], "a bare IP")
+	check_eq(Net.split_address(" 136.53.206.104:24565 "), ["136.53.206.104", 24565], "an IP with the port")
+	check_eq(Net.split_address("10.0.0.2:30000"), ["10.0.0.2", 30000], "an IP with another port")
+	check_eq(Net.split_address("myhost.example.com"), ["myhost.example.com", Net.PORT], "a host name")
+	check_eq(Net.split_address("10.0.0.2:banana"), ["10.0.0.2", Net.PORT], "a junk port falls back")
 	done()
 
 func test_kill_plane_below_caves() -> void:

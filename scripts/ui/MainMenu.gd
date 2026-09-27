@@ -204,7 +204,7 @@ func _coop_page() -> Control:
 	col.add_child(UIKit.label("Join", "Header", 20))
 	var join_row := UIKit.hbox(10)
 	var address := LineEdit.new()
-	address.placeholder_text = "host's IP address"
+	address.placeholder_text = "host's IP address (IP or IP:port)"
 	address.text = Net.address
 	address.custom_minimum_size.x = 260
 	join_row.add_child(address)
@@ -246,11 +246,9 @@ func _on_join(address: String) -> void:
 		return
 	if _joining:
 		return
-	var host_part := address
-	var port := Net.PORT
-	if address.contains(":"):
-		host_part = address.get_slice(":", 0)
-		port = int(address.get_slice(":", 1))
+	var at := Net.split_address(address)
+	var host_part: String = at[0]
+	var port: int = at[1]
 	var err := Net.join(host_part, port)
 	if err != "":
 		_coop_status.text = err

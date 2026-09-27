@@ -59,6 +59,10 @@
           "products": [
             {
               "kind": "unlock",
+              "target": "pad_dirtbike"
+            },
+            {
+              "kind": "unlock",
               "target": "pad_quad"
             },
             {

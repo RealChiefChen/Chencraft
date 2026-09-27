@@ -1,6 +1,7 @@
 {
   "_note": "Every vehicle is the same raycast-suspension body, sized and dressed from this table. Positions are metres in the vehicle's own frame: -Z is the nose, the body box is centred on the origin, and wheel offsets sit at the chassis underside. `bed.kind` is sides (walls, headboard, tailgate), stakes (posts, no tailgate), tub (a steel tub that tips to unload), rack (a low rail frame) or none. `rear_steer` turns the rearmost axle the other way by that share of the front's angle, which tightens a long truck's turn. `gears` (optional) is each gear's top speed as a share of max_speed; lower gears pull harder.",
   "vehicles": [
+    {"id": "dirtbike", "display_name": "Dirt Bike", "blurb": "Two wheels, all engine. The quickest way across rough country, and it carries nothing but you.", "style": "bike", "bike": true, "mass": 150, "engine": 4200, "max_speed": 28, "grip": 2.1, "steer": 0.5, "body": [0.34, 0.34, 1.5], "wheels": [[0, -0.22, -0.72], [0, -0.22, 0.7]], "wheel_radius": 0.36, "wheel_width": 0.16, "suspension_rest": 0.62, "com_y": -0.4, "seat": [0, 0.72, 0.12], "camera": 5.5, "paint": [0.92, 0.32, 0.10], "capacity": 0, "bed": {"kind": "none"}, "rig": null},
     {
       "id": "quad",
       "display_name": "Quad Bike",

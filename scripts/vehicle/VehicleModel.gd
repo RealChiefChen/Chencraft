@@ -24,6 +24,8 @@ static func dress(v: Hauler) -> void:
 	match v.style:
 		&"quad":
 			_quad(v, g)
+		&"bike":
+			_bike(v, g)
 		&"buggy":
 			_buggy(v, g)
 		&"trailer":
@@ -98,6 +100,26 @@ static func _truck(v: Hauler, g: Greeble) -> void:
 	g.prism(6, 0.1, 0.1, 0.2, Transform3D(Basis(Vector3.FORWARD, 0.4), stack + Vector3(0, cab_size.y + 0.9, 0)), DARK)
 	g.pipe(Vector3(-size.x * 0.5 - 0.05, -top + 0.25, cab.z - 0.3), Vector3(-size.x * 0.5 - 0.05, -top + 0.25, cab.z + 0.4), 0.2, STEEL, 8)
 	_mudguards(v, g)
+
+static func _bike(v: Hauler, g: Greeble) -> void:
+	var size := v.body_size
+	var paint := v.paint
+	var top := size.y * 0.5
+	# A slim frame, the engine low in it, a tank and a long seat, forks out to
+	# the front wheel and a swing arm to the back.
+	g.block(Vector3(size.x * 0.5, size.y, size.z * 0.8), Vector3.ZERO, DARK)
+	g.block(Vector3(0.3, 0.3, 0.4), Vector3(0, -0.02, 0.0), Color(0.3, 0.3, 0.32))
+	g.block(Vector3(0.34, 0.24, 0.5), Vector3(0, top + 0.12, -0.28), paint)
+	g.block(Vector3(0.26, 0.1, 0.75), Vector3(0, top + 0.2, 0.25), Color(0.12, 0.12, 0.13))
+	g.block(Vector3(0.3, 0.06, 0.5), Vector3(0, top + 0.08, 0.7), paint.darkened(0.1))
+	for side in [-1.0, 1.0]:
+		g.pipe(Vector3(side * 0.09, top + 0.3, -0.55), Vector3(side * 0.09, -0.2, -0.72), 0.03, STEEL, 6)
+		g.pipe(Vector3(side * 0.09, 0.0, 0.05), Vector3(side * 0.09, -0.2, 0.7), 0.035, DARK, 6)
+	g.block(Vector3(0.22, 0.05, 0.36), Vector3(0, top + 0.02, -0.72), paint.darkened(0.1))
+	g.pipe(Vector3(-0.36, top + 0.42, -0.5), Vector3(0.36, top + 0.42, -0.5), 0.025, STEEL, 6)
+	g.block(Vector3(0.14, 0.1, 0.05), Vector3(0, top + 0.3, -0.62), HEADLIGHT, true)
+	g.block(Vector3(0.12, 0.05, 0.04), Vector3(0, top + 0.12, 0.96), TAIL, true)
+	g.pipe(Vector3(0.12, -0.05, 0.2), Vector3(0.14, 0.12, 0.7), 0.04, STEEL, 6)
 
 static func _quad(v: Hauler, g: Greeble) -> void:
 	var size := v.body_size

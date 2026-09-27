@@ -466,3 +466,16 @@ func shot_ladder() -> void:
 		await get_tree().physics_frame
 	await look(truck.global_position + Vector3(-7, 3, 4), truck.global_position + Vector3(0, 1, -1))
 	await snap("ladder")
+
+func shot_bike() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var bike := Hauler.new()
+	bike.setup(world.manager, 0, &"dirtbike")
+	bike.terrain = world.terrain
+	world.add_child(bike)
+	var at := Vector3(20, 0, 30)
+	bike.global_position = Vector3(at.x, world.terrain.height_at(at.x, at.z) + bike.spawn_height(), at.z)
+	for i in 90:
+		await get_tree().physics_frame
+	await look(bike.global_position + Vector3(-3, 1.5, 1.5), bike.global_position)
+	await snap("bike")

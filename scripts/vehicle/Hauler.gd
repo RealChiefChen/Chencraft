@@ -210,6 +210,7 @@ func _apply_spec() -> void:
 	bed_length = bed_back - bed_front
 	bed_mid_z = (bed_front + bed_back) * 0.5
 	is_trailer = bool(spec.get("trailer", false))
+	bike = bool(spec.get("bike", false))
 	hitch_offset = _vec(spec.get("hitch", [0, 0, 0]))
 	tongue_offset = _vec(spec.get("tongue", [0, 0, 0]))
 	rear_steer = float(spec.get("rear_steer", 0.0))
@@ -958,6 +959,27 @@ func _engine_note() -> void:
 	_engine_sound.volume_db = Sfx.sfx_db() - 8.0 + absf(input_throttle) * 3.0
 	_engine_sound.pitch_scale = clampf(0.65 + speed / 16.0 + absf(input_throttle) * 0.25, 0.5, 2.4)
 
+## Two wheels: a bike is held up the way a rider holds it up, and leans into
+## a turn - more the faster it goes. Nothing here stops it pitching over a
+## lip or taking off; it just does not fall over sideways.
+var bike: bool = false
+static var BIKE_LEAN: float = Balance.num("vehicles.bike_lean", 0.38)
+
+func _balance() -> void:
+	if not bike or freeze:
+		return
+	var forward := -global_transform.basis.z
+	var up := global_transform.basis.y
+	var right := global_transform.basis.x
+	var speed := linear_velocity.dot(forward)
+	var lean := input_steer * BIKE_LEAN * clampf(absf(speed) / 10.0, 0.0, 1.0)
+	var want := (Vector3.UP - right * lean).normalized()
+	# How far it is off upright about its own length: its roll is set to
+	# close that gap steadily (a torque strong enough to do it overshoots).
+	var off := forward.dot(up.cross(want))
+	var roll := forward.dot(angular_velocity)
+	angular_velocity += forward * (clampf(off, -1.0, 1.0) * 5.0 - roll)
+
 func _physics_process(delta: float) -> void:
 	_engine_note()
 	if net_mirror:
@@ -965,6 +987,7 @@ func _physics_process(delta: float) -> void:
 			_read_input()
 		if not freeze:
 			_drive_wheels()
+			_balance()
 			_clamp_motion()
 		return
 	if net_follow:
@@ -1005,6 +1028,7 @@ func _physics_process(delta: float) -> void:
 	if held:
 		return
 	_drive_wheels()
+	_balance()
 	_clamp_motion()
 
 # --- Parked and held ---------------------------------------------------------------

@@ -339,6 +339,19 @@
       "vehicle": "hauler"
     },
     {
+      "id": "pad_dirtbike",
+      "display_name": "Dirt Bike Pad",
+      "kind": "pad",
+      "vehicle": "dirtbike",
+      "cost": 1280,
+      "size": [
+        2,
+        1,
+        3
+      ],
+      "blurb": "Spawns your dirt bike. Brings it back when it is lost."
+    },
+    {
       "id": "pad_quad",
       "display_name": "Quad Bike Pad",
       "kind": "pad",

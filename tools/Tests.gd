@@ -123,6 +123,7 @@ func _run_all() -> void:
 	await _test(&"vehicles bump into each other", test_vehicles_collide)
 	await _test(&"a hard brake at speed slides", test_handbrake_slide)
 	await _test(&"a ladder takes you up onto the cab roof", test_cab_ladder)
+	await _test(&"the dirt bike rides upright and leans into turns", test_dirtbike)
 	await _test(&"a piece off the rack can be thrown", test_throw)
 	await _test(&"the player walks up a step but not a wall", test_step_up)
 	await _test(&"a loader's attachment is picked at its pad", test_loader_pad_attachment)
@@ -4788,6 +4789,29 @@ func test_throw() -> void:
 	var flat := Vector2(log_piece.global_position.x - from.x, log_piece.global_position.z - from.z).length()
 	check(flat > 3.0, "the piece only went %.1f m" % flat)
 	p.queue_free()
+	done()
+
+func test_dirtbike() -> void:
+	_setup(false)
+	var bike := Hauler.new()
+	bike.setup(manager, 0, &"dirtbike")
+	world.add_child(bike)
+	bike.global_position = Vector3(0, bike.spawn_height(), 0)
+	await step(90)
+	check(bike.bike and bike.wheel_bodies.size() == 2, "the dirt bike is not on two wheels")
+	check(bike.global_transform.basis.y.dot(Vector3.UP) > 0.95, "the dirt bike fell over standing still")
+	var from := bike.global_position
+	bike.autopilot = true
+	bike.input_throttle = 1.0
+	await step(70)
+	bike.input_throttle = 0.4
+	check(bike.global_transform.basis.y.dot(Vector3.UP) > 0.9, "the dirt bike fell over riding")
+	check(bike.global_position.distance_to(from) > 8.0, "the dirt bike did not go (%.1f m)" % bike.global_position.distance_to(from))
+	bike.input_steer = 1.0
+	await step(45)
+	var lean := bike.global_transform.basis.x.dot(Vector3.UP)
+	check(bike.global_transform.basis.y.dot(Vector3.UP) > 0.8, "the dirt bike went down in the turn")
+	check(absf(lean) > 0.05, "the dirt bike does not lean into a turn (%.2f)" % lean)
 	done()
 
 func test_cab_ladder() -> void:

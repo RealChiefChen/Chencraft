@@ -500,8 +500,8 @@ func _let_go() -> void:
 
 func _vehicle_state(v: Hauler, s: Dictionary) -> void:
 	var here: bool = _local_veh >= 0 and _nodes.get(_local_veh, null) == v
-	if s.has("ramps") and v.bed_kind == &"deck" and bool(s.ramps) != v.ramps_down:
-		v.set_ramps(bool(s.ramps))
+	if s.has("ramps") and v.bed_kind == &"deck" and not is_equal_approx(float(s.ramps), v.ramp_pose):
+		v.set_ramp_pose(float(s.ramps))
 	if s.has("tub") and v.bed_kind == &"tub":
 		v._tub_angle = float(s.tub)
 		v._pose_tub(v._tub_angle)

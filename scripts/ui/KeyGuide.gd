@@ -41,7 +41,8 @@ const GROUPS := [
 		[[&"edit_select"], "Select the building you aim at to edit it (again: done)"],
 		[[&"slot_1", "/", &"slot_3"], "While editing: move, scale or rotate handles"],
 		[[&"primary"], "While editing: aim at a handle and hold; it follows the crosshair as you look"],
-		[[&"remove_selected"], "While editing: remove it"],
+		[["Shift", "+", &"edit_select"], "While editing: add or drop another building - they move and go together"],
+		[[&"remove_selected"], "While editing: remove it (all of the selection)"],
 		[[&"pause"], "Leave build mode"],
 	]},
 	{"title": "Vehicles", "rows": [

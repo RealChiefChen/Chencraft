@@ -2157,7 +2157,7 @@ func handle_key(p: Player, event: InputEvent) -> void:
 			v = v.towing
 		if v != null:
 			if v.bed_kind == &"deck":
-				_tell(p, "ramps down - drive aboard" if v.toggle_ramps() else "ramps up")
+				_tell(p, v.toggle_ramps())
 			elif not v.has_bed():
 				_tell(p, "the %s has nothing to unload" % v.display_name.to_lower())
 			else:

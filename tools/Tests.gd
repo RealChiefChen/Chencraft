@@ -100,6 +100,7 @@ func _run_all() -> void:
 	await _test(&"build mode edits placed buildings", test_build_edit)
 	await _test(&"dragging a building, its knobs go with it", test_build_knobs_follow)
 	await _test(&"an unfilled plan is picked by aiming at it, and shows what it is made of", test_plan_pick)
+	await _test(&"several buildings are selected, moved and removed together", test_build_multiselect)
 	await _test(&"walls can be thin", test_thin_walls)
 	await _test(&"build mode previews the building itself", test_build_preview)
 	await _test(&"build mode only opens on your own land", test_build_territory)
@@ -118,6 +119,7 @@ func _run_all() -> void:
 	await _test(&"a seated driver does not upset the vehicle", test_seated_driver)
 	await _test(&"getting into a vehicle drops what you carry", test_enter_drops_load)
 	await _test(&"bridges give more speed than roads", test_bridge_speed)
+	await _test(&"a bridge is smooth to cross flat out", test_bridge_smooth)
 	await _test(&"a vehicle left alone stays put", test_parked_holds)
 	await _test(&"getting out does not shove the vehicle", test_exit_still)
 	await _test(&"the crane claw drops, grabs and comes back up", test_crane_claw)
@@ -3725,6 +3727,44 @@ func test_build_knobs_follow() -> void:
 	bs.free()
 	done()
 
+func test_build_multiselect() -> void:
+	_setup()
+	Economy.from_dict({"money": 100000, "day": 1})
+	var player := _make_player()
+	world.add_child(player)
+	await step(2)
+	var bs := BuildSystem.new()
+	world.add_child(bs)
+	bs.setup(plot, player.camera, player)
+	bs.set_active(true)
+	var a := plot.place(GameData.building(&"conveyor"), Vector2i(0, 0) * Plot.SUB, 0)
+	var b := plot.place(GameData.building(&"conveyor"), Vector2i(3, 0) * Plot.SUB, 0)
+	var c := plot.place(GameData.building(&"conveyor"), Vector2i(6, 0) * Plot.SUB, 0)
+	await step(2)
+	bs.select_building(plot.index_at_world(a.global_position))
+	bs.multi.append(b)
+	bs._refresh_multi()
+	check_eq(bs.selection_count(), 2, "two buildings are not selected")
+	var b_was: Vector3 = b.global_position
+	var c_was: Vector3 = c.global_position
+	# Dragging the first along z moves the second the same.
+	bs._drag = {"cell": plot.placed[bs.selected].cell, "lift": 0.0, "others": bs._others_start()}
+	bs._move_others(Vector2i(0, 2 * Plot.SUB), 0.0)
+	bs._drag = {}
+	await step(1)
+	b = bs.multi[0]
+	check_near(b.global_position.z - b_was.z, 2.0 * Plot.CELL, 0.01, "the second building did not move with the first")
+	a = plot.placed[bs.selected].node
+	check(c.global_position.is_equal_approx(c_was), "a building not selected moved")
+	bs.remove_selected()
+	await step(2)
+	check(not is_instance_valid(a) or a.is_queued_for_deletion() or a.get_parent() == null, "the first selected building was not removed")
+	check(not is_instance_valid(b) or b.is_queued_for_deletion() or b.get_parent() == null, "the second selected building was not removed")
+	check(is_instance_valid(c) and c.get_parent() != null, "an unselected building was removed")
+	bs.set_active(false)
+	bs.free()
+	done()
+
 func test_plan_pick() -> void:
 	_setup()
 	Economy.from_dict({"money": 100000, "day": 1})
@@ -4127,6 +4167,40 @@ func test_bridge_speed() -> void:
 	check_eq(truck.speed_bonus(), 0.0, "a truck off road and bridge got a bonus")
 	done()
 
+func test_bridge_smooth() -> void:
+	_setup(false)
+	# A long bridge with a proper arch, driven along its length flat out.
+	var bridge := Bridge.new()
+	bridge.setup(Vector3(0, 0.3, -36), Vector3(0, 0.3, 36), null)
+	world.add_child(bridge)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"pickup")
+	world.add_child(truck)
+	await step(2)
+	truck.move_to(Transform3D(Basis(), Vector3(0, bridge.deck_height(0.02) + truck.spawn_height(), -34.5)))
+	await step(20)
+	truck.autopilot = true
+	truck.input_throttle = 1.0
+	# The body's vertical kicks: the change in its up-down speed frame to frame.
+	var worst := 0.0
+	var last_vy := truck.linear_velocity.y
+	var airborne := 0
+	for i in 240:
+		await step(1)
+		if not bridge.over_deck(truck.global_position):
+			break
+		var vy := truck.linear_velocity.y
+		if truck.linear_velocity.length() > 8.0:
+			worst = maxf(worst, absf(vy - last_vy))
+			if truck._grounded == 0:
+				airborne += 1
+		last_vy = vy
+	truck.input_throttle = 0.0
+	check(truck.linear_velocity.length() > 8.0, "the truck never got up to speed on the bridge")
+	check(worst < 0.35, "the truck was jolted crossing the bridge (%.2f m/s in one frame)" % worst)
+	check(airborne < 3, "the truck left the deck %d frames" % airborne)
+	done()
+
 func test_seated_driver() -> void:
 	_setup(false)
 	var player := _make_player()
@@ -4436,8 +4510,8 @@ func test_vehicle_catalogue() -> void:
 	var sold: Array = []
 	for entry in GameData.store_products():
 		sold.append(String(entry.get("target", "")))
-	var x := -12
-	var row := -12
+	var x := -20
+	var row := -20
 	for id in GameData.vehicles:
 		var pad_def: BuildingDef = null
 		for b: BuildingDef in GameData.buildings.values():
@@ -4450,12 +4524,12 @@ func test_vehicle_catalogue() -> void:
 		check(pad_def.cost > 0, "the %s is free" % id)
 		PlayerState.add_copy(pad_def.id)
 		# Two rows: ten pads do not fit in one across the plot.
-		if x > 12:
-			x = -12
-			row += 11
+		if x > 16:
+			x = -20
+			row += 14
 		var pad := plot.place(pad_def, Vector2i(x, row) * Plot.SUB, 0) as VehiclePad
 		x += 5
-		check(pad != null, "could not place the %s" % pad_def.display_name)
+		check(pad != null, "could not place the %s: %s" % [pad_def.display_name, plot.placement_error(pad_def, Vector2i(x - 5, row) * Plot.SUB, 0)])
 		if pad == null:
 			continue
 		await step(2)
@@ -5283,7 +5357,17 @@ func test_low_loader() -> void:
 	await step(90)
 	check(deck.bed_kind == &"deck" and not deck.has_bed(), "the low-loader is not a bare deck")
 	check(not deck.ramps_down, "the ramps start down")
-	check(deck.toggle_ramps(), "the ramps did not come down")
+	deck.toggle_ramps()
+	await step(60)
+	# Pressed again while they swing, they stop where they are.
+	deck.toggle_ramps()
+	var held_at := deck.ramp_pose
+	check(held_at > 0.05 and held_at < 0.95, "the ramps did not stop part way (%.2f)" % held_at)
+	await step(30)
+	check_near(deck.ramp_pose, held_at, 0.001, "the ramps did not stay where they were stopped")
+	deck.toggle_ramps()
+	await step(200)
+	check(deck.ramps_down and deck.ramp_pose < 0.01, "the ramps did not come all the way down (%.2f)" % deck.ramp_pose)
 	digger.loader.lift = digger.loader.lift_min + 0.3
 	await step(20)
 	# Up the ramps and on until it is over the middle of the deck.
@@ -5300,9 +5384,12 @@ func test_low_loader() -> void:
 	var on := deck.to_local(digger.global_position)
 	check(aboard, "the loader never got over the deck (%.1f m back)" % on.z)
 	check(on.y > deck.bed_floor + 0.3, "the loader is not up on the deck (%.2f m)" % on.y)
-	check(deck.toggle_ramps() == false, "the ramps did not go up")
+	deck.toggle_ramps()
+	await step(200)
+	check(not deck.ramps_down, "the ramps did not go up")
 	digger.input_throttle = 0.0
 	digger.input_brake = true
+	digger.autopilot = false
 	# Hitched behind the log truck and towed off, it stays aboard.
 	var truck := Hauler.new()
 	truck.setup(manager, 0, &"log_truck")
@@ -5314,11 +5401,16 @@ func test_low_loader() -> void:
 	await step(30)
 	truck.autopilot = true
 	truck.input_throttle = 0.6
-	await step(180)
+	await step(30)
+	check(digger.carried_on == deck, "the loader is not locked to the deck while it is towed")
+	await step(90)
+	truck.input_steer = 0.6
+	await step(60)
+	truck.input_steer = 0.0
 	truck.input_throttle = 0.0
 	truck.input_brake = true
 	await step(120)
-	var moved := absf(deck.global_position.z)
+	var moved := Vector2(deck.global_position.x, deck.global_position.z).length()
 	var still := deck.to_local(digger.global_position)
 	check(moved > 8.0, "the low-loader was not towed (%.1f m)" % moved)
 	check(still.y > deck.bed_floor + 0.3 and absf(still.z - deck.bed_mid_z) < 1.5 and absf(still.x) < 1.0,
@@ -5342,8 +5434,8 @@ func test_chase_camera_clear() -> void:
 	await step(40)
 	truck.hitch(trailer)
 	# A tall log on the bed, right where the camera looks from.
-	manager.spawn(&"wood_pine", Transform3D(truck.global_transform.basis * LooseItem.lying_basis(0.0),
-		truck.global_transform * Vector3(0, truck.bed_floor + 0.8, truck.bed_mid_z)), 0, Vector3.ZERO, Solid.cylinder(0.5, 0.45, 5.0), true)
+	manager.spawn(&"wood_pine", Transform3D(trailer.global_transform.basis * LooseItem.lying_basis(0.0),
+		trailer.global_transform * Vector3(0, trailer.bed_floor + 0.8, trailer.bed_front + 3.0)), 0, Vector3.ZERO, Solid.cylinder(0.5, 0.45, 5.0), true)
 	await step(30)
 	player.enter_vehicle(truck)
 	truck.driver = player
@@ -5351,7 +5443,7 @@ func test_chase_camera_clear() -> void:
 		player.global_position = truck.seat_transform().origin
 		await step(1)
 	var want := float(truck.get("camera_distance")) if truck.get("camera_distance") != null else player.chase_distance
-	check(truck.cargo_count() >= 1, "the log is not on the truck")
+	check(trailer.cargo_count() >= 1, "the log is not on the trailer")
 	check(player._cam_distance > want * 0.9, "the camera was pulled in to %.1f m (of %.1f) by its own truck" % [player._cam_distance, want])
 	player.exit_vehicle()
 	done()

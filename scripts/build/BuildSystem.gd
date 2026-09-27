@@ -351,7 +351,19 @@ func editing() -> bool:
 ## Spec: F picks the building under the crosshair for editing; F again lets
 ## it go. While editing, the crosshair picks a handle and the camera still
 ## flies and looks about as usual.
-func toggle_select() -> void:
+func toggle_select(add: bool = false) -> void:
+	if add and editing():
+		# Shift+F: the building under the crosshair joins the selection (or
+		# leaves it), and moves and goes with it.
+		var at := _aimed_index()
+		if at >= 0 and at != selected:
+			var node: Node3D = plot.placed[at].node
+			if multi.has(node):
+				multi.erase(node)
+			else:
+				multi.append(node)
+			_refresh_multi()
+		return
 	if editing():
 		deselect()
 		return
@@ -364,6 +376,51 @@ func toggle_select() -> void:
 		return
 	select_building(plot.index_at_world(point))
 
+## The other buildings selected along with the one the handles are on.
+var multi: Array[Node3D] = []
+var _multi_boxes: Array[MeshInstance3D] = []
+
+func _aimed_index() -> int:
+	var hit := _aim_hit()
+	if not hit.is_empty():
+		return plot.index_at_hit(hit)
+	var point: Variant = _aim_point()
+	return plot.index_at_world(point) if point != null else -1
+
+func selection_count() -> int:
+	return (1 + multi.size()) if editing() else 0
+
+func _index_of(node: Node) -> int:
+	for i in plot.placed.size():
+		if plot.placed[i].node == node:
+			return i
+	return -1
+
+## A faint box round each of the extra buildings in the selection.
+func _refresh_multi() -> void:
+	for i in range(multi.size() - 1, -1, -1):
+		if not is_instance_valid(multi[i]) or _index_of(multi[i]) < 0:
+			multi.remove_at(i)
+	while _multi_boxes.size() < multi.size():
+		var mi := MeshInstance3D.new()
+		mi.mesh = BoxMesh.new()
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_color = Color(0.3, 0.8, 1.0, 0.18)
+		m.no_depth_test = true
+		mi.material_override = m
+		mi.top_level = true
+		add_child(mi)
+		_multi_boxes.append(mi)
+	for i in _multi_boxes.size():
+		var box := _multi_boxes[i]
+		box.visible = i < multi.size()
+		if box.visible:
+			var b := _record_box(plot.placed[_index_of(multi[i])])
+			(box.mesh as BoxMesh).size = (b[1] as Vector3) * 2.0 + Vector3(0.1, 0.1, 0.1)
+			box.global_position = b[0]
+
 func select_building(index: int) -> void:
 	if index < 0 or index >= plot.placed.size():
 		deselect()
@@ -374,6 +431,8 @@ func select_building(index: int) -> void:
 
 func deselect() -> void:
 	selected = -1
+	multi.clear()
+	_refresh_multi()
 	_drag = {}
 	_gizmo.hide_all()
 	if active and player != null and player.has_method("capture_mouse"):
@@ -443,7 +502,8 @@ func _press(mouse: Vector2) -> void:
 		_drag = {"handle": h, "cell": rec.cell, "rot": rec.rot, "size": (rec.def as BuildingDef).size,
 			"trim": (rec.def as BuildingDef).trim,
 			"lift": float(rec.get("lift", 0.0)), "centre": _gizmo.centre,
-			"t0": BuildGizmo.along_axis(h.point, axis, ray[0], ray[1]), "steps": 0}
+			"t0": BuildGizmo.along_axis(h.point, axis, ray[0], ray[1]), "steps": 0,
+			"others": _others_start()}
 		return
 	# Clicked off the handles: pick another building, or let go.
 	var ray2 := _ray(mouse)
@@ -458,6 +518,51 @@ func _press(mouse: Vector2) -> void:
 		deselect()
 	else:
 		select_building(index)
+
+## Where each of the other selected buildings started, for a group move.
+func _others_start() -> Array:
+	var out: Array = []
+	for node in multi:
+		var i := _index_of(node)
+		if i >= 0:
+			var rec: Dictionary = plot.placed[i]
+			out.append({"node": node, "cell": rec.cell, "lift": float(rec.get("lift", 0.0))})
+	return out
+
+## Moves the rest of the selection by the same amount as the one dragged,
+## those furthest along the move first, so none is blocked by another still
+## to go.
+func _move_others(dcell: Vector2i, dlift: float) -> void:
+	var others: Array = _drag.get("others", [])
+	var dir := Vector2(dcell)
+	others.sort_custom(func(a, b): return Vector2(a.cell).dot(dir) > Vector2(b.cell).dot(dir))
+	for o in others:
+		var i := _index_of(o.node)
+		if i < 0:
+			continue
+		var rec: Dictionary = plot.placed[i]
+		var to_cell: Vector2i = (o.cell as Vector2i) + dcell
+		var to_lift: float = maxf(0.0, float(o.lift) + dlift)
+		if rec.cell == to_cell and is_equal_approx(float(rec.get("lift", 0.0)), to_lift):
+			continue
+		var def: BuildingDef = rec.def
+		if _guest():
+			_ask_host({"op": "edit", "id": _net_id(rec.node), "cell": [to_cell.x, to_cell.y],
+				"rot": [rec.rot.x, rec.rot.y, rec.rot.z], "size": [def.size.x, def.size.y, def.size.z],
+				"lift": to_lift, "trim": [def.trim.x, def.trim.y, def.trim.z]})
+			continue
+		var was: Node3D = o.node
+		var err := plot.edit(i, to_cell, rec.rot, def.size, to_lift, def.trim)
+		if err != "":
+			edit_error = err
+		# An edit can rebuild the building: follow it to its new node.
+		var now: Node3D = plot.placed[i].node
+		if now != was:
+			o.node = now
+			var at := multi.find(was)
+			if at >= 0:
+				multi[at] = now
+	_refresh_multi()
 
 ## Turns a drag into whole steps and applies each new step as it is reached.
 func _drag_to(mouse: Vector2) -> void:
@@ -537,6 +642,8 @@ func _drag_to(mouse: Vector2) -> void:
 		return
 	edit_error = plot.edit(selected, cell, rot, size, lift, trim)
 	_refresh_gizmo_box()
+	if edit_mode == BuildGizmo.Mode.MOVE and edit_error == "" and not multi.is_empty():
+		_move_others(cell - (d.cell as Vector2i), lift - float(d.lift))
 
 ## Moves the selection box and the knobs with the building without rebuilding
 ## the handles being dragged.
@@ -547,19 +654,24 @@ func _refresh_gizmo_box() -> void:
 func remove_selected() -> void:
 	if not editing():
 		return
-	var node: Node3D = selected_record().node
+	var nodes: Array[Node3D] = [selected_record().node]
+	nodes.append_array(multi)
 	deselect()
-	if _guest():
-		_ask_host({"op": "remove", "id": _net_id(node)})
-		return
-	plot.remove(node)
+	for node in nodes:
+		if not is_instance_valid(node):
+			continue
+		if _guest():
+			_ask_host({"op": "remove", "id": _net_id(node)})
+		else:
+			plot.remove(node)
 
 func edit_hint() -> String:
 	var names := ["(1) Move", "(2) Scale", "(3) Rotate"]
 	var parts: Array[String] = []
 	for i in 3:
 		parts.append(("[%s]" % names[i]) if i == int(edit_mode) else names[i])
-	return "   ".join(parts) + "      aim at a handle, hold LMB and move the mouse   ·   [Del] remove   ·   [F] done"
+	var many := ("   ·   %d selected" % selection_count()) if not multi.is_empty() else ""
+	return "   ".join(parts) + "      aim at a handle, hold LMB and move the mouse   ·   [Shift+F] add/remove more   ·   [Del] remove   ·   [F] done" + many
 
 ## What the crosshair is on: the ray hit against the ground and buildings -
 ## and plans not yet filled, which have nothing solid to hit, by the box

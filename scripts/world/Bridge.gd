@@ -4,9 +4,9 @@ extends StaticBody3D
 ## A road bridge over open water: a plank deck on steel girders, a gentle arch
 ## so it clears the waves, rails down both sides and piers into the sea bed.
 ##
-## The deck is a run of short slabs, each laid along its own slice of the arch,
-## so the collision follows the curve closely and a truck rolls over the joints
-## without a bump. Each end is sunk a little into the graded road it meets.
+## The deck is drawn as a run of slabs along the arch; what you drive on is
+## one smooth surface following it, carried on past each end and down into
+## the road, so a truck at speed meets no joint and no lip.
 
 const WIDTH := 10.0
 const DECK := 0.6
@@ -62,12 +62,6 @@ func _ready() -> void:
 		# A touch longer than its slice so neighbouring slabs overlap.
 		var length := run.length() + 0.3
 		var centre := (p0 + p1) * 0.5 - up * DECK * 0.5
-		var cs := CollisionShape3D.new()
-		var box := BoxShape3D.new()
-		box.size = Vector3(WIDTH, DECK, length)
-		cs.shape = box
-		cs.transform = Transform3D(basis, centre)
-		add_child(cs)
 		g.box(Vector3(WIDTH, DECK * 0.4, length), Transform3D(basis, centre + up * DECK * 0.3), wood)
 		for k in 3:
 			g.box(Vector3(0.4, DECK * 0.7, length), Transform3D(basis,
@@ -96,6 +90,42 @@ func _ready() -> void:
 					foot - Vector3(0, DECK + 0.35, 0)), Color(0.58, 0.56, 0.52))
 	var mesh := g.instance("Deck")
 	add_child(mesh)
+	_build_deck_surface(dir, side, span)
+
+## The deck you drive on is one smooth surface - short steps along the arch,
+## all one shape, so there are no box edges at the joints for a wheel to
+## catch at speed - carried a little way on past each end and down into the
+## road, so there is no lip where the road meets it either.
+const STEP := 1.0
+const RUN_OFF := 3.0
+
+func _build_deck_surface(dir: Vector3, side: Vector3, span: float) -> void:
+	var faces := PackedVector3Array()
+	var n := maxi(4, int(ceil(span / STEP)))
+	var pts: Array[Vector3] = []
+	# Run-off in front of the start, sinking into the road.
+	pts.append(from_point - dir * RUN_OFF + Vector3(0, -0.25, 0))
+	for i in n + 1:
+		var t := float(i) / float(n)
+		var p := from_point + dir * span * t
+		p.y = deck_height(t)
+		pts.append(p)
+	pts.append(to_point + dir * RUN_OFF + Vector3(0, -0.25, 0))
+	var half := side * WIDTH * 0.5
+	for i in pts.size() - 1:
+		var a := pts[i]
+		var b := pts[i + 1]
+		faces.append_array([a - half, a + half, b + half, a - half, b + half, b - half])
+		# The underside, a deck's thickness down, so it is solid from below too.
+		var d := Vector3(0, -DECK, 0)
+		faces.append_array([a - half + d, b + half + d, a + half + d, a - half + d, b - half + d, b + half + d])
+	var shape := ConcavePolygonShape3D.new()
+	shape.backface_collision = true
+	shape.set_faces(faces)
+	var cs := CollisionShape3D.new()
+	cs.name = "DeckSurface"
+	cs.shape = shape
+	add_child(cs)
 
 ## Where the deck is under a point, if the point is over the deck.
 func over_deck(point: Vector3) -> bool:

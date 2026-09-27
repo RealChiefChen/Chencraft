@@ -406,7 +406,7 @@
     },
     {
       "id": "pad_log_truck",
-      "display_name": "Log Truck Pad",
+      "display_name": "Crane Bobtail Pad",
       "kind": "pad",
       "vehicle": "log_truck",
       "cost": 44000,
@@ -415,7 +415,7 @@
         1,
         10
       ],
-      "blurb": "Spawns your log truck. Brings it back when it is lost."
+      "blurb": "Spawns your crane bobtail. Brings it back when it is lost."
     },
     {
       "id": "pad_dump_truck",
@@ -465,7 +465,7 @@
       "size": [
         4,
         1,
-        10
+        13
       ],
       "blurb": "Spawns your logging trailer. Brings it back when it is lost."
     },

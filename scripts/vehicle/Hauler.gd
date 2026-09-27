@@ -140,7 +140,6 @@ var _tailgate: CollisionShape3D
 ## A low-loader's loading ramps: up (stowed on end at the back, a gate) or
 ## down to the ground to drive a machine aboard.
 var ramps_down := false
-var _ramps_up: Array[CollisionShape3D] = []
 var _ramps_flat: Array[CollisionShape3D] = []
 var ramp_meshes: Array[Node3D] = []
 var _tailgate_mesh: Node3D
@@ -444,7 +443,7 @@ func _build() -> void:
 		add_child(_cargo_area)
 
 	VehicleModel.dress(self)
-	set_ramps(ramps_down)
+	_pose_ramps()
 
 	# Spec: most vehicles carry a winch, many carry a crane.
 	var gear: Variant = spec.get("rig", null)
@@ -506,6 +505,14 @@ func _build_stake_bed() -> void:
 const RAMP_LENGTH := 2.8
 const RAMP_WIDTH := 0.9
 
+## How far up the ramps are: 0 down on the ground, 1 stood on end. They swing
+## smoothly toward `ramp_target`; [X] sends them the other way, and pressed
+## while they are moving it stops them where they are - so they can be set at
+## any angle in between, to meet a bank or a loading dock.
+var ramp_pose: float = 1.0
+var ramp_target: float = 1.0
+const RAMP_SPEED := 0.45     ## of the swing, per second
+
 func _build_deck() -> void:
 	for side in [-1.0, 1.0]:
 		_collider(Vector3(0.14, wall_height, bed_length),
@@ -513,13 +520,8 @@ func _build_deck() -> void:
 	_collider(Vector3(bed_half_width * 2.0 + 0.28, headboard_height, 0.3),
 		Vector3(0, bed_floor + headboard_height * 0.5, bed_front - 0.15))
 	for x in ramp_xs():
-		var up := _collider(Vector3(RAMP_WIDTH, RAMP_LENGTH, 0.14),
-			Vector3(x, bed_floor + RAMP_LENGTH * 0.5, bed_back + 0.07))
-		_ramps_up.append(up)
-		var flat := _collider(Vector3(RAMP_WIDTH, 0.14, RAMP_LENGTH), Vector3.ZERO)
-		flat.transform = ramp_down_transform(x)
-		flat.disabled = true
-		_ramps_flat.append(flat)
+		_ramps_flat.append(_collider(Vector3(RAMP_WIDTH, 0.14, RAMP_LENGTH), Vector3.ZERO))
+	_pose_ramps()
 
 ## Across the deck, where each ramp sits: under the wheels of the widest
 ## machine it carries.
@@ -527,35 +529,58 @@ func ramp_xs() -> Array[float]:
 	var x := bed_half_width - RAMP_WIDTH * 0.5
 	return [-x, x]
 
-## A lowered ramp: hinged on the deck's back edge, its foot on the ground.
-func ramp_down_transform(x: float) -> Transform3D:
+## The ramp's angle down from level when its foot is on the ground.
+func _ramp_down_angle() -> float:
 	var ground := -(wheel_radius - _lowest_wheel_y() + SAG)
-	var drop := bed_floor - ground
-	var angle := asin(clampf(drop / RAMP_LENGTH, 0.0, 1.0))
+	return asin(clampf((bed_floor - ground) / RAMP_LENGTH, 0.0, 1.0))
+
+## A ramp at `pose` (0 down, 1 up): hinged on the deck's back edge; the
+## transform is the middle of the ramp's plate.
+func ramp_transform(x: float, pose: float) -> Transform3D:
+	var angle := lerpf(_ramp_down_angle(), -PI * 0.5, pose)
 	var basis := Basis(Vector3.RIGHT, angle)
 	var hinge := Vector3(x, bed_floor - 0.07, bed_back)
 	return Transform3D(basis, hinge + basis * Vector3(0, 0, RAMP_LENGTH * 0.5))
 
-## Down to drive on or off; up to go. Returns whether they are now down.
-func toggle_ramps() -> bool:
-	set_ramps(not ramps_down)
-	return ramps_down
+func ramp_down_transform(x: float) -> Transform3D:
+	return ramp_transform(x, 0.0)
 
+## [X]: down if up, up if down; stops them if they are on the move. Says what
+## it did.
+func toggle_ramps() -> String:
+	if bed_kind != &"deck":
+		return ""
+	if not is_equal_approx(ramp_pose, ramp_target):
+		ramp_target = ramp_pose
+		return "ramps held at %d%%" % int(round((1.0 - ramp_pose) * 100.0))
+	ramp_target = 0.0 if ramp_pose > 0.5 else 1.0
+	return "ramps coming down - drive aboard" if ramp_target < 0.5 else "ramps going up"
+
+## Straight to down or up (loading a save, a co-op picture, tests).
 func set_ramps(down: bool) -> void:
+	set_ramp_pose(0.0 if down else 1.0)
+
+func set_ramp_pose(pose: float) -> void:
 	if bed_kind != &"deck":
 		return
-	ramps_down = down
-	for cs in _ramps_up:
-		cs.disabled = down
-	for cs in _ramps_flat:
-		cs.disabled = not down
+	ramp_pose = clampf(pose, 0.0, 1.0)
+	ramp_target = ramp_pose
+	_pose_ramps()
+
+func _update_ramps(delta: float) -> void:
+	if bed_kind != &"deck" or is_equal_approx(ramp_pose, ramp_target):
+		return
+	ramp_pose = move_toward(ramp_pose, ramp_target, RAMP_SPEED * delta)
+	_pose_ramps()
+
+func _pose_ramps() -> void:
+	ramps_down = ramp_pose < 0.5
 	var xs := ramp_xs()
+	for i in _ramps_flat.size():
+		_ramps_flat[i].transform = ramp_transform(xs[i], ramp_pose)
 	for i in ramp_meshes.size():
-		if down:
-			var t := ramp_down_transform(xs[i])
-			ramp_meshes[i].transform = Transform3D(t.basis, t.origin - t.basis * Vector3(0, 0, RAMP_LENGTH * 0.5))
-		else:
-			ramp_meshes[i].transform = Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(xs[i], bed_floor, bed_back + 0.07))
+		var t := ramp_transform(xs[i], ramp_pose)
+		ramp_meshes[i].transform = Transform3D(t.basis, t.origin - t.basis * Vector3(0, 0, RAMP_LENGTH * 0.5))
 
 func stake_positions() -> Array[float]:
 	var out: Array[float] = []
@@ -1161,7 +1186,9 @@ func _physics_process(delta: float) -> void:
 	if _poll <= 0.0:
 		_poll = 0.1
 		_poll_bed()
+		_poll_riders()
 	_update_unload(delta)
+	_update_ramps(delta)
 	_update_tub(delta)
 	_update_fixed(delta)
 	_carry_load()
@@ -1172,6 +1199,8 @@ func _physics_process(delta: float) -> void:
 		towing = null
 	if net_follow:
 		return
+	if carried_on != null and (not is_instance_valid(carried_on) or driver != null):
+		unglue()
 	if driver != null:
 		_read_input()
 	elif towed_by != null:
@@ -1196,6 +1225,67 @@ func _physics_process(delta: float) -> void:
 	_balance()
 	_clamp_motion()
 
+# --- Carrying other vehicles ---------------------------------------------------------
+
+## A vehicle standing on this one's bed or deck (the loader on the low-loader,
+## a dirt bike in a pickup) is locked to it while this one is being driven, so
+## it rides as part of it instead of shuffling about on its tyres - and let go
+## the moment someone gets into it or this one is left parked.
+var carried_on: Hauler = null
+var _carry_joint: Generic6DOFJoint3D
+
+func _manned() -> bool:
+	var front := lead()
+	return front.driver != null or front.autopilot
+
+func _poll_riders() -> void:
+	if bed_kind == &"none" or bed_length <= 0.0:
+		return
+	var manned := _manned()
+	for node in get_tree().get_nodes_in_group(&"vehicles"):
+		var v := node as Hauler
+		if v == null or v == self or v.is_trailer and v.towed_by != null:
+			continue
+		if v.carried_on == self:
+			if not manned or v.driver != null or v.autopilot or not _rides_on(v, 0.6):
+				v.unglue()
+			continue
+		if manned and v.carried_on == null and v.driver == null and not v.autopilot \
+				and v.towing == null and v.towed_by == null and _rides_on(v, 0.0):
+			var rel := v.linear_velocity - linear_velocity
+			if rel.length() < 1.5:
+				v.glue_to(self)
+
+## Is `v` standing on this bed or deck (with `slack` metres to spare)?
+func _rides_on(v: Hauler, slack: float) -> bool:
+	var local := global_transform.affine_inverse() * v.global_position
+	if absf(local.x) > bed_half_width + 0.4 + slack:
+		return false
+	if local.z < bed_front - 0.5 - slack or local.z > bed_back + 0.5 + slack:
+		return false
+	var lowest := v.wheel_radius - v._lowest_wheel_y()
+	var above := local.y - bed_floor
+	if above < -0.3 - slack or above > lowest + 1.5 + slack:
+		return false
+	return v.global_transform.basis.y.dot(global_transform.basis.y) > 0.8
+
+func glue_to(carrier: Hauler) -> void:
+	release_hold()
+	carried_on = carrier
+	_carry_joint = Generic6DOFJoint3D.new()
+	_carry_joint.name = "Carried_%s" % name
+	carrier.add_child(_carry_joint)
+	_carry_joint.global_transform = global_transform
+	_carry_joint.node_a = _carry_joint.get_path_to(carrier)
+	_carry_joint.node_b = _carry_joint.get_path_to(self)
+
+func unglue() -> void:
+	if _carry_joint != null and is_instance_valid(_carry_joint):
+		_carry_joint.queue_free()
+	_carry_joint = null
+	carried_on = null
+	sleeping = false
+
 # --- Parked and held ---------------------------------------------------------------
 
 ## Left with nobody at the controls, a vehicle that has come (nearly) to rest
@@ -1209,7 +1299,7 @@ static var HOLD_SPEED: float = Balance.num("vehicles.hold_speed", 1.2)          
 static var HOLD_AFTER: float = Balance.num("vehicles.hold_after", 0.3)          ## seconds of being slow before it is
 
 func _may_hold() -> bool:
-	return parked() and not planted and towed_by == null and not wheel_bodies.is_empty()
+	return parked() and not planted and towed_by == null and not wheel_bodies.is_empty() and carried_on == null
 
 func _update_hold(delta: float) -> void:
 	if not _may_hold():

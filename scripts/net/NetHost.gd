@@ -364,7 +364,7 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 			return s
 		"v":
 			var v := thing as Hauler
-			var s := {"tub": v._tub_angle, "held": v.held, "ramps": v.ramps_down}
+			var s := {"tub": v._tub_angle, "held": v.held, "ramps": v.ramp_pose}
 			if v.rig != null:
 				var r := v.rig
 				s.rig = {"j": r.joints.duplicate(), "op": r.operating, "out": r.outriggers_down, "cs": String(r.claw_state),

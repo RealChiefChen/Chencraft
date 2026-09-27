@@ -3,7 +3,7 @@
   "stores": [
     {
       "id": "general",
-      "name": "GENERAL STORE",
+      "name": "HARDWARE STORE",
       "sections": [
         {
           "title": "TOOLS",
@@ -41,116 +41,6 @@
             {
               "kind": "tool",
               "target": "splitting_maul"
-            }
-          ]
-        },
-        {
-          "title": "VEHICLES",
-          "color": [
-            0.22,
-            0.46,
-            0.82
-          ],
-          "box": [
-            1.8,
-            1.35,
-            1.15
-          ],
-          "products": [
-            {
-              "kind": "unlock",
-              "target": "pad_dirtbike"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_quad"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_pickup"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_buggy"
-            },
-            {
-              "kind": "unlock",
-              "target": "vehicle_pad"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_trailer"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_log_trailer"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_dump_trailer"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_loader"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_low_loader"
-            }
-          ]
-        },
-        {
-          "title": "MACHINERY",
-          "color": [
-            0.9,
-            0.45,
-            0.15
-          ],
-          "box": [
-            1.5,
-            1.15,
-            1.05
-          ],
-          "products": [
-            {
-              "kind": "tier",
-              "target": "sander",
-              "tier": 1
-            },
-            {
-              "kind": "tier",
-              "target": "sander",
-              "tier": 2
-            },
-            {
-              "kind": "tier",
-              "target": "sawmill",
-              "tier": 2
-            },
-            {
-              "kind": "tier",
-              "target": "crusher",
-              "tier": 1
-            },
-            {
-              "kind": "tier",
-              "target": "furnace",
-              "tier": 1
-            },
-            {
-              "kind": "tier",
-              "target": "furnace",
-              "tier": 2
-            },
-            {
-              "kind": "tier",
-              "target": "gem_polisher",
-              "tier": 1
-            },
-            {
-              "kind": "tier",
-              "target": "gem_cutter",
-              "tier": 1
             }
           ]
         },
@@ -259,6 +149,128 @@
             {
               "kind": "unlock",
               "target": "garden_gnome"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dealer",
+      "name": "VEHICLE DEALER",
+      "sections": [
+        {
+          "title": "VEHICLES",
+          "color": [
+            0.22,
+            0.46,
+            0.82
+          ],
+          "box": [
+            1.8,
+            1.35,
+            1.15
+          ],
+          "products": [
+            {
+              "kind": "unlock",
+              "target": "pad_dirtbike"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_quad"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_pickup"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_buggy"
+            },
+            {
+              "kind": "unlock",
+              "target": "vehicle_pad"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_trailer"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_log_trailer"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_dump_trailer"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_loader"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_low_loader"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "works",
+      "name": "MACHINE WORKS",
+      "sections": [
+        {
+          "title": "MACHINERY",
+          "color": [
+            0.9,
+            0.45,
+            0.15
+          ],
+          "box": [
+            1.5,
+            1.15,
+            1.05
+          ],
+          "products": [
+            {
+              "kind": "tier",
+              "target": "sander",
+              "tier": 1
+            },
+            {
+              "kind": "tier",
+              "target": "sander",
+              "tier": 2
+            },
+            {
+              "kind": "tier",
+              "target": "sawmill",
+              "tier": 2
+            },
+            {
+              "kind": "tier",
+              "target": "crusher",
+              "tier": 1
+            },
+            {
+              "kind": "tier",
+              "target": "furnace",
+              "tier": 1
+            },
+            {
+              "kind": "tier",
+              "target": "furnace",
+              "tier": 2
+            },
+            {
+              "kind": "tier",
+              "target": "gem_polisher",
+              "tier": 1
+            },
+            {
+              "kind": "tier",
+              "target": "gem_cutter",
+              "tier": 1
             }
           ]
         }

@@ -11,6 +11,10 @@ const DEPOT_POSITION := Vector3(32, 0, 86)
 ## The yard's open front faces the drive (west); its hut is at the back.
 const DEPOT_YAW := -PI * 0.5
 const STORE_POSITION := Vector3(185, 0, 52)
+## The town's other shops, each its own building on its own lot: vehicles at
+## the dealer, machines at the works.
+const DEALER_POSITION := Vector3(125, 0, 105)
+const WORKS_POSITION := Vector3(232, 0, 100)
 const QUARRY_CENTRE := Vector3(-10, 0, -430)
 ## Where the demo lines stand when they are switched on (Settings > Debug).
 const SHOWCASE_POSITION := Vector3(28, 0, 188)
@@ -60,6 +64,8 @@ var terrain: Terrain
 var hauler: Hauler
 ## The high-country shop: the best tools, heavy trucks, top machine tiers.
 var summit_store: Store
+var dealer_store: Store
+var works_store: Store
 const SUMMIT_STORE := "Summit Outfitters"
 ## One field per species, each keeping its own ring or patch stocked.
 var tree_fields: Array[ResourceField] = []
@@ -261,9 +267,7 @@ func _ready() -> void:
 	player.manager = manager
 	player.plot = plot
 	player.store = store
-	player.stores = [store]
-	if summit_store != null:
-		player.stores.append(summit_store)
+	player.stores = all_stores()
 	for shop in player.stores:
 		shop.kit_source = all_kits
 	player.wants_to_drive.connect(func(v: Node3D): drive(v as Hauler))
@@ -489,12 +493,18 @@ func _build_terrain() -> void:
 	# drive in from the road to its way in.
 	terrain.reserve_site(Vector3(DEPOT_POSITION.x, NAN, DEPOT_POSITION.z), 14.0)
 	terrain.reserve_site(Vector3(STORE_POSITION.x, NAN, STORE_POSITION.z), 20.0)
+	terrain.reserve_site(Vector3(DEALER_POSITION.x, NAN, DEALER_POSITION.z), 17.0)
+	terrain.reserve_site(Vector3(WORKS_POSITION.x, NAN, WORKS_POSITION.z), 17.0)
 	terrain.reserve_site(Vector3(QUARRY_CENTRE.x, NAN, QUARRY_CENTRE.z), 34.0)
 	terrain.driveways = [
 		{"name": "Sell Yard", "centre": DEPOT_POSITION, "radius": 14.0,
 			"door": DEPOT_POSITION + Vector3(-8.0, 0, 0)},
 		{"name": "Store", "centre": STORE_POSITION, "radius": 20.0,
 			"door": STORE_POSITION + Vector3(0, 0, -13.0)},
+		{"name": "Vehicle Dealer", "centre": DEALER_POSITION, "radius": 17.0,
+			"door": DEALER_POSITION + Vector3(0, 0, -11.0)},
+		{"name": "Machine Works", "centre": WORKS_POSITION, "radius": 17.0,
+			"door": WORKS_POSITION + Vector3(0, 0, -11.0)},
 		{"name": "Quarry", "centre": QUARRY_CENTRE, "radius": 34.0, "door": null},
 	]
 	# Kept clear for the demo lines, whether or not they are switched on.
@@ -1327,9 +1337,30 @@ func _build_store() -> void:
 	store.position = terrain.place(STORE_POSITION)
 	store.rotation.y = PI
 	add_child(store)
+	dealer_store = _town_shop("Dealer", &"dealer", DEALER_POSITION)
+	works_store = _town_shop("Works", &"works", WORKS_POSITION)
 	# The buildings have their own signs now; floating names are optional.
 	if Settings.flag(&"show_labels"):
 		Nameplate.landmark(store, "STORE", 6.0)
+
+func _town_shop(node_name: String, id: StringName, at: Vector3) -> Store:
+	var shop := Store.new()
+	shop.name = node_name
+	shop.setup(manager, plot, 0, id)
+	shop.position = terrain.place(at)
+	shop.rotation.y = PI
+	add_child(shop)
+	if Settings.flag(&"show_labels"):
+		Nameplate.landmark(shop, shop.store_name, 6.0)
+	return shop
+
+## Every shop in the world.
+func all_stores() -> Array[Store]:
+	var out: Array[Store] = [store]
+	for s in [dealer_store, works_store, summit_store]:
+		if s != null:
+			out.append(s)
+	return out
 
 func _make_player() -> Player:
 	var p := Player.new()
@@ -1479,7 +1510,11 @@ func compass_markers() -> Array[Dictionary]:
 	var base: Array[Dictionary] = [
 		{"name": "Plot", "color": Color(0.55, 0.85, 0.50), "where": func(): return plot.global_position},
 		{"name": "Sell Yard", "color": Color(0.98, 0.80, 0.30), "where": func(): return depot.global_position},
-		{"name": "Store", "color": Color(0.55, 0.78, 1.0), "where": func(): return store.global_position},
+		{"name": "Hardware Store", "color": Color(0.55, 0.78, 1.0), "where": func(): return store.global_position},
+		{"name": "Vehicle Dealer", "color": Color(0.45, 0.9, 0.95), "where": func():
+			return dealer_store.global_position if dealer_store != null else null},
+		{"name": "Machine Works", "color": Color(0.95, 0.6, 0.35), "where": func():
+			return works_store.global_position if works_store != null else null},
 		{"name": "Summit Outfitters", "color": Color(0.7, 0.62, 1.0), "where": func():
 			return summit_store.global_position if summit_store != null else null},
 		{"name": "Quarry", "color": Color(0.80, 0.70, 0.62), "where": func(): return QUARRY_CENTRE},

@@ -150,6 +150,15 @@ func shot_store() -> void:
 	# The gear bay.
 	await look(s.global_transform * Vector3(0, 3.0, 2.0), s.global_transform * Vector3(0, 0.5, -s.extents.z * 0.5))
 	await snap("store_inside")
+	# The vehicle dealer and the machine works, from inside.
+	for pair in [[world.dealer_store, "dealer_inside"], [world.works_store, "works_inside"]]:
+		var shop: Store = pair[0]
+		if shop == null:
+			continue
+		for i in 90:
+			await get_tree().process_frame
+		await look(shop.global_transform * Vector3(0, 3.0, 3.0), shop.global_transform * Vector3(0, 0.8, -shop.extents.z * 0.5))
+		await snap(pair[1])
 
 func shot_build() -> void:
 	var p := world.player

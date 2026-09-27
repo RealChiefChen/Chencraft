@@ -396,7 +396,7 @@ func box_line(item: LooseItem) -> String:
 		return ""
 	if item.owned:
 		return "%s - paid for. [E] open it" % GameData.product_name(slot)
-	var line := "%s   %s   [LMB] drag it to the counter" % [GameData.product_name(slot), UIKit.money(price_of(slot))]
+	var line := "%s   %s   [E] buy   ·   or drag it to the counter" % [GameData.product_name(slot), UIKit.money(price_of(slot))]
 	var why := blocked(slot)
 	return line + ("\n" + why if why != "" else "")
 
@@ -448,6 +448,7 @@ func _build() -> void:
 	_g.frame(Vector3(extents.x - 0.3, 0.3, extents.z - 0.3), Transform3D(Basis(), Vector3(0, WALL_HEIGHT - 0.15, 0)), 0.3, Color(0.62, 0.46, 0.28))
 
 	_lay_out_sections()
+	_put_out_displays()
 	# Shop lights: warm lamps down the middle of the ceiling.
 	for k in 4:
 		var lamp := OmniLight3D.new()
@@ -558,11 +559,40 @@ func _lay_out_sections() -> void:
 			var x := -width * 0.5 + width * (float(col) + 0.5) / float(maxi(1, n))
 			var y := 0.2 + (1.05 if row == 0 else 0.45) + float(bs[1]) * 0.5 + 0.03
 			var z := 0.7 if row == 0 else 2.0
+			# Beside each box, a model of what is in it: the box shifts over
+			# to make room when the column is wide enough.
+			var col_w := width / float(maxi(1, n))
+			var show_w := clampf(col_w - float(bs[0]) - 0.25, 0.0, 1.2)
+			var shelf_top := 0.2 + (1.05 if row == 0 else 0.45)
+			var show_at := Vector3.INF
+			if show_w >= 0.35:
+				x -= (show_w + 0.1) * 0.5
+				show_at = frame * Vector3(x + float(bs[0]) * 0.5 + 0.1 + show_w * 0.5, shelf_top - 0.2 + 0.03, z)
 			var spot := frame * Vector3(x, y - 0.2, z)
 			slots.append({
 				"box": p.box, "kind": StringName(p.kind), "target": StringName(p.target),
 				"tier": int(p.get("tier", 0)), "level": int(p.get("level", 0)), "section": p.section, "color": BoxArt._color(p.color),
-				"spot": to_global(spot), "basis": global_transform.basis * frame.basis, "item": null})
+				"spot": to_global(spot), "basis": global_transform.basis * frame.basis, "item": null,
+				"show_at": show_at, "show_w": show_w})
+
+## The display models beside the boxes, made once as the shop opens.
+func _put_out_displays() -> void:
+	for si in slots.size():
+		var slot: Dictionary = slots[si]
+		var at: Vector3 = slot.show_at
+		if at == Vector3.INF:
+			continue
+		var display_name := "Display%d" % si
+		var product := {"box": slot.box, "kind": String(slot.kind), "target": slot.target,
+			"tier": slot.tier, "level": slot.level}
+		var basis: Basis = (slot.basis as Basis)
+		_art.request_display(product, float(slot.show_w), func(model: Node3D):
+			if not is_instance_valid(self):
+				model.free()
+				return
+			model.name = display_name
+			add_child(model)
+			model.transform = Transform3D(global_transform.basis.inverse() * basis * Basis(Vector3.UP, 0.5), at))
 
 func _label(text: String, at: Vector3, basis: Basis, size: int, color: Color, outline: int) -> Label3D:
 	var l := Label3D.new()

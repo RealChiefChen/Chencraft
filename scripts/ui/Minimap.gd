@@ -92,6 +92,8 @@ func _draw() -> void:
 		["$", world.get("depot"), Color(0.98, 0.80, 0.30)],
 		["S", world.get("store"), Color(0.55, 0.78, 1.0)],
 		["S", world.get("summit_store"), Color(0.7, 0.62, 1.0)],
+		["V", world.get("dealer_store"), Color(0.45, 0.9, 0.95)],
+		["M", world.get("works_store"), Color(0.95, 0.6, 0.35)],
 	]
 	for f in fixed:
 		var node := f[1] as Node3D

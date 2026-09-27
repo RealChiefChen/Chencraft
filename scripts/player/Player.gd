@@ -1546,7 +1546,17 @@ func _interact() -> void:
 	if target is LooseItem:
 		var shop := _shop_for(target as LooseItem)
 		if shop != null:
-			interacted.emit(shop.open_box(target as LooseItem, kit_of()))
+			var box := target as LooseItem
+			# Not paid for: [E] buys it where it stands; then [E] opens it.
+			if not box.owned:
+				var receipt := shop.buy([box] as Array[LooseItem])
+				if int(receipt.bought) > 0:
+					interacted.emit("bought %s for %s - [E] again to open it" % [
+						GameData.item_name(box.item_id).replace("Boxed ", ""), UIKit.money(int(receipt.spent))])
+				elif not (receipt.refused as Array).is_empty():
+					interacted.emit(String((receipt.refused as Array)[0]))
+				return
+			interacted.emit(shop.open_box(box, kit_of()))
 			return
 	if target is Hauler and (target as Hauler).is_seat_point(hit.get("position", Vector3.ZERO)):
 		wants_to_drive.emit(target)

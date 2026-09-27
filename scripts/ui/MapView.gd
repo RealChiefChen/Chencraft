@@ -87,9 +87,13 @@ func _draw() -> void:
 	var fixed := [
 		["Plot", world.get("plot").global_position, Color(0.55, 0.85, 0.50)],
 		["Sell Yard", world.get("depot").global_position, Color(0.98, 0.80, 0.30)],
-		["Store", world.get("store").global_position, Color(0.55, 0.78, 1.0)],
+		["Hardware Store", world.get("store").global_position, Color(0.55, 0.78, 1.0)],
 		["Quarry", World.QUARRY_CENTRE, Color(0.80, 0.70, 0.62)],
 	]
+	for extra in [["Vehicle Dealer", world.get("dealer_store"), Color(0.45, 0.9, 0.95)],
+			["Machine Works", world.get("works_store"), Color(0.95, 0.6, 0.35)]]:
+		if extra[1] != null:
+			fixed.append([extra[0], (extra[1] as Node3D).global_position, extra[2]])
 	var summit: Node3D = world.get("summit_store")
 	if summit != null:
 		fixed.append(["Summit Outfitters", summit.global_position, Color(0.7, 0.62, 1.0)])

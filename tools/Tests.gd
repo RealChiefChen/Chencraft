@@ -3317,9 +3317,33 @@ func test_store() -> void:
 	var sections := {}
 	for slot in shop.slots:
 		sections[slot.section] = true
-	# Belts are built in build mode, not bought in boxes.
-	for want in ["TOOLS", "VEHICLES", "MACHINERY", "DOODADS"]:
+	# The hardware store in town has the tools, gear and doodads; vehicles are
+	# at the dealer and machines at the works, each a shop of its own.
+	for want in ["TOOLS", "GEAR", "DOODADS"]:
 		check(sections.has(want), "the store has no %s section" % want)
+	check(not sections.has("VEHICLES") and not sections.has("MACHINERY"), "the hardware store still sells vehicles or machines")
+	var works := Store.new()
+	works.setup(manager, plot, 0, &"works")
+	works.position = Vector3(60, 0, 0)
+	world.add_child(works)
+	var dealer := Store.new()
+	dealer.setup(manager, plot, 0, &"dealer")
+	dealer.position = Vector3(-60, 0, 0)
+	world.add_child(dealer)
+	await step(60)
+	var in_works := {}
+	for slot in works.slots:
+		in_works[slot.section] = true
+	check(in_works.has("MACHINERY"), "the machine works sells no machinery")
+	var pads := 0
+	for slot in dealer.slots:
+		pads += int(String(slot.target).begins_with("pad_"))
+	check(pads >= 8, "the dealer has only %d vehicles" % pads)
+	# Each box stands beside a model of what is in it.
+	var shown := 0
+	for c in dealer.get_children():
+		shown += int(c.name.begins_with("Display"))
+	check(shown >= 6, "only %d display models at the dealer" % shown)
 	var stocked := 0
 	for slot in shop.slots:
 		if slot.item != null:
@@ -3369,6 +3393,8 @@ func test_store() -> void:
 	# at its own tier.
 	var t1: Dictionary = {}
 	var t2: Dictionary = {}
+	var town := shop
+	shop = works
 	for slot in shop.slots:
 		if slot.kind == &"tier" and slot.target == &"sander":
 			if slot.tier == 1:
@@ -3388,6 +3414,7 @@ func test_store() -> void:
 	check(shop.available(t1) and shop.available(t2), "machine boxes left the shelf once bought")
 
 	# An unpaid box will not open, and carried out it goes back on the shelf.
+	shop = dealer
 	var pad_slot: Dictionary = {}
 	for slot in shop.slots:
 		if slot.target == &"pad_quad":
@@ -3405,6 +3432,7 @@ func test_store() -> void:
 	check(pad_slot.item != null, "the shelf did not put a replacement out")
 
 	# Land is sold at the desk.
+	shop = town
 	var tier_before := plot.tier
 	var land := shop.buy_land()
 	check(plot.tier == tier_before + 1, "the desk did not sell a parcel (%s)" % land)
@@ -3422,8 +3450,8 @@ func test_store() -> void:
 		has_pro = has_pro or slot.target == &"goldleaf_axe"
 	check(has_heavy and has_pro, "the summit store is missing its heavy trucks or pro tools")
 	check(not summit.has_land_desk(), "the summit store sells land")
-	for slot in shop.slots:
-		check(slot.target != &"pad_log_truck", "the town store sells the log truck")
+	for slot in dealer.slots:
+		check(slot.target != &"pad_log_truck", "the town dealer sells the log truck")
 	done()
 
 func test_carry() -> void:

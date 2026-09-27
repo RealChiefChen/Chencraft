@@ -95,6 +95,74 @@ func _next() -> void:
 		job[1].call(tex)
 	_next.call_deferred()
 
+## A display model of what is in the box, to stand beside it on the shelf:
+## the real thing built off-stage in the picture's own little world, then
+## copied as bare meshes (no bodies, no logic) and scaled to fit `fit` metres.
+## `done` gets a fresh Node3D, sitting on its base at its origin.
+static var _display_cache: Dictionary = {}     ## box id -> [[mesh, material, transform]]
+
+func request_display(product: Dictionary, fit: float, done: Callable) -> void:
+	if _display_cache.has(product.box):
+		done.call(_assemble(_display_cache[product.box], fit))
+		return
+	_display_queue.append([product, fit, done])
+	if not _display_busy:
+		_next_display()
+
+var _display_queue: Array = []
+var _display_busy := false
+
+func _next_display() -> void:
+	if _display_queue.is_empty():
+		_display_busy = false
+		return
+	_display_busy = true
+	var job: Array = _display_queue.pop_front()
+	var product: Dictionary = job[0]
+	if not _display_cache.has(product.box):
+		var model := _model_for(product)
+		if model == null:
+			_display_cache[product.box] = []
+		else:
+			_stage.add_child(model)
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var parts: Array = []
+			var root_inv := model.global_transform.affine_inverse()
+			for mi in _meshes(model):
+				var m := mi as MeshInstance3D
+				parts.append([m.mesh, m.material_override, root_inv * m.global_transform])
+			model.queue_free()
+			_display_cache[product.box] = parts
+	if is_instance_valid(self):
+		(job[2] as Callable).call(_assemble(_display_cache[product.box], float(job[1])))
+	_next_display.call_deferred()
+
+static func _assemble(parts: Array, fit: float) -> Node3D:
+	var root := Node3D.new()
+	if parts.is_empty():
+		return root
+	var box := AABB()
+	var first := true
+	for part in parts:
+		var b: AABB = (part[2] as Transform3D) * (part[0] as Mesh).get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	var s := fit / maxf(0.01, maxf(box.size.x, maxf(box.size.y, box.size.z)))
+	var holder := Node3D.new()
+	holder.scale = Vector3.ONE * s
+	# Centred over the origin, standing on it.
+	holder.position = -Vector3(box.get_center().x, box.position.y, box.get_center().z) * s
+	root.add_child(holder)
+	for part in parts:
+		var mi := MeshInstance3D.new()
+		mi.mesh = part[0]
+		mi.material_override = part[1]
+		mi.transform = part[2]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(mi)
+	return root
+
 ## The picture: the white render on the section colour, with a border and
 ## a couple of printed panel marks like a real carton.
 static func _compose(render: Image, color: Color) -> Image:

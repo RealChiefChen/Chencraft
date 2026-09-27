@@ -1310,7 +1310,8 @@ func throw_one() -> bool:
 	if not is_instance_valid(item):
 		return false
 	var aim := -camera.global_transform.basis.z
-	var pos := camera.global_position + aim * 0.9 + Vector3.DOWN * 0.2
+	var pos := eye() + aim * 0.9 + Vector3.DOWN * 0.2
+	act(&"throw")
 	item.teleport(Transform3D(LooseItem.lying_basis(rotation.y), pos))
 	item.set_state(LooseItem.State.FREE)
 	var speed := throw_impulse * clampf(25.0 / maxf(item.mass, 1.0), 0.3, 1.2)

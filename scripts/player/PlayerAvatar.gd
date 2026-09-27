@@ -20,7 +20,12 @@ extends Node3D
 ##                   stretch, a scratch under the hat)
 ##
 ## In first person only the shadow is drawn, so the body never gets in front of
-## the camera; in third person, at the wheel and in build mode, all of him is.
+## the camera; in third person, at the wheel and in build mode, all of him.
+##
+## `player` is a Player, or in co-op a stand-in for someone on another machine
+## (Avatar) that answers the same few questions. What happens on the host -
+## what is carried or dragged, build mode, gestures - comes in `net_state`
+## when the host has sent it, and wins over what this machine can see.
 
 const MODEL := "res://assets/models/player.glb"
 const PARTS: Array[StringName] = [&"Leg_L", &"Leg_R", &"Torso", &"Arm_L", &"Arm_R", &"Head"]
@@ -42,7 +47,18 @@ const GESTURES := {
 }
 const FIDGETS: Array[StringName] = [&"stroke", &"look", &"stretch", &"scratch"]
 
-var player: Player
+var player          ## a Player, or an Avatar standing in for one
+## From the co-op host: {held, drag: [x, y, z, kg], build, tool, g: [count, gesture]}.
+var net_state: Dictionary = {}
+## Off for a stand-in, whose fidgets come from the host like any gesture.
+var fidgets: bool = true
+## How many gestures have been played, and the last one, for the host to send.
+var gesture_count: int = 0
+var last_gesture: StringName = &""
+var _net_count: int = -1
+var _label: Label3D
+var _shirt: Color = Color(0, 0, 0, 0)
+var _display: String = ""
 var model: Node3D
 var _part := {}              ## name -> Node3D
 var _rest := {}              ## name -> rest rotation (Euler)
@@ -67,7 +83,7 @@ var _g_len := 1.0
 var _still := 0.0            ## seconds stood still with nothing going on
 var _next_fidget := 8.0
 
-func _init(p: Player = null) -> void:
+func _init(p = null) -> void:
 	player = p
 	name = "Avatar"
 
@@ -115,16 +131,68 @@ func _ready() -> void:
 		_tool.transform = Transform3D(b, HAND + b * Vector3(0, -0.08, 0))
 		_meshes.append(_tool)
 	_next_fidget = randf_range(6.0, 11.0)
+	_apply_identity()
+
+## Co-op: their name over their head, and their colour on the shirt, so you
+## can tell who is who.
+func set_look(display: String, shirt: Color) -> void:
+	_display = display
+	_shirt = shirt
+	if model != null:
+		_apply_identity()
+
+func _apply_identity() -> void:
+	if _display == "" and _shirt.a == 0.0:
+		return
+	if _shirt.a > 0.0:
+		for m in _meshes:
+			var mi := m as MeshInstance3D
+			if mi == null or mi.mesh == null or mi == _tool:
+				continue
+			for i in mi.mesh.get_surface_count():
+				var mat := mi.mesh.surface_get_material(i) as BaseMaterial3D
+				if mat == null:
+					continue
+				if mat.resource_name == "Plaid" or mat.resource_name == "PlaidDark":
+					var tinted := mat.duplicate() as BaseMaterial3D
+					tinted.albedo_color = _shirt if mat.resource_name == "Plaid" else _shirt.darkened(0.45)
+					mi.set_surface_override_material(i, tinted)
+	if _display != "":
+		if _label == null:
+			_label = Label3D.new()
+			_label.name = "Name"
+			_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			_label.font_size = 40
+			_label.pixel_size = 0.006
+			_label.outline_size = 10
+			_label.position = Vector3(0, 2.15, 0)
+			add_child(_label)
+		_label.text = _display
+		_label.modulate = _shirt.lightened(0.3) if _shirt.a > 0.0 else Color.WHITE
+
+## The host's word on what this player is doing (see net_state).
+func apply_net_state(state: Dictionary) -> void:
+	net_state = state
+	var g: Array = state.get("g", [])
+	if g.size() >= 2:
+		var count := int(g[0])
+		# The first word is where things stand, not something that just happened.
+		if _net_count >= 0 and count != _net_count:
+			play(StringName(g[1]))
+		_net_count = count
 
 ## Starts a one-off move. Unknown names are ignored.
 func play(kind: StringName) -> void:
 	if not GESTURES.has(kind):
 		return
 	_gesture = kind
+	gesture_count += 1
+	last_gesture = kind
 	_g_t = 0.0
 	_g_len = float(GESTURES[kind])
 	if kind == &"swing" and player != null:
-		_g_len = clampf(float(player.selected_tool_def().get("cooldown", 0.45)), 0.3, 0.75)
+		var def: Dictionary = player.selected_tool_def()
+		_g_len = clampf(float(def.get("cooldown", 0.45)), 0.3, 0.75)
 	if not kind in FIDGETS:
 		_still = 0.0
 
@@ -161,11 +229,11 @@ func _process(delta: float) -> void:
 
 func _current_mode(delta: float) -> StringName:
 	if player.driving():
-		var r := player.rig()
+		var r: VehicleRig = player.rig()
 		if player.loader() != null or (r != null and r.operating):
 			return &"operate"
 		return &"drive"
-	if player.build_system != null and player.build_system.active:
+	if _building():
 		return &"build"
 	if player.swimming():
 		_air = 0.0
@@ -183,7 +251,7 @@ func _current_mode(delta: float) -> StringName:
 ## At the wheel he sits in the seat and turns with the vehicle; otherwise he
 ## stands where the player stands.
 func _place() -> void:
-	var v := player.vehicle as Node3D
+	var v: Node3D = player.vehicle as Node3D if player.driving() else null
 	if v != null and is_instance_valid(v) and v.has_method("seat_transform"):
 		var b := v.global_transform.basis.orthonormalized()
 		global_transform = Transform3D(b, v.global_transform * seat_hips(v))
@@ -213,7 +281,7 @@ static func seat_hips(v: Node3D) -> Vector3:
 	return hips - Vector3(0, HIP_HEIGHT, 0)
 
 func _update_tool() -> void:
-	var id := player.selected_tool() if _mode in [&"foot", &"air"] else &""
+	var id: StringName = _selected_tool() if _mode in [&"foot", &"air"] else &""
 	if id == _tool_id:
 		return
 	var was := _tool_id
@@ -226,7 +294,9 @@ func _update_tool() -> void:
 
 ## Only the shadow in first person, on foot: the camera is inside his head.
 func _update_visibility() -> void:
-	var shadow_only := not player.third_person and _mode in [&"foot", &"air", &"swim"]
+	var cam: Variant = player.camera
+	var mine: bool = cam is Camera3D and (cam as Camera3D).current
+	var shadow_only: bool = mine and not player.third_person and _mode in [&"foot", &"air", &"swim"]
 	if shadow_only == _shadow_only:
 		return
 	_shadow_only = shadow_only
@@ -267,11 +337,14 @@ func _base_pose(delta: float) -> Dictionary:
 		_land = move_toward(_land, 0.0, delta * 3.5)
 	# He looks where you look (a little: the body does the rest).
 	if _mode in [&"foot", &"air", &"swim"]:
-		_add(p, &"Head", Vector3(clampf(player.camera.rotation.x * 0.5, -0.45, 0.5), 0, 0))
+		var pitch: float = player.camera.rotation.x
+		_add(p, &"Head", Vector3(clampf(pitch * 0.5, -0.45, 0.5), 0, 0))
 	return p
 
 func _walking(p: Dictionary, delta: float) -> void:
-	var local := player.global_transform.basis.inverse() * player.velocity
+	var basis: Basis = player.global_transform.basis
+	var vel: Vector3 = player.velocity
+	var local := basis.inverse() * vel
 	var speed := Vector2(local.x, local.z).length()
 	_gait = move_toward(_gait, clampf(speed / 5.0, 0.0, 1.7), delta * 6.0)
 	# Short legs, quick steps.
@@ -288,24 +361,25 @@ func _walking(p: Dictionary, delta: float) -> void:
 	p[&"root"] += Vector3(0, 0.05 * _gait * absf(cos(_phase)), 0)
 	var busy := false
 	# Knee-deep: mittens held up out of the wet.
-	var depth := player.water_depth()
+	var depth: float = player.water_depth()
 	if depth > 0.45:
 		p[&"Arm_L"] = Vector3(0.3, 0, -1.15)
 		p[&"Arm_R"] = Vector3(0.3, 0, 1.15)
 		busy = true
-	if not player.held.is_empty():
+	var drag: Variant = _drag()
+	if _carrying():
 		# The load is carried across the chest, in both arms, leaning back.
 		var sway := 0.08 * sin(_phase) * minf(_gait, 1.0)
 		p[&"Arm_L"] = Vector3(1.25 + sway, 0, 0.2)
 		p[&"Arm_R"] = Vector3(1.25 - sway, 0, -0.2)
 		_add(p, &"Torso", Vector3(0.1, 0, 0))
 		busy = true
-	elif player.dragged != null and is_instance_valid(player.dragged):
+	elif drag != null:
 		# Reaching for the point he has hold of; both hands on anything heavy,
 		# leaning back into it.
-		var at := player.drag_point()
+		var at: Vector3 = (drag as Array)[0]
 		p[&"Arm_R"] = _reach(&"Arm_R", at)
-		if player.dragged.mass > 30.0:
+		if float((drag as Array)[1]) > 30.0:
 			p[&"Arm_L"] = _reach(&"Arm_L", at)
 			_add(p, &"Torso", Vector3(0.18, 0, 0))
 		busy = true
@@ -314,7 +388,7 @@ func _walking(p: Dictionary, delta: float) -> void:
 		p[&"Arm_R"] = Vector3(0.55 + amp * 0.3 * s, 0, 0.1)
 		busy = true
 	# Stood about with nothing going on long enough, he fidgets.
-	if _gait < 0.05 and not busy and _gesture == &"":
+	if fidgets and _gait < 0.05 and not busy and _gesture == &"":
 		_still += delta
 		if _still > _next_fidget:
 			play(FIDGETS[randi() % FIDGETS.size()])
@@ -327,13 +401,14 @@ func _airborne(p: Dictionary) -> void:
 	p[&"Leg_L"] = _rest[&"Leg_L"] + Vector3(0.6, 0, 0)
 	p[&"Leg_R"] = _rest[&"Leg_R"] + Vector3(-0.25, 0, 0)
 	var flail := 0.0
-	if player.velocity.y < -5.0:
+	var vel: Vector3 = player.velocity
+	if vel.y < -5.0:
 		# A long drop: arms windmilling.
 		flail = sin(_t * 18.0) * 0.5
 	p[&"Arm_L"] = Vector3(0.3 + flail, 0, -1.3)
 	p[&"Arm_R"] = Vector3(0.3 - flail, 0, 1.3)
 	_add(p, &"Torso", Vector3(0.1, 0, 0))
-	if not player.held.is_empty():
+	if _carrying():
 		p[&"Arm_L"] = Vector3(1.25, 0, 0.2)
 		p[&"Arm_R"] = Vector3(1.25, 0, -0.2)
 
@@ -353,8 +428,8 @@ func _seated(p: Dictionary, delta: float) -> void:
 	p[&"Leg_R"] = _rest[&"Leg_R"] + Vector3(1.45, 0, 0.12)
 	if _mode == &"drive":
 		# Hands on the wheel; it turns as he steers, and he leans into it.
-		_steer = move_toward(_steer, Input.get_axis("move_left", "move_right"), delta * 4.0)
-		var throttle := Input.get_axis("move_back", "move_forward")
+		_steer = move_toward(_steer, _axis(&"move_left", &"move_right"), delta * 4.0)
+		var throttle := _axis(&"move_back", &"move_forward")
 		p[&"Arm_L"] = Vector3(1.05 - 0.3 * _steer, 0, 0.25)
 		p[&"Arm_R"] = Vector3(1.05 + 0.3 * _steer, 0, -0.25)
 		_add(p, &"Torso", Vector3(-0.06 * throttle, 0, -0.1 * _steer))
@@ -362,25 +437,61 @@ func _seated(p: Dictionary, delta: float) -> void:
 		return
 	# Working levers: each hand jiggles with the keys it is on, and he watches
 	# the log (or the bucket).
-	var along := Input.get_axis("move_back", "move_forward")
-	var across := Input.get_axis("move_left", "move_right")
-	var lift := Controls.axis(&"lower", &"sprint")
-	var twist := Controls.axis(&"turn_ccw", &"turn_cw")
+	var along := _axis(&"move_back", &"move_forward")
+	var across := _axis(&"move_left", &"move_right")
+	var lift := _axis(&"lower", &"sprint")
+	var twist := _axis(&"turn_ccw", &"turn_cw")
 	p[&"Arm_L"] = Vector3(0.85 + 0.25 * along, 0, 0.15 + 0.15 * across)
 	p[&"Arm_R"] = Vector3(0.85 + 0.25 * lift, 0, -0.15 + 0.15 * twist)
-	var r := player.rig()
+	var r: VehicleRig = player.rig()
 	if r != null and r.operating:
 		p[&"Head"] = _look(r.focus_point(), 0.8)
 
 ## In build mode the body stays put: one hand on his hip, the other pointing at
 ## where you are looking, head following it, one foot tapping.
 func _supervising(p: Dictionary) -> void:
-	var cam := player.camera
+	var cam: Node3D = player.camera
 	var at := cam.global_position - cam.global_transform.basis.z * 10.0
 	p[&"Arm_R"] = _reach(&"Arm_R", at)
 	p[&"Arm_L"] = Vector3(-0.35, 0, -0.65)
 	p[&"Head"] = _look(at, 0.7)
 	_add(p, &"Leg_L", Vector3(0.14 * maxf(0.0, sin(_t * 7.0)) * float(fmod(_t, 4.0) < 2.0), 0, 0))
+
+# --- What the host says, or what this machine can see -----------------------
+
+func _carrying() -> bool:
+	if net_state.has("held"):
+		return int(net_state.held) > 0
+	var held: Array = player.held
+	return not held.is_empty()
+
+## [grabbed point, mass] while dragging something, else null.
+func _drag() -> Variant:
+	if net_state.has("held"):
+		var d: Array = net_state.get("drag", [])
+		return [Vector3(d[0], d[1], d[2]), float(d[3])] if d.size() >= 4 else null
+	var item: Variant = player.dragged
+	if item == null or not is_instance_valid(item):
+		return null
+	return [player.drag_point(), float(item.mass)]
+
+func _building() -> bool:
+	if net_state.has("build"):
+		return bool(net_state.build)
+	var bs: Variant = player.build_system
+	return bs != null and bool(bs.active)
+
+func _selected_tool() -> StringName:
+	if net_state.has("tool"):
+		return StringName(net_state.tool)
+	return player.selected_tool()
+
+## A pair of keys as -1..1, from whoever is at this player's keys.
+func _axis(negative: StringName, positive: StringName) -> float:
+	var input: Variant = player.get("input")
+	if input != null:
+		return float(input.axis(negative, positive))
+	return 0.0
 
 ## The head turned to look at a world point (as far as a neck goes).
 func _look(at: Vector3, up_limit: float) -> Vector3:
@@ -419,7 +530,8 @@ func _overlay_gesture(p: Dictionary, delta: float) -> void:
 	var hold := _ease_hold(u)             # in, hold, out
 	match _gesture:
 		&"swing":
-			var hammer := String(player.selected_tool_def().get("kind", "axe")) == "hammer"
+			var def: Dictionary = player.selected_tool_def()
+			var hammer := String(def.get("kind", "axe")) == "hammer"
 			# Up over the head, down hard, back to ready.
 			var arm := _keys(u, [[0.0, 0.55], [0.38, 2.75], [0.55 if hammer else 0.6, -0.05], [1.0, 0.55]])
 			var lean := _keys(u, [[0.0, 0.0], [0.38, 0.18], [0.6, -0.32], [1.0, 0.0]])

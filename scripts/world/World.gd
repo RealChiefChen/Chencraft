@@ -1925,11 +1925,9 @@ func add_guest(peer: int, display: String) -> Player:
 	# Off to one side of the spawn, so guests do not land on each other.
 	p.position = Vector3(2.0 + 1.5 * float(guests.size()), 2.0, 12.0)
 	p.position.y = terrain.height_at(p.position.x, p.position.z) + 1.0
-	var avatar := Avatar.new()
-	avatar.setup(display, Avatar.color_for(peer))
-	avatar.rotation.y = 0.0
-	p.add_child(avatar)
 	add_child(p)
+	# They look like you, in their own colour, with their name over them.
+	p.avatar.set_look(display, Avatar.color_for(peer))
 	p.manager = manager
 	p.plot = plot
 	p.store = store

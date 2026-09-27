@@ -52,6 +52,13 @@ func _host() -> void:
 	if world.guests.is_empty():
 		return
 	var guest: Player = world.guests.values()[0]
+	_check(guest.avatar != null and guest.avatar.ready_to_draw() and guest.avatar._label != null,
+		"the guest is drawn here as the lumberjack, with their name over him")
+	var placeholders := 0
+	for c in guest.get_children():
+		if c is Avatar:
+			placeholders += 1
+	_check(placeholders == 0, "no stand-in figure on the guest's player (%d)" % placeholders)
 	var from := guest.global_position
 	# The guest walks forward for a while (it presses W at its end).
 	t = 0.0
@@ -183,6 +190,12 @@ func _join() -> void:
 		if client._nodes[id] is Avatar:
 			avatars += 1
 	_check(avatars == 1, "the host's player is drawn as a person here (%d)" % avatars)
+	var lumberjacks := 0
+	for id in client._nodes:
+		var av := client._nodes[id] as Avatar
+		if av != null and av.body != null and av.body.ready_to_draw():
+			lumberjacks += 1
+	_check(lumberjacks == 1, "the host's player is the lumberjack here (%d)" % lumberjacks)
 	var want_tier := mini(2, GameData.max_expansion_tier())
 	_check(world.plot.tier == want_tier, "the host's land size came across (tier %d, want %d)" % [world.plot.tier, want_tier])
 	var bins := 0

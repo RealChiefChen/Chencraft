@@ -80,7 +80,7 @@ const ACTIONS := [
 	[&"upgrades", "Upgrades", "Menus and game", ["U"]],
 	[&"help", "Controls list", "Menus and game", ["F1"]],
 	[&"toggle_hints", "Show / hide key hints and the crane banner", "Menus and game", ["H"]],
-	[&"camera_view", "First / third person view", "Menus and game", ["V"]],
+	[&"camera_view", "First / third person view", "Menus and game", ["F2"]],
 	[&"debug", "Debug readout", "Menus and game", ["F3"]],
 	[&"quick_save", "Quick save", "Menus and game", ["F5"]],
 	[&"quick_load", "Quick load", "Menus and game", ["F9"]],

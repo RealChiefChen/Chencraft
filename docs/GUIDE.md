@@ -39,7 +39,7 @@ defaults:
 | Key | Action |
 | --- | --- |
 | WASD / Shift / Space | move, sprint, jump |
-| V | first or third person: look out of his eyes or over his shoulder (remembered) |
+| F2 | first or third person: look out of his eyes or over his shoulder (remembered) |
 | 1-9 / Wheel | take a tool off the hotbar (the same number again puts it away) |
 | LMB, empty hand | hold to drag what you aim at, by the point you grabbed; heave a chunk out of the ground |
 | Wheel (dragging) / RMB (dragging) | pull it closer or push it away / throw it |
@@ -626,9 +626,14 @@ Nearly every mesh is built in code from primitives. The one exception is you.
   building goes down and a shake of the head when one comes off, drawing a
   tool, and, stood about long enough, a fidget - stroking the beard, a look
   round, a stretch, a scratch under the hat. In first person only his shadow
-  is drawn; in third person (V), at the wheel and in build mode, all of him.
+  is drawn; in third person (F2), at the wheel and in build mode, all of him.
   A closed cab is a solid box, so in a truck he sits hidden inside it; on the
   quad and the buggy he is out in the open.
+  In co-op everyone is the lumberjack, each in a shirt of their own colour
+  with their name over him (`scripts/net/Avatar.gd` stands in for a player
+  whose game is on another machine). The host sends what each one is
+  carrying, dragging and building and every gesture they make, so all
+  machines draw the same chop at the same moment.
 
 * **The land** is one `ArrayMesh` with a triangle per facet - each triangle
   carries its own vertices and its own normal, which is what makes hills read as

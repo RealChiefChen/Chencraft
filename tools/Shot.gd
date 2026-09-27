@@ -402,3 +402,23 @@ func shot_views() -> void:
 	await _frames(30)
 	await snap("view_first_down")
 	Settings.set_value(&"third_person", false)
+
+## How other co-op players look: the lumberjack in their colour, named.
+func shot_coop() -> void:
+	var p := world.player
+	var at := await _stand(p)
+	var names := ["Dell", "Sam"]
+	for i in 2:
+		var a := Avatar.new()
+		a.setup(names[i], Avatar.color_for(i + 2))
+		world.add_child(a)
+		a.global_position = at + Vector3(-1.2 + 2.4 * i, 0, -4.0)
+		a.rotation.y = PI
+		a.apply_state({"pitch": 0.0, "veh": -1, "tool": "steel_axe" if i == 0 else "", "held": 0, "build": false}, null)
+	for i in 30:
+		await get_tree().physics_frame
+	var cam := p.camera
+	cam.top_level = true
+	cam.global_transform = Transform3D(Basis(), at + Vector3(0, 1.8, 0.5)).looking_at(at + Vector3(0, 1.1, -4.0), Vector3.UP)
+	await _frames(5)
+	await snap("coop")

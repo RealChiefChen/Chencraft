@@ -554,6 +554,7 @@ func _sever(height: float, from: Vector3) -> String:
 		if _crown != null:
 			_crown.visible = false
 		collision_layer = 0
+		Sfx.play(&"fall", global_position + Vector3.UP * 2.0)
 		felled.emit(self)
 		return "tree down"
 	return "trunk severed at %.1f m" % height

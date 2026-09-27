@@ -56,6 +56,9 @@ const DEFAULTS := {
 	&"show_labels": false,
 	# Game
 	&"autosave": true,
+	# Sound
+	&"music_volume": 0.5,
+	&"sfx_volume": 0.8,
 	# Debug
 	&"unlimited_money": false,
 	&"demo_lines": false,
@@ -88,6 +91,8 @@ const NOTES := {
 	&"show_fps": "Frame rate readout",
 	&"show_labels": "Floating name labels over placed buildings",
 	&"autosave": "Save every minute while playing",
+	&"music_volume": "Music volume, 0 to 1",
+	&"sfx_volume": "Sound effects volume, 0 to 1",
 	&"unlimited_money": "Debug: buying costs nothing",
 	&"demo_lines": "Debug: automated demo lines south of home",
 }

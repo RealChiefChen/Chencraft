@@ -633,6 +633,8 @@ func try_place() -> bool:
 			"rot": [rot.x, rot.y, rot.z]})
 		return true
 	var node := plot.place(def, target_cell, rot)
+	if node != null:
+		Sfx.play(&"place", node.global_position)
 	return node != null
 
 # --- Co-op ---------------------------------------------------------------------------
@@ -662,7 +664,10 @@ func try_remove() -> bool:
 		return true
 	var hit := _aim_hit()
 	if not hit.is_empty():
-		return plot.remove_at_hit(hit)
+		var gone := plot.remove_at_hit(hit)
+		if gone:
+			Sfx.play(&"remove", hit.position)
+		return gone
 	var point: Variant = _aim_point()
 	if point == null:
 		return false

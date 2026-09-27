@@ -113,6 +113,8 @@ func sell_all(carried: Array[LooseItem] = []) -> Dictionary:
 		Economy.add_money(extra)
 		bonus += extra
 	session_total += total + bonus
+	if total + bonus > 0:
+		Sfx.play(&"cash", global_position)
 	last_receipt = "sold %d piece(s) for $%d" % [items.size(), total]
 	if extra > 0:
 		last_receipt += "  (+$%d trader's premium)" % extra

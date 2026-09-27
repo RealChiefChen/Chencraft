@@ -738,6 +738,7 @@ func _physics_step(delta: float) -> void:
 	var wanted := Vector3(velocity.x, 0.0, velocity.z)
 	var was_floor := is_on_floor()
 	move_and_slide()
+	_footsteps(delta)
 	if was_floor and wanted.length() > 0.5 and is_on_wall():
 		_step_up(wanted * delta)
 	if net_view:
@@ -747,6 +748,22 @@ func _physics_step(delta: float) -> void:
 	_update_rack()
 	_update_drag()
 	_update_prompt()
+
+## A step sound every stride or so, on the ground and moving. Only for the
+## player at this machine; a co-op guest's player on the host is heard on
+## the guest's own machine.
+var _stride: float = 0.0
+func _footsteps(delta: float) -> void:
+	if input.remote or not is_on_floor():
+		return
+	var speed := Vector2(velocity.x, velocity.z).length()
+	if speed < 1.0:
+		_stride = 0.0
+		return
+	_stride += speed * delta
+	if _stride >= 1.7:
+		_stride = 0.0
+		Sfx.play(&"step", global_position, -10.0)
 
 ## Sprinting: held down, or (with toggle sprint on) tapped on and left on
 ## until tapped again or you stop.
@@ -1037,9 +1054,15 @@ func _swing() -> void:
 	var hit := aim_hit()
 	if hit.is_empty():
 		_swing_cd = _tool_stat("cooldown", 0.4)
+		Sfx.play(&"whoosh", camera.global_position, -10.0)
 		return
 	var target := _owner_of(hit.collider)
 	var kind := _tool_kind()
+	# What it sounds like: wood takes an axe with a thunk, rock rings.
+	if (target is ChoppableTree or target is LooseItem) and kind == "axe":
+		Sfx.play(&"chop", hit.position)
+	elif (target is OreRock or target is LooseItem) and kind == "hammer":
+		Sfx.play(&"clink", hit.position)
 	if target is ChoppableTree:
 		if kind != "axe":
 			interacted.emit("a hammer will not fell a tree - take an axe")
@@ -1197,6 +1220,7 @@ func pick_up(item: LooseItem) -> bool:
 	held.append(item)
 	carry_changed.emit(held.size(), capacity_m3())
 	act(&"pick_up")
+	Sfx.play(&"pickup", item.global_position, -4.0)
 	return true
 
 ## Store stock has to be paid for before it is yours, so carrying it off a
@@ -1230,6 +1254,7 @@ func _drop(count: int, toward: Vector3 = Vector3.ZERO) -> void:
 		item.teleport(Transform3D(LooseItem.lying_basis(rotation.y), pos))
 		item.set_state(LooseItem.State.FREE)
 		item.linear_velocity = forward * 1.5 + Vector3.UP * 0.5
+		Sfx.play(&"drop", pos, -6.0)
 	carry_changed.emit(held.size(), capacity_m3())
 
 ## Slots are stacked in front of the chest; items are kinematic here, so this is
@@ -1323,6 +1348,7 @@ func throw_one() -> bool:
 	item.set_state(LooseItem.State.FREE)
 	var speed := throw_impulse * clampf(25.0 / maxf(item.mass, 1.0), 0.3, 1.2)
 	item.linear_velocity = aim * speed + velocity
+	Sfx.play(&"whoosh", pos)
 	return true
 
 func _throw_dragged() -> void:

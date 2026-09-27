@@ -38,6 +38,13 @@ var volume_out: float = 0.0
 ## size. Zero (or unset) is as it comes: one piece, its natural size. Volume
 ## is the same whatever it is set to; only the size of the pieces changes.
 var config: Dictionary = {}
+## A running machine hums (quietly: there may be a dozen of them).
+var _hum: AudioStreamPlayer3D
+
+func _process(_delta: float) -> void:
+	if _hum != null:
+		_hum.volume_db = (Sfx.sfx_db() - 20.0) if running else -80.0
+
 ## Longest a bar or a refined piece is made before it is cut in two.
 const MAX_BAR := 0.8
 
@@ -65,6 +72,8 @@ func _ready() -> void:
 	if machine_def == null and def != null:
 		machine_def = GameData.machine(def.machine)
 	super()
+	_hum = Sfx.loop(&"hum")
+	add_child(_hum)
 	_build_canopy()
 
 ## Tiers widen the mouth and speed the belt.
@@ -407,6 +416,7 @@ func take(item: LooseItem) -> bool:
 	queue.append_array(outs)
 	if _burst != null:
 		_burst.restart()
+	Sfx.play(&"grind", global_position, -6.0)
 	return true
 
 ## Sets the next finished entry down on the out-feed lip, if there is room.

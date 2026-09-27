@@ -371,6 +371,11 @@ func _gone(id: int) -> void:
 		_local_veh = -1
 	if node == null or not is_instance_valid(node):
 		return
+	# A tree or rock gone on the host came down or broke up.
+	if kind == "t":
+		Sfx.play(&"fall", (node as Node3D).global_position + Vector3.UP * 2.0)
+	elif kind == "r":
+		Sfx.play(&"crack", (node as Node3D).global_position)
 	match kind:
 		"i":
 			(world.get("manager") as LooseItemManager).despawn(node as LooseItem)
@@ -396,8 +401,11 @@ func _state(id: int, s: Variant) -> void:
 	match String(_kinds.get(id, "")):
 		"t":
 			(node as ChoppableTree).net_apply(s)
+			# Cut on the host: heard here too.
+			Sfx.play(&"chop", (node as Node3D).global_position + Vector3.UP)
 		"r":
 			(node as OreRock).net_apply(s)
+			Sfx.play(&"clink", (node as Node3D).global_position)
 		"i":
 			var item := node as LooseItem
 			var want: Array = s.get("l", [])

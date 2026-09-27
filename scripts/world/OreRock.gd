@@ -186,6 +186,7 @@ func _consume() -> void:
 	for c in _crack_meshes:
 		c.visible = false
 	collision_layer = 0
+	Sfx.play(&"crack", global_position)
 	broken.emit(self)
 
 # --- Geometry --------------------------------------------------------------

@@ -5,7 +5,7 @@ extends VBoxContainer
 ## writes straight through to `Settings`, which saves and broadcasts, so there is
 ## no Apply button to forget.
 
-const PAGES := ["Controls", "Video", "Interface", "Game"]
+const PAGES := ["Controls", "Video", "Audio", "Interface", "Game"]
 
 var _tabs: Array[Button] = []
 var _body: VBoxContainer
@@ -56,6 +56,9 @@ func show_page(i: int) -> void:
 			_toggle(&"bloom", "Bloom")
 			_slider(&"view_distance", "View distance", 150.0, 1200.0, 50.0, "%d m")
 			_toggle(&"moving_sun", "Day and night (off: always day)")
+		"Audio":
+			_slider(&"music_volume", "Music", 0.0, 1.0, 0.05, "%d%%", 100.0)
+			_slider(&"sfx_volume", "Sound effects", 0.0, 1.0, 0.05, "%d%%", 100.0)
 		"Interface":
 			_slider(&"ui_scale", "Interface scale", 0.75, 1.5, 0.05, "%d%%", 100.0)
 			_toggle(&"show_hints", "Key hints in the corner")

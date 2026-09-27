@@ -285,6 +285,9 @@ func try_recover() -> String:
 func _ready() -> void:
 	add_to_group(&"vehicles")
 	_apply_spec()
+	if not is_trailer:
+		_engine_sound = Sfx.loop(&"engine")
+		add_child(_engine_sound)
 	collision_layer = Layers.VEHICLE
 	collision_mask = Layers.WORLD | Layers.LOOSE | Layers.MACHINE | Layers.TREE | Layers.PLAYER | Layers.VEHICLE
 	can_sleep = true
@@ -915,7 +918,21 @@ func _net_follow_step(delta: float) -> void:
 		if i < _net_wheels.size():
 			body.global_transform = _net_wheels[i]
 
+## The engine note: silent with nobody at the wheel, rising with speed and
+## throttle.
+var _engine_sound: AudioStreamPlayer3D
+func _engine_note() -> void:
+	if _engine_sound == null:
+		return
+	if driver == null and not autopilot:
+		_engine_sound.volume_db = -80.0
+		return
+	var speed := linear_velocity.length()
+	_engine_sound.volume_db = Sfx.sfx_db() - 8.0 + absf(input_throttle) * 3.0
+	_engine_sound.pitch_scale = clampf(0.65 + speed / 16.0 + absf(input_throttle) * 0.25, 0.5, 2.4)
+
 func _physics_process(delta: float) -> void:
+	_engine_note()
 	if net_mirror:
 		if driver != null:
 			_read_input()

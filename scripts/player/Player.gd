@@ -701,7 +701,17 @@ func _physics_step(delta: float) -> void:
 		_update_prompt()
 		return
 
-	if not is_on_floor():
+	var ladder := _ladder_here()
+	if ladder != null:
+		# On a ladder: forward or jump climbs, down climbs down, and nothing
+		# held hangs on - no falling off it.
+		if input.pressed("move_forward") or input.pressed("jump"):
+			velocity.y = CLIMB_SPEED
+		elif input.pressed("lower") or input.pressed("move_back"):
+			velocity.y = -CLIMB_SPEED
+		else:
+			velocity.y = 0.0
+	elif not is_on_floor():
 		velocity += get_gravity() * delta
 	elif input.just_pressed("jump"):
 		velocity.y = jump_velocity
@@ -776,6 +786,16 @@ func sprinting() -> bool:
 	if input.just_pressed("sprint"):
 		_sprint_latched = not _sprint_latched
 	return _sprint_latched
+
+const CLIMB_SPEED := 2.6
+
+## The ladder the player is on, if any.
+func _ladder_here() -> Ladder:
+	for l in get_tree().get_nodes_in_group(&"ladders"):
+		var ladder := l as Ladder
+		if ladder != null and ladder.holds(global_position + Vector3.UP * 0.3):
+			return ladder
+	return null
 
 ## A kerb, a step, the edge of a slab: walked up rather than stopped at.
 const STEP_HEIGHT := 0.45

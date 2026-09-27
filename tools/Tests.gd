@@ -122,6 +122,7 @@ func _run_all() -> void:
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
 	await _test(&"vehicles bump into each other", test_vehicles_collide)
 	await _test(&"a hard brake at speed slides", test_handbrake_slide)
+	await _test(&"a ladder takes you up onto the cab roof", test_cab_ladder)
 	await _test(&"a piece off the rack can be thrown", test_throw)
 	await _test(&"the player walks up a step but not a wall", test_step_up)
 	await _test(&"a loader's attachment is picked at its pad", test_loader_pad_attachment)
@@ -4786,6 +4787,42 @@ func test_throw() -> void:
 	check(log_piece.state == LooseItem.State.FREE, "the thrown piece is not loose")
 	var flat := Vector2(log_piece.global_position.x - from.x, log_piece.global_position.z - from.z).length()
 	check(flat > 3.0, "the piece only went %.1f m" % flat)
+	p.queue_free()
+	done()
+
+func test_cab_ladder() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"hauler")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	await step(90)
+	var ladder := truck.get_node_or_null("Ladder") as Ladder
+	check(ladder != null, "the hauler has no ladder")
+	if ladder == null:
+		done()
+		return
+	var p := _make_player()
+	world.add_child(p)
+	var foot := ladder.global_position + truck.global_transform.basis.x * -0.2
+	p.global_position = Vector3(foot.x, 0.1, foot.z)
+	p.rotation.y = truck.rotation.y - PI * 0.5
+	await step(5)
+	p.input.remote = true
+	p.input.apply({"a": ["move_forward"], "k": [], "b": []})
+	var top := 0.0
+	var roof := truck.global_position.y + truck.body_size.y * 0.5
+	for i in 300:
+		await get_tree().physics_frame
+		top = maxf(top, p.global_position.y)
+		# Up and standing on something: stop there, rather than walk on
+		# across the roof and off the far side.
+		if p.global_position.y > roof + 0.5 and p.is_on_floor() and p._ladder_here() == null:
+			break
+	check(top > roof + 0.5, "the ladder did not take the player up (top %.2f, deck %.2f)" % [top, roof])
+	p.input.apply({"a": [], "k": [], "b": []})
+	await step(60)
+	check(p.global_position.y > roof, "the player did not end up on the truck (y %.2f)" % p.global_position.y)
 	p.queue_free()
 	done()
 

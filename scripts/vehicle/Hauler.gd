@@ -355,6 +355,14 @@ func _build() -> void:
 	if not cab.is_empty():
 		var cab_size := _vec(cab.size)
 		_collider(cab_size, Vector3(0, body_size.y * 0.5 + cab_size.y * 0.5, float(cab.z)))
+		# A ladder up the left side to the cab roof, from the ground.
+		var bottom := -body_size.y * 0.5 - suspension_rest * 0.5 - wheel_radius
+		var top := body_size.y * 0.5 + cab_size.y + 0.7
+		var ladder := Ladder.new()
+		ladder.name = "Ladder"
+		ladder.size = Vector3(0.9, top - bottom, 0.7)
+		ladder.position = Vector3(-body_size.x * 0.5 - 0.45, (top + bottom) * 0.5, float(cab.z) + cab_size.z * 0.5 - 0.35)
+		add_child(ladder)
 
 	# Boards and loads grip one another: a load slides when it is thrown about,
 	# not at every touch of the brakes.

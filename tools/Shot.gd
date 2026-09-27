@@ -453,3 +453,16 @@ func shot_padpanel() -> void:
 	for i in 10:
 		await get_tree().process_frame
 	await snap("padpanel")
+
+func shot_ladder() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var truck := Hauler.new()
+	truck.setup(world.manager, 0, &"hauler")
+	truck.terrain = world.terrain
+	world.add_child(truck)
+	var at := Vector3(20, 0, 30)
+	truck.global_position = Vector3(at.x, world.terrain.height_at(at.x, at.z) + truck.spawn_height(), at.z)
+	for i in 90:
+		await get_tree().physics_frame
+	await look(truck.global_position + Vector3(-7, 3, 4), truck.global_position + Vector3(0, 1, -1))
+	await snap("ladder")

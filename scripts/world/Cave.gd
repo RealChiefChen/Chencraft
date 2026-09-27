@@ -1,8 +1,10 @@
 class_name Cave
 extends Node3D
 
-## A cave: a trench cut down into the ground, a timber portal, a sloping tunnel
-## and a chamber under the hill with ore in it.
+## A cave: a doorway at the foot of the hill - a big timbered portal with its
+## doors swung open, level with the ground in front - a level passage in under
+## the rock, then a tunnel sloping down to a chamber under the hill with ore in
+## it. Wide and tall enough to drive a truck in and turn it round at the door.
 ##
 ## The land is a heightfield, which cannot have a hole with a roof over it, so
 ## a cave is built rather than carved. The terrain leaves out the two cells the
@@ -16,16 +18,18 @@ extends Node3D
 ## hill; X is across.
 
 const SHAFT_WIDTH := 6.0         ## one terrain cell
-const SHAFT_LENGTH := 12.0       ## two terrain cells
-const SHAFT_DROP := 7.0
-const TUNNEL_LENGTH := 22.0
-const TUNNEL_HEIGHT := 5.0
+const SHAFT_LENGTH := 12.0       ## two terrain cells: the level way in, behind the door
+const TUNNEL_LENGTH := 34.0      ## the slope down, gentle enough to drive
+const TUNNEL_HEIGHT := 6.0
 const CHAMBER_DROP := 11.0       ## chamber floor below the mouth
 const CHAMBER_WIDTH := 34.0
 const CHAMBER_LENGTH := 30.0
 const CHAMBER_HEIGHT := 9.0
 const SLAB := 0.6
 const FOOTPRINT_LENGTH := SHAFT_LENGTH + TUNNEL_LENGTH + CHAMBER_LENGTH
+## Up to here the way in may stand out of the hillside, banked in built rock;
+## beyond it the hill itself covers it.
+const COVERED_FROM := SHAFT_LENGTH + TUNNEL_LENGTH * 0.4
 
 const ROCK := Color(0.30, 0.29, 0.30)
 const ROCK_DARK := Color(0.21, 0.20, 0.22)
@@ -45,9 +49,9 @@ var _mesh: Greeble
 ## Floor height, relative to the mouth, at a distance `z` in.
 static func floor_at(z: float) -> float:
 	if z <= SHAFT_LENGTH:
-		return -SHAFT_DROP * clampf(z / SHAFT_LENGTH, 0.0, 1.0)
+		return 0.0
 	if z <= SHAFT_LENGTH + TUNNEL_LENGTH:
-		return lerpf(-SHAFT_DROP, -CHAMBER_DROP, (z - SHAFT_LENGTH) / TUNNEL_LENGTH)
+		return lerpf(0.0, -CHAMBER_DROP, (z - SHAFT_LENGTH) / TUNNEL_LENGTH)
 	return -CHAMBER_DROP
 
 ## Top of the roof slab, relative to the mouth, at a distance `z` in. The
@@ -125,41 +129,50 @@ func _lamp(pos: Vector3, facing: Vector3, energy: float = 2.4, color: Color = Co
 	light.distance_fade_length = 15.0
 	add_child(light)
 
+## The way in: a level passage from the door to where the slope starts, walls
+## and a roof of rock, and at its mouth a heavy timber portal with its two
+## doors swung open back against the rock either side.
 func _build_trench() -> void:
 	var half := SHAFT_WIDTH * 0.5
-	_slope(SHAFT_WIDTH + 1.6, 0.0, 0.0, SHAFT_LENGTH, -SHAFT_DROP, SLAB, ROCK_DARK)
-	# The walls straddle the cut edge and stand a little proud of the ground.
-	var wall_h := SHAFT_DROP + 1.6
+	var h := TUNNEL_HEIGHT
+	# Floor, a touch below the ground so the step in is nothing.
+	_solid(Vector3(SHAFT_WIDTH + 1.6, SLAB, SHAFT_LENGTH + 0.4),
+		Transform3D(Basis(), Vector3(0, -SLAB * 0.5 - 0.02, SHAFT_LENGTH * 0.5)), ROCK_DARK)
+	# Walls and roof, standing over the ground and banked with rock outside.
 	for sx in [-1.0, 1.0]:
-		_solid(Vector3(0.8, wall_h, SHAFT_LENGTH + 0.8),
-			Transform3D(Basis(), Vector3(sx * half, 0.3 - wall_h * 0.5, SHAFT_LENGTH * 0.5)), ROCK)
-		# Timber shoring along the trench.
-		var z := 1.5
-		while z < SHAFT_LENGTH - 0.5:
-			var top := 0.3
-			var bottom := floor_at(z)
-			_mesh.block(Vector3(0.25, top - bottom, 0.25),
-				Vector3(sx * (half - 0.52), (top + bottom) * 0.5, z), TIMBER)
-			z += 3.5
-		# Ragged rock along the lip, so the cut does not look ruled.
+		_solid(Vector3(0.8, h + SLAB + 0.6, SHAFT_LENGTH + 0.8),
+			Transform3D(Basis(), Vector3(sx * (half + 0.4), (h + SLAB) * 0.5 - 0.3, SHAFT_LENGTH * 0.5)), ROCK)
 		for i in 4:
 			var along := 1.0 + float(i) * 3.2 + _rng.randf_range(-0.5, 0.5)
-			_mesh.box(Vector3(_rng.randf_range(0.8, 1.6), _rng.randf_range(0.4, 1.0), _rng.randf_range(1.2, 2.4)),
-				Transform3D(Basis(Vector3.UP, _rng.randf_range(-0.4, 0.4)),
-					Vector3(sx * (half + 0.5), 0.35, along)), ROCK.lightened(0.08))
-	# Where the trench meets the tunnel: rock from the tunnel roof up past the
-	# ground, closing the end of the cut.
-	var roof := roof_at(SHAFT_LENGTH)
-	_solid(Vector3(SHAFT_WIDTH + 1.6, 0.3 - roof + 0.4, 0.8),
-		Transform3D(Basis(), Vector3(0, (0.3 + roof) * 0.5 + 0.2, SHAFT_LENGTH + 0.4)), ROCK)
-	# The portal: two posts and a lintel at the tunnel mouth.
-	var mouth_floor := floor_at(SHAFT_LENGTH)
-	var mouth_top := mouth_floor + TUNNEL_HEIGHT
+			var size := Vector3(_rng.randf_range(1.6, 3.0), _rng.randf_range(2.0, h + 1.0), _rng.randf_range(2.0, 3.4))
+			_mesh.box(size, Transform3D(Basis(Vector3.UP, _rng.randf_range(-0.4, 0.4)),
+				Vector3(sx * (half + 0.8 + size.x * 0.4), size.y * 0.5 - 0.3, along)), ROCK.lightened(_rng.randf_range(-0.04, 0.08)))
+	_solid(Vector3(SHAFT_WIDTH + 1.6, SLAB, SHAFT_LENGTH + 0.8),
+		Transform3D(Basis(), Vector3(0, h + SLAB * 0.5, SHAFT_LENGTH * 0.5)), ROCK)
+	# Timber sets along the passage.
+	var z := 2.5
+	while z < SHAFT_LENGTH - 0.5:
+		for sx in [-1.0, 1.0]:
+			_mesh.block(Vector3(0.3, h - 0.2, 0.3), Vector3(sx * (half - 0.2), h * 0.5, z), TIMBER)
+		_mesh.block(Vector3(SHAFT_WIDTH - 0.2, 0.3, 0.35), Vector3(0, h - 0.25, z), TIMBER.darkened(0.1))
+		z += 4.0
+	# The portal: heavy posts and a lintel, a sign board over it.
 	for sx in [-1.0, 1.0]:
-		_mesh.block(Vector3(0.45, TUNNEL_HEIGHT, 0.45),
-			Vector3(sx * (half - 0.45), mouth_floor + TUNNEL_HEIGHT * 0.5, SHAFT_LENGTH - 0.3), TIMBER)
-	_mesh.block(Vector3(SHAFT_WIDTH - 0.2, 0.5, 0.55), Vector3(0, mouth_top - 0.2, SHAFT_LENGTH - 0.3), TIMBER.darkened(0.1))
-	_lamp(Vector3(half - 1.0, mouth_top - 0.9, SHAFT_LENGTH - 0.7), Vector3(0, 0, -1), 1.6)
+		_mesh.block(Vector3(0.6, h + 0.6, 0.6), Vector3(sx * (half - 0.1), (h + 0.6) * 0.5, 0.2), TIMBER.darkened(0.05))
+	_mesh.block(Vector3(SHAFT_WIDTH + 1.2, 0.7, 0.7), Vector3(0, h + 0.35, 0.2), TIMBER.darkened(0.15))
+	_mesh.block(Vector3(SHAFT_WIDTH * 0.7, 0.9, 0.12), Vector3(0, h + 1.2, 0.0), TIMBER.lightened(0.15))
+	# The doors, open: each a planked leaf swung out flat against the rock
+	# face beside the portal, hinged at the post, out of the way.
+	var leaf := half - 0.3
+	for sx in [-1.0, 1.0]:
+		var hinge := Vector3(sx * (half + 0.2), 0.0, -0.15)
+		for k in 4:
+			_mesh.block(Vector3(leaf / 4.0 - 0.04, h - 0.4, 0.12),
+				hinge + Vector3(sx * (leaf / 4.0 * (float(k) + 0.5)), (h - 0.4) * 0.5 + 0.1, 0), TIMBER.lightened(0.05 * float(k % 2)))
+		for y in [0.8, h - 1.2]:
+			_mesh.block(Vector3(leaf, 0.18, 0.16), hinge + Vector3(sx * leaf * 0.5, y, -0.04), Color(0.2, 0.2, 0.22))
+	_lamp(Vector3(half - 0.8, h - 0.9, 1.2), Vector3(0, 0, -1), 1.6)
+	_lamp(Vector3(-half + 0.8, h - 0.9, SHAFT_LENGTH - 1.0), Vector3(1, 0, 0), 1.8)
 
 func _build_tunnel() -> void:
 	var half := SHAFT_WIDTH * 0.5
@@ -295,9 +308,21 @@ func _build_surface() -> void:
 	for i in 7:
 		var size := Vector3(_rng.randf_range(3.0, 6.0), _rng.randf_range(2.5, 6.0), _rng.randf_range(3.0, 5.0))
 		var x := _rng.randf_range(-7.0, 7.0)
-		var z := SHAFT_LENGTH + _rng.randf_range(0.5, 6.0)
-		_solid(size, Transform3D(Basis(Vector3.UP, _rng.randf_range(-0.5, 0.5)) * Basis(Vector3.RIGHT, _rng.randf_range(-0.15, 0.15)),
-			Vector3(x, size.y * 0.5 - 0.3, z + size.z * 0.5)), Color(0.44, 0.43, 0.45).lightened(_rng.randf_range(-0.05, 0.06)))
+		var z := _rng.randf_range(1.0, SHAFT_LENGTH)
+		# Heaped on and round the roof of the way in: the door is a door into
+		# a hillside, not a box on the grass.
+		_mesh.box(size, Transform3D(Basis(Vector3.UP, _rng.randf_range(-0.5, 0.5)) * Basis(Vector3.RIGHT, _rng.randf_range(-0.15, 0.15)),
+			Vector3(x, TUNNEL_HEIGHT + size.y * 0.3, z)), Color(0.44, 0.43, 0.45).lightened(_rng.randf_range(-0.05, 0.06)))
+	# Rock banked over the start of the slope, where it may stand out of the
+	# hillside before the hill closes over it.
+	var z2 := SHAFT_LENGTH
+	while z2 < COVERED_FROM + 2.0:
+		var roof := roof_at(z2)
+		for sx in [-1.0, 0.0, 1.0]:
+			var size := Vector3(_rng.randf_range(3.0, 4.5), _rng.randf_range(1.6, 3.0), _rng.randf_range(3.5, 5.0))
+			_mesh.box(size, Transform3D(Basis(Vector3.UP, _rng.randf_range(-0.4, 0.4)),
+				Vector3(sx * 3.2, roof + size.y * 0.35, z2 + 1.5)), Color(0.44, 0.43, 0.45).lightened(_rng.randf_range(-0.05, 0.06)))
+		z2 += 4.0
 	var post := Vector3(-SHAFT_WIDTH * 0.5 - 2.0, 0, -1.5)
 	_mesh.block(Vector3(0.2, 2.4, 0.2), post + Vector3(0, 1.2, 0), TIMBER)
 	_mesh.block(Vector3(1.8, 0.7, 0.12), post + Vector3(0, 2.1, 0), TIMBER.lightened(0.15))
@@ -318,10 +343,10 @@ func depth_factor(point: Vector3) -> float:
 	var local := to_local(point)
 	if absf(local.x) > CHAMBER_WIDTH * 0.5 + 1.0 or local.z < 0.0 or local.z > FOOTPRINT_LENGTH + 1.0:
 		return 0.0
-	if local.y > 1.5 or local.y < -CHAMBER_DROP - 2.0:
+	if local.y > TUNNEL_HEIGHT + 1.0 or local.y < -CHAMBER_DROP - 2.0:
 		return 0.0
 	if local.z < SHAFT_LENGTH + TUNNEL_LENGTH and absf(local.x) > SHAFT_WIDTH * 0.5 + 0.5:
 		return 0.0
 	if not with_chamber and local.z > SHAFT_LENGTH + TUNNEL_LENGTH + 2.0:
 		return 0.0
-	return clampf((local.z - 3.0) / (SHAFT_LENGTH + 2.0), 0.0, 1.0)
+	return clampf((local.z - 2.0) / (SHAFT_LENGTH + 2.0), 0.0, 1.0)

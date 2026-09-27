@@ -1696,6 +1696,15 @@ func test_cave_network() -> void:
 				on_floor += 1
 	check(lobed >= net.rooms.size() / 2, "only %d of %d caverns have bays" % [lobed, net.rooms.size()])
 	check(on_floor == 0, "%d formations on a cavern floor" % on_floor)
+	# No tunnel bends tighter than it is wide: its walls never fold through
+	# themselves.
+	var folds := 0
+	for t in net.tunnels:
+		var tp: PackedVector3Array = t.points
+		for i in range(2, tp.size() - 2):
+			if CaveNetwork.bend_radius(tp, i) < CaveNetwork.min_bend(float(t.radius)) * 0.99:
+				folds += 1
+	check_eq(folds, 0, "places a tunnel bends tighter than it is wide")
 	# Every tunnel mouth open into its cavern, and every tunnel floored.
 	var space := world.get_world_3d().direct_space_state
 	var blocked := 0
@@ -2932,7 +2941,7 @@ func test_caves() -> void:
 	check(ground - Cave.CHAMBER_DROP > Terrain.WATER_LEVEL, "the chamber floor is under the water line")
 	# Rock over the whole of it: nothing pokes out of the hillside.
 	var least := INF
-	var z := Cave.SHAFT_LENGTH + 1.0
+	var z := Cave.COVERED_FROM + 1.0
 	while z <= Cave.FOOTPRINT_LENGTH:
 		var x := -Cave.CHAMBER_WIDTH * 0.5
 		while x <= Cave.CHAMBER_WIDTH * 0.5:
@@ -2945,10 +2954,20 @@ func test_caves() -> void:
 	# The trench is open - no ground over it - and has a floor you land on.
 	var space := world.get_world_3d().direct_space_state
 	var mid := cave.to_global(Vector3(0, 0, Cave.SHAFT_LENGTH * 0.5))
-	var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(mid + Vector3(0, 10, 0), mid + Vector3(0, -30, 0), Layers.WORLD))
-	check(not hit.is_empty() and hit.collider != land, "the trench is still covered by the ground")
+	var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(mid + Vector3(0, 3, 0), mid + Vector3(0, -30, 0), Layers.WORLD))
+	check(not hit.is_empty() and hit.collider != land, "the way in is still full of ground")
 	if not hit.is_empty():
-		check_near(hit.position.y, ground + Cave.floor_at(Cave.SHAFT_LENGTH * 0.5), 0.2, "the trench floor is not where the ramp should be")
+		check_near(hit.position.y, ground, 0.2, "the way in is not level with the ground at the door")
+	# A doorway, not a ramp: from in front, walk straight in at head height
+	# with nothing in the way, and room either side for a truck.
+	var front := cave.to_global(Vector3(0, 1.7, -6.0))
+	var deep := cave.to_global(Vector3(0, 1.7, Cave.SHAFT_LENGTH - 1.0))
+	check(space.intersect_ray(PhysicsRayQueryParameters3D.create(front, deep, Layers.WORLD)).is_empty(), "something blocks the doorway")
+	for sx in [-1.0, 1.0]:
+		var side_from := cave.to_global(Vector3(sx * 1.4, 3.5, -2.0))
+		var side_to := cave.to_global(Vector3(sx * 1.4, 3.5, Cave.SHAFT_LENGTH - 1.0))
+		check(space.intersect_ray(PhysicsRayQueryParameters3D.create(side_from, side_to, Layers.WORLD)).is_empty(),
+			"the doorway is too narrow or low for a truck")
 	# And the chamber has a floor under the hill.
 	var inside := cave.to_global(Vector3(0, -Cave.CHAMBER_DROP + 2.0, Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH + 10.0))
 	hit = space.intersect_ray(PhysicsRayQueryParameters3D.create(inside, inside + Vector3(0, -6, 0), Layers.WORLD))
@@ -3429,7 +3448,17 @@ func test_store() -> void:
 		if item.item_id == pad_slot.box and not shop.contains(item.global_position):
 			stranded += 1
 	check_eq(stranded, 0, "unpaid stock survived being carried out of the shop")
-	check(pad_slot.item != null, "the shelf did not put a replacement out")
+	check(pad_slot.item == null, "the shelf was restocked at once")
+	# Five minutes on, it is back.
+	shop._clock += Store.RESTOCK_DELAY + 1.0
+	await step(40)
+	check(pad_slot.item != null, "the shelf did not put a replacement out after five minutes")
+	# Knocked off its place inside the shop and left: cleared away too.
+	var nudged: LooseItem = pad_slot.item
+	nudged.teleport(Transform3D(Basis(), (pad_slot.spot as Vector3) + (pad_slot.basis as Basis).z * 3.0 + Vector3(0, 0.2, 0)))
+	await step(60 * 6)
+	check(pad_slot.item == null and (not is_instance_valid(nudged) or nudged.state == LooseItem.State.POOLED),
+		"a box knocked off its place was left lying about")
 
 	# Land is sold at the desk.
 	shop = town

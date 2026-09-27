@@ -1211,14 +1211,15 @@ func _build_outposts() -> void:
 		outpost.rotation.y = _facing(String(spec.name), at)
 		add_child(outpost)
 		outposts.append(outpost)
-	# A miner's camp by each cave mouth, off to one side of the trench.
+	# A miner's camp by each cave mouth, off to one side of the yard in front.
 	for cave in caves:
 		var camp := Outpost.new()
 		camp.name = "%sCamp" % cave.name
 		var mouth := cave.global_transform
 		camp.setup(Outpost.Kind.MINERS_CAMP, "%s Camp" % cave.cave_name, _rng.randi(),
 			int(80.0 + mouth.origin.length() * 0.6))
-		camp.position = mouth * Vector3(-9.0, 0.0, -3.0)
+		# Well clear of the doorway: room to drive up, turn and back in.
+		camp.position = terrain.place(mouth * Vector3(-15.0, 0.0, -9.0))
 		camp.rotation.y = atan2(-mouth.basis.z.x, -mouth.basis.z.z)
 		add_child(camp)
 		outposts.append(camp)

@@ -160,7 +160,7 @@ func restock() -> int:
 			slot.item = null
 			continue
 		slot.item = null
-		if not available(slot):
+		if not available(slot) or _clock < float(slot.get("back_at", 0.0)):
 			continue
 		var box := manager.spawn(slot.box, Transform3D(slot.basis, slot.spot), plot_id)
 		if box == null:
@@ -356,20 +356,58 @@ func _physics_process(delta: float) -> void:
 	if _poll > 0.0:
 		return
 	_poll = 0.4
+	_clock += 0.4
 	var lost := false
+	var counter := on_counter()
+	var in_hand := _in_hands()
 	for slot in slots:
 		var item := slot.item as LooseItem
 		if item == null or not is_instance_valid(item):
 			continue
 		if item.owned or item.state == LooseItem.State.POOLED:
 			continue
-		if contains(item.global_position):
-			continue
-		manager.despawn(item)
-		slot.item = null
-		lost = true
+		# Unpaid stock that has been knocked off its place - not on the way
+		# to the till in someone's hands or on the counter - is cleared away,
+		# and that shelf spot is empty for a while before it is restocked.
+		var outside := not contains(item.global_position)
+		var off_place := item.global_position.distance_to(slot.spot) > MISPLACED_BY
+		var busy := counter.has(item) or in_hand.has(item) or item.state != LooseItem.State.FREE
+		if outside or (off_place and not busy):
+			slot["away"] = float(slot.get("away", 0.0)) + 0.4
+		else:
+			slot["away"] = 0.0
+		if outside or float(slot.away) >= MISPLACED_GRACE:
+			manager.despawn(item)
+			slot.item = null
+			slot["away"] = 0.0
+			slot["back_at"] = _clock + RESTOCK_DELAY
+			lost = true
+	# Spots whose wait is over get their box back.
+	for slot in slots:
+		if slot.item == null and float(slot.get("back_at", 0.0)) > 0.0 and _clock >= float(slot.back_at):
+			slot["back_at"] = 0.0
+			lost = true
 	if lost:
 		restock()
+
+## Unpaid boxes moved from their places are cleared after this long (s), and
+## restocked this long after (s).
+const MISPLACED_BY := 0.8
+const MISPLACED_GRACE := 4.0
+const RESTOCK_DELAY := 300.0
+var _clock: float = 0.0
+
+## What players are dragging or carrying right now.
+func _in_hands() -> Array:
+	var out: Array = []
+	for p in get_tree().get_nodes_in_group(&"players"):
+		var d: Variant = p.get("dragged")
+		if d != null:
+			out.append(d)
+		var h: Variant = p.get("held")
+		if h is Array:
+			out.append_array(h)
+	return out
 
 func status_line(role: StringName) -> String:
 	if role == &"desk":

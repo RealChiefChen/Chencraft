@@ -407,7 +407,7 @@ func _try_tunnel(ia: int, ib: int, attempts: int) -> bool:
 		var off: float = swings[attempt % swings.size()]
 		var aim_a: Variant = via_a if via_a != null else _aim(a, b, off)
 		var aim_b: Variant = via_b if via_b != null else _aim(b, a, -off)
-		var pts := _tunnel_curve(a, b, ra, rb, wander, aim_a, aim_b)
+		var pts := _relax_bends(_tunnel_curve(a, b, ra, rb, wander, aim_a, aim_b), r)
 		if pts.size() < 2 or _mouth_clash(ia, pts[0], ra) or _mouth_clash(ib, pts[pts.size() - 1], rb):
 			continue
 		if _tunnel_ok(pts, r, ia, ib):
@@ -546,8 +546,9 @@ func _tunnel_curve(a: Dictionary, b: Dictionary, ra: float, rb: float, wander: f
 	var mids := clampi(int(span / 60.0), 1, 5)
 	# Each end leaves its cavern level and square to the wall for a stretch,
 	# so the tube's floor runs on from the cavern's floor, not down through it.
-	var lead_a := s + _flat(s - (a.centre as Vector3)) * 16.0
-	var lead_b := e + _flat(e - (b.centre as Vector3)) * 16.0
+	var lead := maxf(16.0, maxf(ra, rb) * WIDEN * 2.0)
+	var lead_a := s + _flat(s - (a.centre as Vector3)) * lead
+	var lead_b := e + _flat(e - (b.centre as Vector3)) * lead
 	var ctrl: Array = [s - (lead_a - s).normalized() * 0.01, s, lead_a]
 	if via_a != null:
 		ctrl.append(via_a)
@@ -593,7 +594,54 @@ static func _catmull(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3, t: floa
 	return 0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
 		+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
 
+## How tight the tube bends at point i: the radius of the circle through the
+## points either side of it. A bend tighter than the tube is wide folds its
+## inside wall through itself.
+static func bend_radius(pts: PackedVector3Array, i: int, reach: int = 2) -> float:
+	if i - reach < 0 or i + reach >= pts.size():
+		return INF
+	var a := pts[i - reach]
+	var b := pts[i]
+	var c := pts[i + reach]
+	var ab := a.distance_to(b)
+	var bc := b.distance_to(c)
+	var ca := c.distance_to(a)
+	var area := (b - a).cross(c - a).length() * 0.5
+	if area < 0.0001:
+		return INF
+	return ab * bc * ca / (4.0 * area)
+
+## Eases out any bend tighter than the tube can take: each point on it is
+## drawn toward the middle of its neighbours, a little at a time, until the
+## line is smooth enough. The ends, square to their caverns' walls, stay put.
+static func _relax_bends(pts: PackedVector3Array, r: float) -> PackedVector3Array:
+	var tightest := min_bend(r) * 1.05
+	var out := pts.duplicate()
+	var keep := 2
+	for it in 120:
+		var moved := false
+		for i in range(keep, out.size() - keep):
+			if bend_radius(out, i) >= tightest:
+				continue
+			for j in [i - 1, i, i + 1]:
+				if j < keep or j >= out.size() - keep:
+					continue
+				var mid := (out[j - 1] + out[j + 1]) * 0.5
+				out[j] = out[j].lerp(mid, 0.5)
+			moved = true
+		if not moved:
+			break
+	return out
+
+## The tightest a tunnel of radius r may bend.
+static func min_bend(r: float) -> float:
+	return r * WIDEN * 1.3
+
 func _tunnel_ok(pts: PackedVector3Array, r: float, ia: int, ib: int) -> bool:
+	var tightest := min_bend(r)
+	for i in range(2, pts.size() - 2):
+		if bend_radius(pts, i) < tightest:
+			return false
 	for i in pts.size():
 		var p := pts[i]
 		if i > 0:
@@ -1146,6 +1194,7 @@ func _dress_room(ri: int) -> void:
 				# River caves: short, stubby knuckles of flowstone.
 				g.prism(5, rng.randf_range(0.3, 0.6) * grand, 0.0, rng.randf_range(0.6, 1.6) * grand,
 					Transform3D(out, p - axis * 0.3), (pal[0] as Color).lightened(0.1))
+	_dress_ceiling(room, kind, pal, rng, g, int(size * 0.5) + 4)
 	if not g.is_empty():
 		var mi := g.instance("CaveDressing", false)
 		mi.visibility_range_end = 320.0
@@ -1184,6 +1233,62 @@ func _dress_room(ri: int) -> void:
 	light.distance_fade_length = 30.0
 	add_child(light)
 
+## Hanging from the roof: stalactites, icicles, crystal clusters and the like,
+## short and pointing down, spread over the ceiling.
+func _dress_ceiling(room: Dictionary, kind: int, pal: Array, rng: RandomNumberGenerator, g: Greeble, count: int) -> void:
+	var placed := 0
+	var tries := 0
+	while placed < count and tries < count * 4:
+		tries += 1
+		var p: Variant = ceiling_point(room, rng)
+		if p == null:
+			continue
+		placed += 1
+		var at: Vector3 = p
+		var hang := Basis(Vector3.RIGHT, PI) * Basis(Vector3.UP, rng.randf() * TAU)
+		match kind:
+			Kind.CRYSTAL, Kind.ABYSS:
+				var color: Color = [Color(0.7, 0.45, 1.0), Color(0.45, 0.9, 1.0)][placed % 2] if kind == Kind.CRYSTAL else Color(0.3, 0.6, 1.0)
+				for k in 2:
+					g.prism(6, rng.randf_range(0.12, 0.3), 0.0, rng.randf_range(0.5, 1.4),
+						Transform3D(hang, at + Vector3(rng.randf_range(-0.4, 0.4), 0.2, rng.randf_range(-0.4, 0.4))), color, true)
+			Kind.ICE:
+				g.prism(5, rng.randf_range(0.12, 0.3), 0.0, rng.randf_range(0.8, 2.2), Transform3D(hang, at + Vector3(0, 0.2, 0)),
+					Color(0.82, 0.93, 1.0), placed % 5 == 0)
+			Kind.FUNGAL:
+				# Glowing threads hanging down.
+				g.prism(4, 0.04, 0.02, rng.randf_range(0.8, 2.5), Transform3D(hang, at + Vector3(0, 0.1, 0)),
+					[Color(0.4, 1.0, 0.6), Color(0.3, 0.9, 1.0)][placed % 2], true)
+			Kind.MAGMA:
+				g.prism(6, rng.randf_range(0.25, 0.5), 0.0, rng.randf_range(0.6, 1.5), Transform3D(hang, at + Vector3(0, 0.2, 0)),
+					Color(0.16, 0.13, 0.12))
+			Kind.DESERT:
+				g.prism(6, rng.randf_range(0.3, 0.6), rng.randf_range(0.1, 0.2), rng.randf_range(0.3, 0.8), Transform3D(hang, at + Vector3(0, 0.2, 0)),
+					(pal[0] as Color).lightened(0.05))
+			_:
+				g.prism(5, rng.randf_range(0.2, 0.45), 0.0, rng.randf_range(0.6, 1.8), Transform3D(hang, at + Vector3(0, 0.25, 0)),
+					(pal[0] as Color).lightened(0.08))
+
+## A spot on a cavern's roof, straight up from somewhere over its floor.
+func ceiling_point(room: Dictionary, rng: RandomNumberGenerator) -> Variant:
+	var a := rng.randf() * TAU
+	var d := sqrt(rng.randf()) * 0.7
+	var local := Vector3(cos(a) * float(room.rx) * d, 0.0, sin(a) * float(room.rz) * d)
+	var from: Vector3 = (room.centre as Vector3) + local.rotated(Vector3.UP, float(room.yaw))
+	from.y = float(room.floor) + 1.0
+	if not _inside_wall(room, from):
+		return null
+	var up := _wall_hit(room, from, Vector3.UP, 0.0, float(room.ry) * 3.0)
+	if up < 3.0:
+		return null
+	# Clear of the tunnel mouths, whose roofs are the tunnels' own.
+	var p := from + Vector3.UP * up
+	for ti in room.links:
+		var mouth := _tube_end(ti, int(room.index))
+		if Vector2(p.x - mouth.origin.x, p.z - mouth.origin.z).length() < float(tunnels[ti].radius) * WIDEN + 4.0:
+			return null
+	return p
+
 ## Glowing bits along a tunnel's walls every so often, in its biome's colour,
 ## so a tunnel has landmarks and is never pitch black between caverns.
 func _dress_tunnel(ti: int) -> void:
@@ -1200,6 +1305,12 @@ func _dress_tunnel(ti: int) -> void:
 		var at := pts[k] + side * s * r * WIDEN * 0.75 - Vector3(0, r * FLOOR_CUT, 0)
 		g.prism(5, 0.18, 0.0, 0.9, Transform3D(Basis(tangent, -s * 0.5), at), (PALETTE[kind][2] as Color), true)
 		g.prism(5, 0.12, 0.0, 0.6, Transform3D(Basis(tangent, -s * 0.8), at + tangent * 0.4), (PALETTE[kind][2] as Color).lightened(0.2), true)
+		# And a few short points hanging from the roof.
+		var roof := pts[k] + Vector3(0, r * 1.08 * 0.93, 0)
+		for n in 3:
+			var off := side * float(n - 1) * r * 0.5 + tangent * float(n % 2) * 1.2
+			g.prism(5, 0.14 + 0.05 * float(n), 0.0, 0.5 + 0.3 * float(n % 2),
+				Transform3D(Basis(Vector3.RIGHT, PI), roof + off + Vector3(0, 0.15, 0)), (PALETTE[kind][0] as Color).lightened(0.08))
 		k += 11
 	if not g.is_empty():
 		var mi := g.instance("TunnelGlow", false)

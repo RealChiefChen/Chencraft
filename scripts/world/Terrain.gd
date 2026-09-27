@@ -84,7 +84,7 @@ var _road_core := PackedByteArray()
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 21
+const GENERATOR_VERSION := 22
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -2183,7 +2183,8 @@ func _take_cave(c: Array, spacing: float, names: Array) -> bool:
 	caves.append({"entrance": entrance, "dir": dir, "ground": ground,
 		"name": names[caves.size() % names.size()]})
 	# Level the mouth and the approach to it.
-	reserve_site(Vector3(entrance.x, ground, entrance.z) + dir * Cave.SHAFT_LENGTH * 0.4, 14.0)
+	# A good yard in front of the door, to drive up to and turn round in.
+	reserve_site(Vector3(entrance.x, ground, entrance.z) - dir * 6.0, 20.0)
 	var side := Vector3(-dir.z, 0.0, dir.x)
 	for along in [Cave.SHAFT_LENGTH * 0.25, Cave.SHAFT_LENGTH * 0.75]:
 		var p: Vector3 = entrance + dir * along
@@ -2219,7 +2220,7 @@ func _cave_score(entrance: Vector3, dir: Vector3) -> float:
 		if is_road(p.x, p.z) or water_depth(p.x, p.z) > 0.0 or _in_build_site(p.x, p.z):
 			return 0.0
 	var spare := INF
-	var z := Cave.SHAFT_LENGTH
+	var z := Cave.COVERED_FROM
 	while z <= Cave.FOOTPRINT_LENGTH + 2.0:
 		var x := -Cave.CHAMBER_WIDTH * 0.5 - 2.0
 		while x <= Cave.CHAMBER_WIDTH * 0.5 + 2.0:

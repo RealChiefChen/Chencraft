@@ -127,6 +127,7 @@ var _ui_blocking: bool = false
 
 func _ready() -> void:
 	InputSetup.ensure()
+	add_to_group(&"players")
 	collision_layer = Layers.PLAYER
 	collision_mask = Layers.MASK_PLAYER
 	capture_mouse(true)

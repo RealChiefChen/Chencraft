@@ -70,7 +70,6 @@ const ACTIONS := [
 	[&"crane", "Crane: work it / stow it", "Crane, winch and loader", ["R"]],
 	[&"rig_home", "Crane or loader: back to start", "Crane, winch and loader", ["N"]],
 	[&"loader_lock", "Loader: lock / unlock the load", "Crane, winch and loader", ["Space"]],
-	[&"loader_attachment", "Loader: swap bucket / log grapple", "Crane, winch and loader", ["G"]],
 	# Menus and game
 	[&"journal", "Journal", "Menus and game", ["Tab", "J"]],
 	[&"inventory", "Inventory", "Menus and game", ["I"]],

@@ -123,6 +123,7 @@ func _run_all() -> void:
 	await _test(&"vehicles bump into each other", test_vehicles_collide)
 	await _test(&"a piece off the rack can be thrown", test_throw)
 	await _test(&"the player walks up a step but not a wall", test_step_up)
+	await _test(&"a loader's attachment is picked at its pad", test_loader_pad_attachment)
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
@@ -4605,6 +4606,33 @@ func test_load_fixed_while_driven() -> void:
 ## Spec: trucks with a hitch tow trailers. A trailer is hooked on at the
 ## ball, follows the truck round corners by itself, brakes when it brakes,
 ## stays upright, and stands on its leg once let go.
+func test_loader_pad_attachment() -> void:
+	_setup()
+	plot.vehicle_host = world
+	var def := GameData.building(&"loader_pad") if GameData.building(&"loader_pad") != null else null
+	if def == null:
+		for d: BuildingDef in GameData.buildings.values():
+			if d.vehicle == &"loader":
+				def = d
+	check(def != null, "no pad makes a loader")
+	if def == null:
+		done()
+		return
+	var pad := plot.place(def, Vector2i(2, 2) * Plot.SUB, 0, false) as VehiclePad
+	await step(3)
+	check(pad.is_loader_pad(), "the loader's pad does not know it is one")
+	var first := pad.spawn() as Hauler
+	await step(3)
+	check_eq(first.loader.attachment, &"bucket", "first loader")
+	check(pad.cycle_attachment() != "", "changing the attachment said nothing")
+	check_eq(first.loader.attachment, &"bucket", "the loader out in the world changed without a respawn")
+	var second := pad.spawn() as Hauler
+	await step(3)
+	check_eq(second.loader.attachment, &"grapple", "respawned loader")
+	var saved := pad.to_dict()
+	check_eq(String(saved.get("attachment", "")), "grapple", "the pad's choice is not saved")
+	done()
+
 func _block(at: Vector3, size: Vector3) -> StaticBody3D:
 	var b := StaticBody3D.new()
 	b.collision_layer = Layers.WORLD

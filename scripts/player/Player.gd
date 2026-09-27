@@ -422,7 +422,7 @@ func _on_key(event: InputEvent) -> void:
 	# Shift and the turn keys roll whatever is in hand.
 	if turning_held() and (Controls.pressed(event, &"turn_ccw") or Controls.pressed(event, &"turn_cw")):
 		return
-	if Controls.pressed(event, &"machine_output") and _cycle_machine_output():
+	if Controls.pressed(event, &"machine_output") and (_cycle_machine_output() or _cycle_pad_attachment()):
 		return
 	if Controls.pressed(event, &"use"):
 		_interact()
@@ -455,9 +455,6 @@ func _on_driving_key(event: InputEvent) -> bool:
 		return false
 	if l != null and Controls.pressed(event, &"loader_lock"):
 		interacted.emit(l.set_locked(not l.locked))
-		return true
-	if l != null and Controls.pressed(event, &"loader_attachment"):
-		interacted.emit(l.swap_attachment())
 		return true
 	var truck := vehicle as Hauler
 	if truck != null and l == null and (rig() == null or not rig().operating):
@@ -841,6 +838,15 @@ func _aim_exclusions() -> Array[RID]:
 		if is_instance_valid(item):
 			out.append(item.get_rid())
 	return out
+
+## At a loader's pad: which attachment the next loader comes with.
+func _cycle_pad_attachment() -> bool:
+	var hit := aim_hit()
+	var pad := _owner_of(hit.get("collider")) as VehiclePad if not hit.is_empty() else null
+	if pad == null or not pad.is_loader_pad():
+		return false
+	interacted.emit(pad.cycle_attachment())
+	return true
 
 ## At a machine: steps through the sizes it can make its output in. Returns
 ## false when not aiming at one that has a choice.

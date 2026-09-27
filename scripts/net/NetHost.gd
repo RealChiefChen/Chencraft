@@ -350,7 +350,7 @@ func _state_of(thing: Variant, kind: String) -> Variant:
 					"fold": r.folding, "anch": r.anchored, "ty": r.target_yaw, "tg": r.target}
 			if v.loader != null:
 				var l := v.loader
-				s.ld = [l.lift, l.tilt, l.locked, l.thumb_angle]
+				s.ld = [l.lift, l.tilt, l.locked, l.thumb_angle, String(l.attachment)]
 			return s
 		"p":
 			var p := thing as Player

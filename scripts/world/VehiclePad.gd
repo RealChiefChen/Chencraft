@@ -21,6 +21,9 @@ var host: Node3D
 var terrain: Terrain
 
 var vehicle: Node3D = null
+## On a loader's pad: what the loader comes out with, a bucket or a log
+## grapple. Changing it means sending the loader back and spawning it again.
+var attachment: StringName = &"bucket"
 
 var _size: Vector3 = Vector3(4, 0.2, 6)
 
@@ -51,6 +54,8 @@ func spawn() -> Node3D:
 	if target == null:
 		return null
 	target.add_child(truck)
+	if truck.loader != null:
+		truck.loader.set_attachment(attachment)
 	truck.global_transform = Transform3D(
 		Basis.from_euler(Vector3(0, global_rotation.y, 0)),
 		global_position + Vector3(0, truck.spawn_height(), 0))
@@ -79,10 +84,15 @@ func recall() -> bool:
 	return true
 
 func status_line() -> String:
+	var line := ""
 	if has_vehicle():
 		var distance := global_position.distance_to((vehicle as Node3D).global_position)
-		return "%s: [E] recall and respawn (it is %.0f m away)" % [def.display_name, distance]
-	return "%s: [E] spawn the %s" % [def.display_name, vehicle_name().to_lower()]
+		line = "%s: [E] recall and respawn (it is %.0f m away)" % [def.display_name, distance]
+	else:
+		line = "%s: [E] spawn the %s" % [def.display_name, vehicle_name().to_lower()]
+	if is_loader_pad():
+		line += "\nwith the %s  [R] change" % _attachment_name()
+	return line
 
 func vehicle_name() -> String:
 	var spec := GameData.vehicle(def.vehicle if def != null else &"hauler")
@@ -137,13 +147,28 @@ func _slab(size: Vector3, pos: Vector3, color: Color) -> void:
 	mi.material_override = mat
 	add_child(mi)
 
+func is_loader_pad() -> bool:
+	return def != null and GameData.vehicle(def.vehicle).get("loader", null) is Dictionary
+
+## Which attachment the next loader off this pad gets. Returns what to say.
+func cycle_attachment() -> String:
+	if not is_loader_pad():
+		return ""
+	var kinds: Array = LoaderArm.ATTACHMENTS
+	attachment = kinds[(kinds.find(attachment) + 1) % kinds.size()]
+	return "the next loader from this pad comes with the %s - [E] to send the old one back and spawn it" % _attachment_name()
+
+func _attachment_name() -> String:
+	return "log grapple" if attachment == &"grapple" else "bucket"
+
 func to_dict() -> Dictionary:
-	var d := {"has_vehicle": has_vehicle()}
+	var d := {"has_vehicle": has_vehicle(), "attachment": String(attachment)}
 	if has_vehicle() and vehicle.has_method("to_dict"):
 		d["vehicle"] = vehicle.call("to_dict")
 	return d
 
 func from_dict(d: Dictionary) -> void:
+	attachment = StringName(String(d.get("attachment", "bucket")))
 	if not bool(d.get("has_vehicle", false)):
 		return
 	var truck := spawn()

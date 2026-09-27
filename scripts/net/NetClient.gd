@@ -509,6 +509,9 @@ func _vehicle_state(v: Hauler, s: Dictionary) -> void:
 			l.tilt = float(s.ld[1])
 		l.locked = bool(s.ld[2])
 		l.thumb_angle = float(s.ld[3])
+		if (s.ld as Array).size() > 4 and StringName(String(s.ld[4])) != l.attachment:
+			l.set_attachment(StringName(String(s.ld[4])))
+			NetClient._keep_solid(l)
 		if l._thumb != null:
 			l._thumb.rotation = Vector3(l.thumb_angle, 0, 0)
 		l._pose(true)

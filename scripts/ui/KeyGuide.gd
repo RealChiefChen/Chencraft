@@ -67,7 +67,7 @@ const GROUPS := [
 		[[&"sprint", "/", &"lower"], "Loader: raise / lower the arms"],
 		[[&"turn_ccw", "/", &"turn_cw"], "Loader: tip the bucket forward / curl it back"],
 		[[&"loader_lock"], "Loader: lock what is in the bucket in place, or let it go"],
-		[[&"loader_attachment"], "Loader: swap the bucket for the log grapple (empty)"],
+		[[&"machine_output"], "At a loader's pad: bucket or log grapple for the next one spawned"],
 		[[&"rig_home"], "Crane or loader: back to the default position"],
 	]},
 	{"title": "Game", "rows": [
@@ -136,7 +136,7 @@ static func hints_for(state: String) -> Array:
 		"loader":
 			rows = [[[&"move_forward", &"move_back"], "Drive"], [[&"sprint", "/", &"lower"], "Arms up / down"],
 				[[&"turn_ccw", "/", &"turn_cw"], "Tip / curl"], [[&"loader_lock"], "Lock"],
-				[[&"loader_attachment"], "Bucket / grapple"], [[&"rig_home"], "Reset"], [[&"enter_vehicle"], "Get out"]]
+				[[&"rig_home"], "Reset"], [[&"enter_vehicle"], "Get out"]]
 		"crane":
 			rows = [[[&"move_forward", &"move_back"], "Along"], [[&"move_left", &"move_right"], "Across"],
 				[[&"sprint", "/", &"lower"], "Up / down"], [[&"turn_ccw", "/", &"turn_cw"], "Turn"],

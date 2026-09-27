@@ -25,8 +25,11 @@ extends Node3D
 const MODEL := "res://assets/models/player.glb"
 const PARTS: Array[StringName] = [&"Leg_L", &"Leg_R", &"Torso", &"Arm_L", &"Arm_R", &"Head"]
 
-## Seated, from his hips to the top of his hat.
+## His hip pivots above his feet, from the hips to the top of his hat, and
+## how far the underside of a thigh is below the hip pivot when sitting.
+const HIP_HEIGHT := 0.62
 const SEATED_HEIGHT := 1.12
+const THIGH := 0.13
 ## Where the fist is on an arm, in the arm's own frame.
 const HAND := Vector3(0.0, -0.52, -0.02)
 
@@ -187,19 +190,27 @@ func _place() -> void:
 	else:
 		transform = Transform3D.IDENTITY
 
-## Where his hips go in a vehicle, in its own frame. A cab is a closed box, so
-## in one he sits low enough to be all inside it; on an open machine (a quad, a
-## buggy) he sits on top, where you can see him steer.
+## Where he goes in a vehicle, in its own frame: the model's origin (his feet
+## when standing), placed so his hips rest on the seat. The quad's seat is a
+## pad over the tank, the buggy's a bucket seat on the left; a cab is a closed
+## box, so in one he sits low enough to be all inside it.
 static func seat_hips(v: Node3D) -> Vector3:
 	var spec: Dictionary = v.get("spec") if v.get("spec") is Dictionary else {}
 	var seat: Vector3 = Hauler._vec(spec.get("seat", [0, 1.0, 0]))
 	var body: Vector3 = Hauler._vec(spec.get("body", [2.0, 0.5, 4.0]))
 	var top := body.y * 0.5
-	var cab: Dictionary = spec.get("cab", {})
-	if cab.is_empty():
-		return Vector3(seat.x, top + 0.1, seat.z + 0.1)
-	var roof := top + float(Hauler._vec(cab.get("size", [2.3, 0.95, 1.5])).y)
-	return Vector3(seat.x, roof - SEATED_HEIGHT - 0.04, seat.z + 0.1)
+	var hips: Vector3
+	match String(spec.get("style", "truck")):
+		"quad":
+			# The seat pad's top (see VehicleModel._quad), plus the thighs under him.
+			hips = Vector3(0, top + 0.20 + THIGH, 0.1)
+		"buggy":
+			hips = Vector3(-0.35, top + 0.15 + THIGH, 0.3)
+		_:
+			var cab: Dictionary = spec.get("cab", {})
+			var roof := top + float(Hauler._vec(cab.get("size", [2.3, 0.95, 1.5])).y)
+			hips = Vector3(seat.x, roof - SEATED_HEIGHT - 0.04, seat.z + 0.1)
+	return hips - Vector3(0, HIP_HEIGHT, 0)
 
 func _update_tool() -> void:
 	var id := player.selected_tool() if _mode in [&"foot", &"air"] else &""

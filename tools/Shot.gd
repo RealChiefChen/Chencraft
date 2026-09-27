@@ -373,10 +373,15 @@ func shot_avatar_drive() -> void:
 	cam.top_level = true
 	Input.action_press("move_right")
 	await _frames(30)
-	cam.global_transform = Transform3D(Basis(), v.global_position + vb.x * 3.5 + Vector3(0, 1.4, 0) - vb.z * 1.5).looking_at(v.global_position + Vector3(0, 0.6, 0), Vector3.UP)
+	vb = v.global_transform.basis
+	p.rotation.y += PI * 0.5
+	p.camera.rotation.x = -0.15
+	await _frames(10)
+	cam.global_transform = Transform3D(Basis(), v.global_position - vb.x * 3.2 + Vector3(0, 0.9, 0) + vb.z * 0.3).looking_at(v.global_position + Vector3(0, 0.6, 0), Vector3.UP)
 	await _frames(3)
 	await snap("av_drive")
 	Input.action_release("move_right")
+	vb = v.global_transform.basis
 	cam.global_transform = Transform3D(Basis(), v.global_position - vb.z * 3.5 + Vector3(0, 1.5, 0)).looking_at(v.global_position + Vector3(0, 0.6, 0), Vector3.UP)
 	await _frames(3)
 	await snap("av_drive_front")

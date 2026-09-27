@@ -638,7 +638,7 @@ func _physics_step(delta: float) -> void:
 	var sprint: float = kit_of().stat(&"boots", "sprint", 8.5) * WALK_MULT
 	# Hauling a full rack slows you down: the reason to build belts.
 	var load_factor: float = 1.0 - 0.35 * clampf(carried_volume() / maxf(0.01, capacity_m3()), 0.0, 1.0)
-	var speed: float = (sprint if input.pressed("sprint") else walk) * load_factor
+	var speed: float = (sprint if sprinting() else walk) * load_factor
 	# Spec: the player bobs slowly across water rather than swimming it.
 	var depth := water_depth()
 	if depth > WADE_DEPTH:
@@ -660,9 +660,15 @@ func _physics_step(delta: float) -> void:
 		velocity.x = dir.x * speed
 		velocity.z = dir.z * speed
 	else:
+		# Standing still ends a toggled run.
+		_sprint_latched = false
 		velocity.x = move_toward(velocity.x, 0.0, speed * 5.0 * delta)
 		velocity.z = move_toward(velocity.z, 0.0, speed * 5.0 * delta)
+	var wanted := Vector3(velocity.x, 0.0, velocity.z)
+	var was_floor := is_on_floor()
 	move_and_slide()
+	if was_floor and wanted.length() > 0.5 and is_on_wall():
+		_step_up(wanted * delta)
 	if net_view:
 		# The rest - what is carried, dragged, looked at - is the host's.
 		return
@@ -670,6 +676,40 @@ func _physics_step(delta: float) -> void:
 	_update_rack()
 	_update_drag()
 	_update_prompt()
+
+## Sprinting: held down, or (with toggle sprint on) tapped on and left on
+## until tapped again or you stop.
+var _sprint_latched: bool = false
+func sprinting() -> bool:
+	if not Settings.flag(&"toggle_sprint") or input.remote:
+		return input.pressed("sprint")
+	if input.just_pressed("sprint"):
+		_sprint_latched = not _sprint_latched
+	return _sprint_latched
+
+## A kerb, a step, the edge of a slab: walked up rather than stopped at.
+const STEP_HEIGHT := 0.45
+func _step_up(motion: Vector3) -> void:
+	# Far enough on that the body comes down on top of the step, not on its
+	# edge.
+	var ahead := motion.normalized() * maxf(motion.length(), 0.3)
+	var start := global_transform
+	var up := Vector3.UP * STEP_HEIGHT
+	# Room above, and nothing in the way up there.
+	if test_move(start, up):
+		return
+	var raised := start.translated(up)
+	if test_move(raised, ahead):
+		return
+	global_transform = raised.translated(ahead)
+	# Back down onto whatever the step is.
+	var hit := move_and_collide(-up * 1.05)
+	if hit == null:
+		# Nothing under it: it was not a step.
+		global_transform = start
+		return
+	if global_position.y < start.origin.y + 0.02:
+		global_transform = start
 
 ## On the host: a guest's player goes where the guest last said it was. If
 ## something here moved it instead - or it has just got out of a truck, or

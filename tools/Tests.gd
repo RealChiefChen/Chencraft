@@ -122,6 +122,7 @@ func _run_all() -> void:
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
 	await _test(&"vehicles bump into each other", test_vehicles_collide)
 	await _test(&"a piece off the rack can be thrown", test_throw)
+	await _test(&"the player walks up a step but not a wall", test_step_up)
 	await _test(&"kill plane rescues fallen items", test_kill_plane)
 	await _test(&"the kill plane is below every cave", test_kill_plane_below_caves)
 	await _test(&"co-op addresses are read with or without a port", test_net_address)
@@ -4604,6 +4605,39 @@ func test_load_fixed_while_driven() -> void:
 ## Spec: trucks with a hitch tow trailers. A trailer is hooked on at the
 ## ball, follows the truck round corners by itself, brakes when it brakes,
 ## stays upright, and stands on its leg once let go.
+func _block(at: Vector3, size: Vector3) -> StaticBody3D:
+	var b := StaticBody3D.new()
+	b.collision_layer = Layers.WORLD
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	cs.shape = box
+	b.add_child(cs)
+	world.add_child(b)
+	b.global_position = at
+	return b
+
+func test_step_up() -> void:
+	for h in [0.3, 1.2]:
+		_setup(false)
+		var p := _make_player()
+		world.add_child(p)
+		p.global_position = Vector3(0, 0.1, 0)
+		_block(Vector3(0, h * 0.5, -3.0), Vector3(6, h, 2))
+		await step(10)
+		p.input.remote = true
+		p.input.apply({"a": ["move_forward"], "k": [], "b": []})
+		var top := 0.0
+		for i in 90:
+			await get_tree().physics_frame
+			top = maxf(top, p.global_position.y)
+		if h < 0.5:
+			check(top > h - 0.05, "the player did not step up %.1f m (top y=%.2f)" % [h, top])
+		else:
+			check(p.global_position.y < 0.3 and p.global_position.z > -2.2, "the player climbed a %.1f m wall (y=%.2f)" % [h, p.global_position.y])
+		p.queue_free()
+	done()
+
 func test_throw() -> void:
 	_setup()
 	var p := _make_player()

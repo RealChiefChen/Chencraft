@@ -44,6 +44,7 @@ func show_page(i: int) -> void:
 			_slider(&"mouse_sensitivity", "Mouse sensitivity", 0.2, 3.0, 0.05, "%.2fx")
 			_toggle(&"invert_y", "Invert mouse Y")
 			_slider(&"fov", "Field of view", 60.0, 100.0, 1.0, "%d°")
+			_toggle(&"toggle_sprint", "Toggle sprint (tap to run, tap again to walk)")
 			_toggle(&"manual_gearbox", "Manual gearbox for trucks (change gear yourself)")
 			_bindings()
 		"Video":

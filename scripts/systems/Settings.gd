@@ -32,6 +32,7 @@ const DEFAULTS := {
 	&"invert_y": false,
 	&"fov": 75.0,
 	&"manual_gearbox": false,
+	&"toggle_sprint": false,
 	# Video
 	&"fullscreen": false,
 	&"vsync": true,
@@ -64,6 +65,7 @@ const NOTES := {
 	&"mouse_sensitivity": "Mouse look speed, 0.2 to 3.0",
 	&"invert_y": "true to invert the mouse's up and down",
 	&"fov": "Field of view in degrees, 60 to 100",
+	&"toggle_sprint": "true: tap sprint to run until you tap it again or stop. false: hold it",
 	&"manual_gearbox": "true: trucks change gear only when you do (gear up / gear down keys). false: automatic",
 	&"fullscreen": "true for fullscreen",
 	&"vsync": "true to sync to the monitor",

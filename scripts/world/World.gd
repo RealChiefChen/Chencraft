@@ -15,8 +15,13 @@ const STORE_POSITION := Vector3(185, 0, 52)
 ## the dealer, machines at the works.
 const DEALER_POSITION := Vector3(125, 0, 105)
 const WORKS_POSITION := Vector3(232, 0, 100)
-const QUARRY_CENTRE := Vector3(-10, 0, -430)
+## Out on its own in a taiga valley west of the north road, clear of
+## everything else, and drawn out north to south into a long oval.
+const QUARRY_CENTRE := Vector3(-360, 0, -680)
 const QUARRY_RADIUS := 90.0
+const QUARRY_STRETCH := 1.7
+## The long axis runs north-south; the road comes in on the east side.
+const QUARRY_ANGLE := -PI * 0.5
 const QUARRY_FLOOR_RADIUS := 24.0
 ## Where the demo lines stand when they are switched on (Settings > Debug).
 const SHOWCASE_POSITION := Vector3(28, 0, 188)
@@ -463,18 +468,30 @@ static func ring_point(angle: float) -> Vector3:
 ## The haul road into the quarry: from the rim on the south side, twice round
 ## the pit's wall to its floor - the same line the pit's benches are cut along.
 static func quarry_haul_road() -> Array:
-	var c := Vector2(QUARRY_CENTRE.x, QUARRY_CENTRE.z)
+	var f := quarry_feature()
 	var road := 14.0
 	var turns := 2.0
 	var span := QUARRY_RADIUS - QUARRY_FLOOR_RADIUS - road
-	var out: Array = [Vector3(c.x, 0, c.y + QUARRY_RADIUS + 14.0)]
-	var steps := 64
+	var out: Array = [quarry_gate()]
+	var steps := 96
 	for i in steps + 1:
 		var sv := float(i) / float(steps)
 		var a := PI * 0.5 + TAU * turns * sv
 		var r := QUARRY_RADIUS - road * 0.5 - span * sv
-		out.append(Vector3(c.x + cos(a) * r, 0, c.y + sin(a) * r))
+		var p := Terrain.from_pit_space(f, Vector2(cos(a) * r, sin(a) * r))
+		out.append(Vector3(p.x, 0, p.y))
 	return out
+
+## Where the lane in meets the quarry's rim: just outside it, on the road side.
+static func quarry_gate() -> Vector3:
+	var p := Terrain.from_pit_space(quarry_feature(), Vector2(0, QUARRY_RADIUS + 14.0))
+	return Vector3(p.x, 0, p.y)
+
+## The quarry's pit as the terrain carves it.
+static func quarry_feature() -> Dictionary:
+	return {"name": "Quarry", "kind": "pit", "centre": Vector2(QUARRY_CENTRE.x, QUARRY_CENTRE.z), "radius": QUARRY_RADIUS,
+		"rim": 30.0, "floor": 4.0, "inner": QUARRY_FLOOR_RADIUS, "road": 14.0, "turns": 2.0, "entry": PI * 0.5,
+		"stretch": QUARRY_STRETCH, "angle": QUARRY_ANGLE}
 
 static func _arterial(angle: float, onward: Array) -> Array:
 	var at := ring_point(angle)
@@ -517,7 +534,7 @@ func _build_terrain() -> void:
 		# and the lane in to its top, branching off the north road (below)
 		# wherever that runs nearest.
 		quarry_haul_road(),
-		{"branch_of": 5, "route": [Vector3(-140, 0, -330), QUARRY_CENTRE + Vector3(0, 0, QUARRY_RADIUS + 14.0)]},
+		{"branch_of": 5, "route": [Vector3.ZERO, quarry_gate() + Vector3(50, 0, 0), quarry_gate()]},
 		[Vector3(0, 0, 50), Vector3(0, 0, 86), ring_point(PI * 0.5)],
 		# East, past the store, to the far coast.
 		{"bridge": true, "route": _arterial(0.0, [Vector3(260, 0, 15), Vector3(1000, 0, 180),
@@ -555,8 +572,7 @@ func _build_terrain() -> void:
 			"rim": 30.0, "floor": 8.0},
 		# The quarry: an open pit a good 26 m deep, a haul road spiralling
 		# twice round its wall from the rim on the road side down to the floor.
-		{"name": "Quarry", "kind": "pit", "centre": Vector2(QUARRY_CENTRE.x, QUARRY_CENTRE.z), "radius": QUARRY_RADIUS,
-			"rim": 30.0, "floor": 4.0, "inner": QUARRY_FLOOR_RADIUS, "road": 14.0, "turns": 2.0, "entry": PI * 0.5},
+		quarry_feature(),
 	]
 	# Everything that has to stand on the level, and all of it above the water
 	# line so a levelled site is never under the sheet.

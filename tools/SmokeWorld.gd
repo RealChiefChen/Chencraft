@@ -242,7 +242,8 @@ func _check_spread() -> void:
 	var far_mean: float = dear[0] / maxf(1.0, dear[1])
 	print("census: %d trees and rocks (built and dormant), %d species" % [all.size(), species.size()])
 	print("spread: cheap ore %.0f m out on average, dear ore %.0f m, %d bridges" % [near_mean, far_mean, world.bridges.size()])
-	_require(far_mean > near_mean * 1.8, "the dear ore is not further out than the cheap (%.0f vs %.0f)" % [far_mean, near_mean])
+	# The quarry is out in the taiga now, which pulls the cheap mean out a way.
+	_require(far_mean > near_mean * 1.6, "the dear ore is not further out than the cheap (%.0f vs %.0f)" % [far_mean, near_mean])
 	_require(diamonds > 0, "there are no diamonds")
 	_require(starmetal > 0, "there is no starmetal in the crater")
 	_require(mahogany > 0, "no mahogany grew")
@@ -276,7 +277,8 @@ func _check_quarry() -> void:
 	var t: Terrain = world.terrain
 	var c := World.QUARRY_CENTRE
 	var floor_h := t.height_at(c.x, c.z)
-	var rim_h := t.height_at(c.x, c.z + World.QUARRY_RADIUS + 20.0)
+	var gate := World.quarry_gate()
+	var rim_h := t.height_at(gate.x, gate.z)
 	var steep := 0.0
 	var road := World.quarry_haul_road()
 	var last: Vector3 = road[1]

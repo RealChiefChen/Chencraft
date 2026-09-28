@@ -84,7 +84,7 @@ var _road_core := PackedByteArray()
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 26
+const GENERATOR_VERSION := 27
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -829,7 +829,8 @@ func _feature_at(x: float, z: float) -> Array:
 				var w := 1.0 - smoothstep(0.7, 1.0, t)
 				return [w, Biome.MOUNTAIN if t < 0.8 else Biome.WOODLAND, ridge]
 			"pit":
-				return _pit_at(f, off, d)
+				var q := pit_space(f, x, z)
+				return _pit_at(f, q, q.length())
 			"crater":
 				var rim_h: float = float(f.get("rim", 9.0))
 				var floor_c: float = float(f.get("floor", 2.0))
@@ -890,9 +891,19 @@ func _pit_at(f: Dictionary, off: Vector2, d: float) -> Array:
 ## Inside a quarry pit (plus `pad` metres round it)?
 func _in_pit(x: float, z: float, pad: float = 0.0) -> bool:
 	for f in features:
-		if String(f.kind) == "pit" and Vector2(x, z).distance_to(f.centre) < float(f.radius) + pad:
+		if String(f.kind) == "pit" and pit_space(f, x, z).length() < float(f.radius) + pad:
 			return true
 	return false
+
+## A pit need not be round: `stretch` draws it out along `angle`. This is a
+## point in the pit's own round frame, where it is laid out as a circle.
+static func pit_space(f: Dictionary, x: float, z: float) -> Vector2:
+	var off := (Vector2(x, z) - (f.centre as Vector2)).rotated(-float(f.get("angle", 0.0)))
+	return Vector2(off.x / float(f.get("stretch", 1.0)), off.y)
+
+## Back from the pit's round frame to the map.
+static func from_pit_space(f: Dictionary, q: Vector2) -> Vector2:
+	return (f.centre as Vector2) + Vector2(q.x * float(f.get("stretch", 1.0)), q.y).rotated(float(f.get("angle", 0.0)))
 
 ## Nothing grows in a crater.
 func _in_crater(x: float, z: float) -> bool:
@@ -2349,6 +2360,8 @@ func _cave_score(entrance: Vector3, dir: Vector3) -> float:
 	var ground := height_at(entrance.x, entrance.z)
 	if ground < Cave.CHAMBER_DROP + 1.0:
 		return 0.0           # the chamber floor would be under the water line
+	if _in_pit(entrance.x, entrance.z, 80.0):
+		return 0.0           # the quarry keeps its ground to itself
 	var side := Vector3(-dir.z, 0.0, dir.x)
 	# The mouth faces open ground: nothing much higher than it for a way out in
 	# front, or levelling it digs a crater rather than a doorway.

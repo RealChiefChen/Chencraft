@@ -96,7 +96,7 @@ func _clear(p: Vector3, reach: float) -> bool:
 			q += Vector3(cos(k * TAU / 8.0), 0, sin(k * TAU / 8.0)) * (reach + 8.0)
 		if terrain.is_road(q.x, q.z) or terrain.water_depth(q.x, q.z) > 0.0 \
 				or terrain._in_build_site(q.x, q.z) or terrain.in_cave_zone(q.x, q.z) \
-				or terrain.is_blocked(q.x, q.z):
+				or terrain.is_blocked(q.x, q.z) or terrain._in_pit(q.x, q.z, 40.0):
 			return false
 	for cave in terrain.caves:
 		var e: Vector3 = cave.entrance

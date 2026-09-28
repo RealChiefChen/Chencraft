@@ -52,7 +52,7 @@ const GROUPS := [
 		[[&"move_left", &"move_right"], "Steer"],
 		[[&"jump"], "Brake"],
 		[[&"gear_up", "/", &"gear_down"], "Manual gearbox: change gear (Settings > Controls)"],
-		[[&"unload"], "Drop the tailgate and tip the load out"],
+		[[&"unload"], "Tailgate down or up (a dump tub tips)"],
 		[[&"unload_one"], "Drop one piece off the back"],
 		[[&"recover"], "Recover (set it back on its wheels) - once a second, not on outriggers"],
 		[[&"winch_hook"], "Winch: hook on what you aim at, or unhook (from the seat)"],
@@ -129,12 +129,12 @@ static func hints_for(state: String) -> Array:
 				[[&"pick_block"], "Copy"], [[&"drop_one"], "Empty hand"], [[&"edit_select"], "Edit what you aim at"],
 				[[&"rotate_x", &"rotate_y", &"rotate_z"], "Rotate"], [[&"sprint", "/", &"lower"], "Up / down"], [[&"build_mode"], "Done"]]
 		"drive":
-			rows = [[[&"move_forward", &"move_back"], "Drive"], [[&"jump"], "Brake"], [[&"unload"], "Unload"],
+			rows = [[[&"move_forward", &"move_back"], "Drive"], [[&"jump"], "Brake"], [[&"unload"], "Tailgate"],
 				[[&"winch_hook"], "Winch"], [[&"winch_in", "/", &"winch_out"], "Reel"], [[&"crane"], "Crane"],
 				[[&"hitch"], "Hitch"], [[&"enter_vehicle"], "Get out"]]
 		"drive_manual":
 			rows = [[[&"move_forward", &"move_back"], "Drive"], [[&"gear_up", "/", &"gear_down"], "Gears"],
-				[[&"jump"], "Brake"], [[&"unload"], "Unload"], [[&"winch_hook"], "Winch"], [[&"crane"], "Crane"],
+				[[&"jump"], "Brake"], [[&"unload"], "Tailgate"], [[&"winch_hook"], "Winch"], [[&"crane"], "Crane"],
 				[[&"hitch"], "Hitch"], [[&"enter_vehicle"], "Get out"]]
 		"loader":
 			rows = [[[&"move_forward", &"move_back"], "Drive"], [[&"sprint", "/", &"lower"], "Arms up / down"],

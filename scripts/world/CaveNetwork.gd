@@ -1129,6 +1129,10 @@ func _tunnel_mesh(ti: int) -> Buf:
 		var out_b := (pts[last - 1] - pts[last]).normalized()
 		_fit_to_wall(rings[0], rooms[int(t.a)], out_a)
 		_fit_to_wall(rings[last], rooms[int(t.b)], out_b)
+		# An end ring slid on along the tunnel must not pass the rings after
+		# it, or the tube folds back through itself.
+		_keep_ahead(rings, out_a, 1)
+		_keep_ahead(rings, out_b, -1)
 	for k in rings.size() - 1:
 		var kind: int = int(t.kind_a) if k < rings.size() / 2 else int(t.kind_b)
 		var axis := (pts[k] + pts[k + 1]) * 0.5
@@ -1147,13 +1151,38 @@ func _tunnel_mesh(ti: int) -> Buf:
 			_tri(out, a, c, d, axis, col)
 	return out
 
+## Walks in from one end (`step` 1 from the start, -1 from the end): each
+## ring's points stay at least a little further along `out` than the ring
+## before them.
+static func _keep_ahead(rings: Array, out: Vector3, step: int) -> void:
+	var k := 0 if step > 0 else rings.size() - 1
+	while k + step >= 0 and k + step < rings.size():
+		var moved := false
+		for j in (rings[k] as Array).size():
+			var here: Vector3 = rings[k][j]
+			var next: Vector3 = rings[k + step][j]
+			var gap := (next - here).dot(out)
+			if gap < 0.4:
+				rings[k + step][j] = next + out * (0.4 - gap)
+				moved = true
+		if not moved:
+			return
+		k += step
+
 ## Slides each point of an end ring back along the tunnel (`out` points away
 ## from the cavern) to where the cavern's wall is, a hand's width inside it.
 func _fit_to_wall(ring: Array, room: Dictionary, out: Vector3) -> void:
 	var reach := maxf(float(room.rx), float(room.rz)) * BUMP_MAX * 1.1 + 4.0
 	for j in ring.size():
 		var p: Vector3 = ring[j]
-		if _inside_wall(room, p + out * 3.0):
+		if _inside_wall(room, p + out * 0.3):
+			# Still in the cavern - the wall bulges out past the mouth here:
+			# on along the tunnel to where the wall is.
+			var u2 := 0.5
+			while u2 <= reach and _inside_wall(room, p + out * u2):
+				u2 += 0.5
+			if u2 <= reach:
+				ring[j] = p + out * (_wall_hit(room, p, out, maxf(0.0, u2 - 0.5), u2) - 0.15)
 			continue
 		# The nearest point back along the tunnel that is inside the cavern;
 		# the wall is between there and here.

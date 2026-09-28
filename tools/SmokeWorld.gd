@@ -447,6 +447,7 @@ func _report() -> void:
 	_check_bridges_clear()
 	_check_quarry()
 	_check_cave_ways()
+	_check_cave_joins()
 	_check_hollow()
 	print("\n--- world smoke test ---")
 	print("frames            %d" % frames)
@@ -468,3 +469,32 @@ func _report() -> void:
 		print("problems: " + str(problems))
 	print("RESULT: %s" % ("ok" if ok else "FAILED"))
 	get_tree().quit(0 if ok else 1)
+
+## Every tunnel ends on its cavern's wall: no ring of the tube left standing
+## inside the cavern, and none hanging out past the wall with no cavern
+## behind it.
+func _check_cave_joins() -> void:
+	var net: CaveNetwork = world.network
+	var bad := 0
+	for ti in net.tunnels.size():
+		var t: Dictionary = net.tunnels[ti]
+		var pts: PackedVector3Array = t.points
+		var last := pts.size() - 1
+		for end in 2:
+			var ri := int(t.a) if end == 0 else int(t.b)
+			var room: Dictionary = net.rooms[ri]
+			var k := 0 if end == 0 else last
+			var nb := pts[1] if end == 0 else pts[last - 1]
+			var frame := CaveNetwork._ring_frame((pts[mini(last, k + 1)] - pts[maxi(0, k - 1)]).normalized())
+			var r := float(t.get("ra", t.radius)) if end == 0 else float(t.get("rb", t.radius))
+			var ring: Array = []
+			for sp in CaveNetwork.section(r):
+				ring.append(pts[k] + (frame[0] as Vector3) * sp.x + (frame[1] as Vector3) * sp.y)
+			var out := (nb - pts[k]).normalized()
+			net._fit_to_wall(ring, room, out)
+			for p: Vector3 in ring:
+				if not net._inside_wall(room, p - out * 0.6) or net._inside_wall(room, p + out * 0.6):
+					bad += 1
+					break
+	print("cave joins: %d of %d tunnel ends off their walls" % [bad, net.tunnels.size() * 2])
+	_require(bad == 0, "%d tunnel ends do not meet their cavern walls" % bad)

@@ -888,3 +888,22 @@ func shot_opal() -> void:
 	await _frames(30)
 	await look(base + Vector3(2.2, 1.6, 3.6), base + Vector3(2.2, 0.2, 0))
 	await snap("opal")
+
+## Where a tunnel meets an Abyss cavern: the join that did not fit (tunnel 50
+## into cavern 57), from inside the cavern.
+func shot_join() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var net: CaveNetwork = world.network
+	var end := net._tube_end(50, 57)
+	var o: Vector3 = end.origin
+	var out_dir: Vector3 = end.out
+	var lamp := OmniLight3D.new()
+	lamp.omni_range = 200.0
+	lamp.light_energy = 3.0
+	lamp.omni_attenuation = 0.4
+	world.player.camera.add_child(lamp)
+	var eye := o - out_dir * 16.0 + Vector3(0, 4.0, 0)
+	world.player.global_position = eye
+	await look(eye, o + Vector3(0, 3.0, 0))
+	await snap("join")

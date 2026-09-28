@@ -194,7 +194,20 @@ func _lap(what: String) -> void:
 ## still until it is done, so the loading screen can show how far along it is.
 var staged_load: bool = false
 signal load_progress(stage: String, fraction: float)
+## One step inside a stage, as it starts: what is being done, with numbers.
+signal load_detail(text: String)
 signal finished_loading()
+
+## The stages of building the world, and how far along the whole each one
+## starts, for the boot screen's checklist.
+const LOAD_STAGES := [
+	["Raising the land", 0.02],
+	["Planting the forests", 0.55],
+	["Laying the rock", 0.70],
+	["Digging the caves", 0.80],
+	["Opening the shops", 0.92],
+	["Setting you down", 0.96],
+]
 
 ## Between build stages: says how far along it is and, loading behind the boot
 ## screen, gives it a frame to draw.
@@ -205,18 +218,31 @@ func _stage(next: String, fraction: float) -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
+## Inside a stage: says what it is doing now and, behind the boot screen,
+## gives it a frame to show it. Off the boot screen it does nothing and
+## returns at once.
+func _detail(text: String) -> void:
+	if not staged_load:
+		return
+	if OS.has_environment("PROFILE_LOAD"):
+		print("load detail: ", text)
+	load_detail.emit(text)
+	await get_tree().process_frame
+
 func _ready() -> void:
 	_lap_ms = Time.get_ticks_msec()
 	if staged_load:
 		# Nothing moves or falls until the whole world is there.
 		process_mode = Node.PROCESS_MODE_DISABLED
-	await _stage("Raising the land", 0.02)
+	await _stage(LOAD_STAGES[0][0], LOAD_STAGES[0][1])
 	_rng.seed = 20260921
 	InputSetup.ensure()
+	await _detail("Setting up the sky, the sun and the sea")
 	_build_environment()
-	_build_terrain()
+	await _build_terrain()
 	_lap("terrain")
-	await _stage("Planting the forests", 0.55)
+	await _stage(LOAD_STAGES[1][0], LOAD_STAGES[1][1])
+	await _detail("Scattering rocks, grass and flowers over the land")
 	decor = Decor.new()
 	decor.name = "Decor"
 	decor.setup(terrain, 7331)
@@ -248,20 +274,26 @@ func _ready() -> void:
 	add_child(quests)
 
 	_lap("terrain+decor")
-	_build_forest()
+	await _build_forest()
 	_lap("forest")
-	await _stage("Laying the rock", 0.7)
-	_build_quarry()
+	await _stage(LOAD_STAGES[2][0], LOAD_STAGES[2][1])
+	await _build_quarry()
+	await _detail("Dropping starmetal into the crater where it fell")
 	_build_crater()
 	_lap("rocks")
-	await _stage("Digging the caves", 0.82)
-	_build_caves()
+	await _stage(LOAD_STAGES[3][0], LOAD_STAGES[3][1])
+	await _build_caves()
 	_lap("cave fields")
-	await _stage("Opening the shops", 0.94)
+	await _stage(LOAD_STAGES[4][0], LOAD_STAGES[4][1])
+	await _detail("Building the outposts, trading posts and miners' camps")
 	_build_outposts()
+	await _detail("Opening the sell depot")
 	_build_depot()
+	await _detail("Stocking the hardware store, the vehicle dealer and the machine works")
 	_build_store()
 	_lap("places")
+	await _stage(LOAD_STAGES[5][0], LOAD_STAGES[5][1])
+	await _detail("Making you, your tools and your build kit")
 
 	player = _make_player()
 	add_child(player)
@@ -300,6 +332,12 @@ func _ready() -> void:
 		quests.from_dict({})
 	else:
 		SaveSystem.choose_start_slot()
+	if Net.is_client():
+		await _detail("Waiting for the host's world")
+	elif SaveSystem.has_save():
+		await _detail("Loading your save: your plot, buildings, vehicles, money and quests")
+	else:
+		await _detail("No save yet: a new game, with a starting float")
 	if not Net.is_client() and SaveSystem.has_save():
 		loaded = SaveSystem.load_game(plot, player, "", manager,
 			_spawn_vehicle_for_load, quests)
@@ -328,6 +366,7 @@ func _ready() -> void:
 	hud.toast("Welcome back - day %d" % Economy.day if loaded else
 		"You have %s. Fell a tree to get started." % UIKit.money(Economy.money), UITheme.ACCENT)
 
+	await _detail("Applying your settings and building the menus")
 	Settings.changed.connect(_on_setting_changed)
 	_apply_all_settings()
 	_build_menus()
@@ -566,7 +605,13 @@ func _build_terrain() -> void:
 		"radius": 18.0, "near": 1500.0, "far": 2300.0})
 	terrain.spur_sites.append(SUMMIT_STORE)
 	terrain.cache_path = "user://terrain_cache.bin"
+	if staged_load:
+		terrain.loading_hook = _detail
 	add_child(terrain)
+	# Behind the boot screen the land builds a step a frame: wait for it.
+	if not terrain.generated:
+		await terrain.finished_generating
+	await _detail("Walling the edge of the map and building %d bridges" % terrain.bridges.size())
 
 	# A wall at the map edge, so nothing drives off the world.
 	var bounds := StaticBody3D.new()
@@ -587,10 +632,12 @@ func _build_terrain() -> void:
 		bounds.add_child(cs)
 	add_child(bounds)
 	_build_bridges()
+	await _detail("Standing up the landmarks: spires, arches and lookouts")
 	landmarks = Landmarks.new()
 	landmarks.name = "Landmarks"
 	landmarks.setup(terrain, 911)
 	add_child(landmarks)
+	await _detail("Laying %d roads' surfaces, kerbs and markings" % terrain.road_paths.size())
 	var roads := RoadSurface.new()
 	roads.name = "RoadSurface"
 	roads.setup(terrain)
@@ -769,6 +816,7 @@ func _build_forest() -> void:
 	var pools: Array[PackedVector3Array] = []
 	var total := 0
 	var step := 2 if MAP_HALF <= 400.0 else 3
+	await _detail("Finding the right country for %d kinds of tree" % species.size())
 	for kind in species:
 		var pool: PackedVector3Array
 		if kind.has("site"):
@@ -794,6 +842,7 @@ func _build_forest() -> void:
 		quota = maxi(quota, int(kind.get("min", 0)))
 		if quota <= 0:
 			continue
+		await _detail("Growing %d %s trees in their groves (%d of %d kinds)" % [quota, String(kind.name).to_lower(), i + 1, species.size()])
 		var field := ResourceField.new()
 		field.name = "Forest_%s" % kind.name.replace(" ", "_")
 		field.quota = quota
@@ -809,6 +858,7 @@ func _build_forest() -> void:
 		add_child(field)
 		field.prefill()
 		tree_fields.append(field)
+	await _detail("Planting the wood by your plot")
 	_build_starter_forest(species)
 
 ## How big a grove is, and what share of a species' trees stand in one rather
@@ -1113,6 +1163,7 @@ func _build_quarry() -> void:
 		{"item": &"ore_gold", "volume": [0.20, 1.4], "embed": [0.45, 0.70]},
 	]
 	var per_ore: int = maxi(1, rock_count / ores.size())
+	await _detail("Stocking the quarry with %d kinds of ore, bedded in the pit floor" % ores.size())
 	for i in ores.size():
 		var kind: Dictionary = ores[i]
 		var field := ResourceField.new()
@@ -1134,6 +1185,7 @@ func _build_quarry() -> void:
 			float(kind.get("near", 0.0)), float(kind.get("far", INF)))
 		if pool.is_empty():
 			continue
+		await _detail("Scattering %d %s out in the wild" % [int(kind.quota), GameData.item_name(kind.item).to_lower()])
 		var field := ResourceField.new()
 		field.name = "Wild_%s" % kind.item
 		field.quota = int(kind.quota)
@@ -1170,8 +1222,12 @@ func _build_caves() -> void:
 	network = CaveNetwork.new()
 	network.name = "Caves"
 	network.manager = manager
+	await _detail("Planning %d cave networks under the islands, and the deep passages between them" % CAVE_ZONES.size())
 	network.plan(terrain, CAVE_ZONES, CAVE_LINKS, 4242)
 	_lap("cave plan")
+	var net_summary: Dictionary = network.summary()
+	await _detail("Hollowing out %d caverns and %.1f km of tunnel, %d of them below the sea" % [
+		int(net_summary.caverns), float(net_summary.tunnel_km), int(net_summary.below_sea)])
 	for plan in terrain.caves:
 		var cave := Cave.new()
 		cave.name = String(plan.name).replace(" ", "").replace("'", "")
@@ -1181,9 +1237,12 @@ func _build_caves() -> void:
 		add_child(cave)
 		caves.append(cave)
 		network.entrances.append(cave)
+	await _detail("Framing %d cave entrances with timber and lamps" % terrain.caves.size())
 	add_child(network)
 	_lap("cave build")
 	for i in network.rooms.size():
+		if i % 8 == 0:
+			await _detail("Bedding ore in the caverns (%d-%d of %d)" % [i + 1, mini(i + 8, network.rooms.size()), network.rooms.size()])
 		var room: Dictionary = network.rooms[i]
 		var size := maxf(float(room.rx), float(room.rz))
 		var ores: Array = []

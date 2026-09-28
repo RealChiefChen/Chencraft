@@ -180,7 +180,30 @@ func _ready() -> void:
 	pm.friction = 0.9
 	physics_material_override = pm
 	_configure_noise()
-	generate()
+	await generate()
+	generated = true
+	finished_generating.emit()
+
+## Loading behind the boot screen, the world sets this: it is told what the
+## land is doing between each step, and given a frame to show it. Awaited.
+var loading_hook: Callable
+var generated: bool = false
+signal finished_generating()
+
+## Between two steps of generation: says what comes next. Off the boot
+## screen this returns at once and generation runs straight through.
+func _pause(what: String) -> void:
+	if loading_hook.is_valid():
+		await loading_hook.call(what)
+
+func _road_km() -> float:
+	var metres := 0.0
+	for rp in road_paths:
+		var path: Array = rp.path
+		for i in range(1, path.size()):
+			metres += Vector2((path[i] as Vector3).x - (path[i - 1] as Vector3).x,
+				(path[i] as Vector3).z - (path[i - 1] as Vector3).z).length()
+	return metres / 1000.0
 
 func _configure_noise() -> void:
 	_elevation.seed = noise_seed
@@ -461,9 +484,15 @@ func generate() -> void:
 	_biomes.resize(verts)
 	_road_mask.resize(verts)
 
-	if not _load_cache():
+	await _pause("Measuring out %.1f km of land: %d x %d cells of %.0f m" % [half_extent * 2.0 / 1000.0, _cells, _cells, CELL])
+	if _load_cache():
+		await _pause("Read the land from the map cache (%d roads, %d bridges, %d caves) - no need to build it again" % [
+			road_paths.size(), bridges.size(), caves.size()])
+	else:
+		await _pause("No map cache yet: shaping the hills, valleys and coasts, %s height points - the slow part, done once" % UIKit.money((_cells + 1) * (_cells + 1)).replace("$", ""))
 		_fill_heights()
 		_lap("heights")
+		await _pause("Cutting %d rivers to the sea, with their fords" % rivers.size())
 		_holes.resize(_cells * _cells)
 		_holes.fill(0)
 		bridges.clear()
@@ -472,9 +501,12 @@ func generate() -> void:
 		_road_core.resize(_road_mask.size())
 		_road_core.fill(0)
 		_carve_rivers()
+		await _pause("Levelling %d build sites" % build_sites.size())
 		_level_sites()
+		await _pause("Surveying %d roads over the hills, round the lakes and across the rivers" % roads.size())
 		_route_roads()
 		_lap("routing")
+		await _pause("Grading %.1f km of road, with %d bridges" % [_road_km(), bridges.size()])
 		# The plot's square is levelled before the roads are graded as well as
 		# after, so a road running up to it comes down to its level instead of
 		# ending in mid-air at its edge.
@@ -485,18 +517,24 @@ func generate() -> void:
 		_flatten_sites()
 		_grade_roads(roads)
 		_lap("rivers+roads")
+		await _pause("Finding places for %d outposts, camps and lookouts, and roads out to them" % site_requests.size())
 		_place_requested_sites()
 		_grade_roads(_spur_roads())
 		_lap("sites")
+		await _pause("Looking for hillsides with rock enough over them for cave mouths")
 		_plan_caves()
 		_lap("caves")
+		await _pause("Found %d cave mouths; cutting their ways in" % caves.size())
 		_flatten_sites()
 		_flatten_clear_zones()
 		_cut_cave_holes()
+		await _pause("Saving the map cache, so next time is quicker")
 		_save_cache()
 	_block_bridges()
+	await _pause("Building the ground mesh and its collision (%d chunks)" % int(pow(ceil(float(_cells) / float(CHUNK)), 2.0)))
 	_build_mesh()
 	_lap("mesh")
+	await _pause("Working out what hides what, so hidden land is not drawn")
 	_build_occluders()
 	_lap("occluders")
 

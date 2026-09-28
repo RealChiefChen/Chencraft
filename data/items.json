@@ -1518,6 +1518,7 @@
   "materials": [
     {
       "id": "pine",
+      "level": 1,
       "path": "wood",
       "raw_item": "wood_pine",
       "final_item": "lumber_pine",
@@ -1527,6 +1528,7 @@
     },
     {
       "id": "palm",
+      "level": 1,
       "path": "wood",
       "raw_item": "wood_palm",
       "final_item": "lumber_palm",
@@ -1537,6 +1539,7 @@
     },
     {
       "id": "birch",
+      "level": 1,
       "path": "wood",
       "raw_item": "wood_birch",
       "final_item": "lumber_birch",
@@ -1546,6 +1549,7 @@
     },
     {
       "id": "spruce",
+      "level": 1,
       "path": "wood",
       "raw_item": "wood_spruce",
       "final_item": "lumber_spruce",
@@ -1555,6 +1559,7 @@
     },
     {
       "id": "willow",
+      "level": 1,
       "path": "wood",
       "raw_item": "wood_willow",
       "final_item": "lumber_willow",
@@ -1564,25 +1569,28 @@
     },
     {
       "id": "baobab",
+      "level": 2,
       "path": "wood",
       "raw_item": "wood_baobab",
       "final_item": "lumber_baobab",
-      "raw": 280,
-      "pre": 450,
-      "final": 360,
+      "raw": 320,
+      "pre": 1200,
+      "final": 450,
       "note": "Spongy: sell it sanded, planks lose value"
     },
     {
       "id": "oak",
+      "level": 1,
       "path": "wood",
       "raw_item": "wood_oak",
       "final_item": "lumber_oak",
       "raw": 340,
       "pre": 420,
-      "final": 830
+      "final": 650
     },
     {
       "id": "redwood",
+      "level": 2,
       "path": "wood",
       "raw_item": "wood_redwood",
       "final_item": "lumber_redwood",
@@ -1593,6 +1601,7 @@
     },
     {
       "id": "maple",
+      "level": 2,
       "path": "wood",
       "raw_item": "wood_maple",
       "final_item": "lumber_maple",
@@ -1602,6 +1611,7 @@
     },
     {
       "id": "cherry",
+      "level": 2,
       "path": "wood",
       "raw_item": "wood_cherry",
       "final_item": "lumber_cherry",
@@ -1611,6 +1621,7 @@
     },
     {
       "id": "ironwood",
+      "level": 2,
       "path": "wood",
       "raw_item": "wood_ironwood",
       "final_item": "lumber_ironwood",
@@ -1621,6 +1632,7 @@
     },
     {
       "id": "frost",
+      "level": 2,
       "path": "wood",
       "raw_item": "wood_frost",
       "final_item": "lumber_frost",
@@ -1631,6 +1643,7 @@
     },
     {
       "id": "spirit",
+      "level": 3,
       "path": "wood",
       "raw_item": "wood_spirit",
       "final_item": "lumber_spirit",
@@ -1641,16 +1654,18 @@
     },
     {
       "id": "mahogany",
+      "level": 3,
       "path": "wood",
       "raw_item": "wood_mahogany",
       "final_item": "lumber_mahogany",
       "raw": 1800,
       "pre": 2700,
-      "final": 6300,
+      "final": 5300,
       "note": "Grows in one hidden valley"
     },
     {
       "id": "ember",
+      "level": 3,
       "path": "wood",
       "raw_item": "wood_ember",
       "final_item": "lumber_ember",
@@ -1660,6 +1675,7 @@
     },
     {
       "id": "tin",
+      "level": 1,
       "path": "metal",
       "raw_item": "ore_tin",
       "final_item": "ingot_tin",
@@ -1669,6 +1685,7 @@
     },
     {
       "id": "zinc",
+      "level": 1,
       "path": "metal",
       "raw_item": "ore_zinc",
       "final_item": "ingot_zinc",
@@ -1679,6 +1696,7 @@
     },
     {
       "id": "iron",
+      "level": 1,
       "path": "metal",
       "raw_item": "ore_iron",
       "final_item": "ingot_iron",
@@ -1688,16 +1706,17 @@
     },
     {
       "id": "magnetite",
+      "level": 1,
       "path": "metal",
       "raw_item": "ore_magnetite",
       "final_item": "ingot_lodesteel",
-      "raw": 520,
-      "pre": 490,
-      "final": 1100,
-      "note": "Smelting kills the magnetism; refining puts it back"
+      "raw": 710,
+      "pre": 1000,
+      "final": 1600
     },
     {
       "id": "copper",
+      "level": 1,
       "path": "metal",
       "raw_item": "ore_copper",
       "final_item": "ingot_copper",
@@ -1708,15 +1727,17 @@
     },
     {
       "id": "nickel",
+      "level": 1,
       "path": "metal",
       "raw_item": "ore_nickel",
       "final_item": "ingot_nickel",
-      "raw": 710,
-      "pre": 1000,
-      "final": 1600
+      "raw": 520,
+      "pre": 490,
+      "final": 1100
     },
     {
       "id": "silver",
+      "level": 2,
       "path": "metal",
       "raw_item": "ore_silver",
       "final_item": "ingot_silver",
@@ -1726,6 +1747,7 @@
     },
     {
       "id": "tungsten",
+      "level": 2,
       "path": "metal",
       "raw_item": "ore_tungsten",
       "final_item": "ingot_tungsten",
@@ -1736,6 +1758,7 @@
     },
     {
       "id": "cobalt",
+      "level": 2,
       "path": "metal",
       "raw_item": "ore_cobalt",
       "final_item": "ingot_cobalt",
@@ -1745,25 +1768,28 @@
     },
     {
       "id": "bismuth",
+      "level": 2,
       "path": "metal",
       "raw_item": "ore_bismuth",
       "final_item": "ingot_bismuth",
-      "raw": 1600,
+      "raw": 2600,
       "pre": 980,
       "final": 1300,
       "note": "The crystals are worth more than the metal"
     },
     {
       "id": "gold",
+      "level": 2,
       "path": "metal",
       "raw_item": "ore_gold",
       "final_item": "ingot_gold",
       "raw": 1800,
       "pre": 2600,
-      "final": 3400
+      "final": 4200
     },
     {
       "id": "platinum",
+      "level": 3,
       "path": "metal",
       "raw_item": "ore_platinum",
       "final_item": "ingot_platinum",
@@ -1773,6 +1799,7 @@
     },
     {
       "id": "sunstone",
+      "level": 3,
       "path": "metal",
       "raw_item": "ore_sunstone",
       "final_item": "ingot_sunsteel",
@@ -1782,16 +1809,18 @@
     },
     {
       "id": "starmetal",
+      "level": 3,
       "path": "metal",
       "raw_item": "ore_starmetal",
       "final_item": "ingot_starsteel",
-      "raw": 4500,
-      "pre": 8200,
-      "final": 12000,
+      "raw": 3300,
+      "pre": 4200,
+      "final": 6500,
       "note": "Fell from the sky onto one island"
     },
     {
       "id": "quartz",
+      "level": 1,
       "path": "gem",
       "raw_item": "gem_quartz",
       "final_item": "jewel_quartz",
@@ -1802,6 +1831,7 @@
     },
     {
       "id": "obsidian",
+      "level": 1,
       "path": "gem",
       "raw_item": "gem_obsidian",
       "final_item": "jewel_obsidian",
@@ -1812,6 +1842,7 @@
     },
     {
       "id": "jade",
+      "level": 1,
       "path": "gem",
       "raw_item": "gem_jade",
       "final_item": "jewel_jade",
@@ -1822,16 +1853,18 @@
     },
     {
       "id": "amethyst",
+      "level": 1,
       "path": "gem",
       "raw_item": "gem_amethyst",
       "final_item": "jewel_amethyst",
-      "raw": 900,
-      "pre": 1500,
-      "final": 2200,
+      "raw": 600,
+      "pre": 1200,
+      "final": 1600,
       "note": "Worth more cut"
     },
     {
       "id": "emerald",
+      "level": 2,
       "path": "gem",
       "raw_item": "gem_emerald",
       "final_item": "jewel_emerald",
@@ -1842,16 +1875,18 @@
     },
     {
       "id": "ruby",
+      "level": 2,
       "path": "gem",
       "raw_item": "gem_ruby",
       "final_item": "jewel_ruby",
-      "raw": 2200,
-      "pre": 4600,
-      "final": 6200,
+      "raw": 2100,
+      "pre": 4700,
+      "final": 5400,
       "note": "Worth more cut"
     },
     {
       "id": "diamond",
+      "level": 3,
       "path": "gem",
       "raw_item": "gem_diamond",
       "final_item": "jewel_diamond",
@@ -1862,6 +1897,7 @@
     },
     {
       "id": "glowcap",
+      "level": 3,
       "path": "wood",
       "raw_item": "wood_glowcap",
       "final_item": "lumber_glowcap",
@@ -1872,12 +1908,13 @@
     },
     {
       "id": "sapphire",
+      "level": 2,
       "path": "gem",
       "raw_item": "gem_sapphire",
       "final_item": "jewel_sapphire",
-      "raw": 2100,
-      "pre": 5400,
-      "final": 4700,
+      "raw": 2200,
+      "pre": 4600,
+      "final": 6200,
       "note": "Ice caves only; its colour shows best polished"
     }
   ]

@@ -299,14 +299,14 @@
         {
           "level": 2,
           "cost": 14800,
-          "hole_scale": 0.8,
+          "hole_scale": 1.1,
           "rate_scale": 1.4,
           "label": "Vibratory Polisher"
         },
         {
           "level": 3,
           "cost": 74100,
-          "hole_scale": 1.2,
+          "hole_scale": 2.0,
           "rate_scale": 1.85,
           "label": "Diamond Lap"
         }
@@ -326,14 +326,14 @@
         {
           "level": 2,
           "cost": 24200,
-          "hole_scale": 0.8,
+          "hole_scale": 1.1,
           "rate_scale": 1.4,
           "label": "Faceting Rig"
         },
         {
           "level": 3,
           "cost": 120900,
-          "hole_scale": 1.2,
+          "hole_scale": 2.0,
           "rate_scale": 1.85,
           "label": "Laser Cutter"
         }

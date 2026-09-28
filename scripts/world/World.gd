@@ -475,9 +475,10 @@ func _build_terrain() -> void:
 	terrain.roads = [
 		ring,
 		# The quarry's haul road, spiralling down the pit wall to the floor,
-		# and the lane in to its top from the north road.
+		# and the lane in to its top, branching off the north road (below)
+		# wherever that runs nearest.
 		quarry_haul_road(),
-		{"route": [Vector3(-140, 0, -330), QUARRY_CENTRE + Vector3(0, 0, QUARRY_RADIUS + 14.0)]},
+		{"branch_of": 5, "route": [Vector3(-140, 0, -330), QUARRY_CENTRE + Vector3(0, 0, QUARRY_RADIUS + 14.0)]},
 		[Vector3(0, 0, 50), Vector3(0, 0, 86), ring_point(PI * 0.5)],
 		# East, past the store, to the far coast.
 		{"bridge": true, "route": _arterial(0.0, [Vector3(260, 0, 15), Vector3(1000, 0, 180),

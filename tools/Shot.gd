@@ -747,6 +747,21 @@ func shot_perflog() -> void:
 		await get_tree().process_frame
 	await snap("perflog")
 
+## Straight down over the quarry and the road past it.
+func shot_quarrytop() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var c := World.QUARRY_CENTRE + Vector3(-60, 0, 30)
+	c.y = world.terrain.height_at(c.x, c.z)
+	world.player.global_position = c + Vector3(0, 250, 0)
+	for i in 60:
+		await get_tree().process_frame
+	await look(c + Vector3(0, 260, 1), c)
+	await snap("quarry_top")
+	var j := Vector3(-140, 0, -330)
+	j.y = world.terrain.height_at(j.x, j.z)
+	await look(j + Vector3(40, 25, 40), j)
+	await snap("quarry_junction")
+
 ## The quarry pit from above its rim, and from its floor looking up the haul road.
 func shot_quarry() -> void:
 	Settings.set_value(&"moving_sun", false, false)

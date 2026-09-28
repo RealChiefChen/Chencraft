@@ -84,7 +84,7 @@ var _road_core := PackedByteArray()
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 25
+const GENERATOR_VERSION := 26
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -1280,9 +1280,30 @@ const ROUTE_GRADE := 0.11
 ## that goes round the hills rather than over them, eases across valleys and
 ## zig-zags up a mountain, and crosses water where the crossing is short.
 func _route_roads() -> void:
-	for road in roads:
+	# Branches last: a road that leaves another (`branch_of`, its index) sets
+	# off from wherever that road was actually laid nearest its next waypoint,
+	# not from a waypoint the other road's curves may have left out in a field.
+	var order: Array = []
+	for i in roads.size():
+		if not (roads[i] is Dictionary and (roads[i] as Dictionary).has("branch_of")):
+			order.append(i)
+	for i in roads.size():
+		if not order.has(i):
+			order.append(i)
+	for ri in order:
+		var road = roads[ri]
 		if road is Dictionary and road.has("route"):
-			var points: Array = road.route
+			var points: Array = (road.route as Array).duplicate()
+			if road.has("branch_of"):
+				var trunk = roads[int(road.branch_of)]
+				var trunk_path: Array = trunk.get("path", []) if trunk is Dictionary else trunk
+				var aim: Vector3 = points[1]
+				var best_d := INF
+				for q: Vector3 in trunk_path:
+					var d := Vector2(q.x - aim.x, q.z - aim.z).length()
+					if d < best_d:
+						best_d = d
+						points[0] = Vector3(q.x, 0.0, q.z)
 			var path: Array = [points[0]]
 			for i in points.size() - 1:
 				var leg := _route(points[i], points[i + 1], bool(road.get("ford", false)))
@@ -1293,6 +1314,7 @@ func _route_roads() -> void:
 			# bend is tighter than a truck takes at speed.
 			var first: Vector3 = points[1] - points[0]
 			road["path"] = _drive_path(_smooth_path(path), Vector3(first.x, 0.0, first.z).normalized())
+	for road in roads:
 		var p: Array = road.get("path", []) if road is Dictionary else road
 		road_paths.append({"path": p, "style": String(road.get("style", "asphalt")) if road is Dictionary else "asphalt",
 			"bridge": road is Dictionary and bool(road.get("bridge", false))})

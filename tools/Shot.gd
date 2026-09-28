@@ -867,3 +867,23 @@ func shot_trailers() -> void:
 		t.set_ramps(true)
 	await _frames(20)
 	await snap("trailers_open")
+
+## A black opal as it lies in the ground, half buried and fully out.
+func shot_opal() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var base := Vector3(-12, World.PLOT_GROUND + 0.05, -12)
+	var embeds := [0.2, 0.6, 0.85]
+	for i in embeds.size():
+		var rock := OreRock.new()
+		rock.manager = world.manager
+		rock.ore_item = &"gem_black_opal"
+		rock.seed_form(77 + i)
+		rock.embed = embeds[i]
+		rock.volume = 0.5
+		rock.position = base + Vector3(float(i) * 2.2, 0, 0)
+		world.add_child(rock)
+	world.player.global_position = base + Vector3(2.2, 0, 8)
+	await _frames(30)
+	await look(base + Vector3(2.2, 1.6, 3.6), base + Vector3(2.2, 0.2, 0))
+	await snap("opal")

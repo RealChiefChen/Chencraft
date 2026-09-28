@@ -58,7 +58,7 @@ const ACTIONS := [
 	# Driving
 	[&"enter_vehicle", "Get in / get out / crane claw", "Driving", ["F"]],
 	[&"hitch", "Hitch / unhitch a trailer", "Driving", ["T"]],
-	[&"unload", "Unload the bed", "Driving", ["X"]],
+	[&"unload", "Tailgate down / up (dump: tip)", "Driving", ["X"]],
 	[&"unload_one", "Drop one off the back", "Driving", ["Z"]],
 	[&"recover", "Recover (set upright)", "Driving", ["C"]],
 	[&"gear_up", "Gear up (manual gearbox)", "Driving", ["Shift"]],

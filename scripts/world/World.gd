@@ -2398,14 +2398,7 @@ func handle_key(p: Player, event: InputEvent) -> void:
 			if deck != null:
 				v = deck
 		if v != null:
-			if v.has_ramps():
-				_tell(p, v.toggle_ramps())
-			elif not v.has_bed():
-				_tell(p, "the %s has nothing to unload" % v.display_name.to_lower())
-			else:
-				var n := v.unload()
-				var how := "tub up" if v.bed_kind == &"tub" else "tailgate down"
-				_tell(p, "%s: tipping out %d piece(s)" % [how, n] if n > 0 else "the bed is empty")
+			_tell(p, v.work_tailgate())
 	elif Controls.pressed(event, &"unload_one"):
 		p.act(&"lever" if p.driving() else &"use")
 		var v := vehicle_at_hand(8.0, p)

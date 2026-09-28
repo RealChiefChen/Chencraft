@@ -4676,6 +4676,14 @@ func test_hauler() -> void:
 	check_eq(manager.active_count(), 4, "reloading the truck doubled or lost its load")
 	check_near(truck.cargo_volume(), loaded, 0.0001, "the reloaded load is a different size")
 
+	# [X] only swings the tailgate: the load stays put.
+	check_eq(truck.work_tailgate(), "tailgate down", "[X] did not drop the tailgate")
+	await step(120)
+	check(truck._tailgate.disabled, "the tailgate is not open")
+	check_eq(truck.cargo_count(), 4, "dropping the tailgate pushed the load out")
+	check_eq(truck.work_tailgate(), "tailgate up", "[X] again did not shut the tailgate")
+	check(not truck._tailgate.disabled, "the tailgate did not shut")
+
 	# Unloading drops the tailgate and walks the load out the back.
 	var dropped := truck.unload()
 	check_eq(dropped, 4, "unloading counted the wrong number of pieces")

@@ -1003,6 +1003,42 @@ func unload(_behind: bool = true) -> int:
 	_start_tipping(_load.duplicate(), 5.0)
 	return n
 
+## [X]: a walled bed's tailgate (or a trailer's ramp gate) swings down, or
+## back up - and that is all: what is in the bed stays where it is until it
+## is taken out or slides out on its own. The dump tub still tips its load
+## out, and a log bed with no tailgate walks its logs off the back. Says what
+## it did; a trailer behind follows suit.
+func work_tailgate() -> String:
+	var said := ""
+	match bed_kind:
+		&"sides", &"rack":
+			tailgate_open = not tailgate_open
+			_set_tailgate(tailgate_open)
+			said = "tailgate down" if tailgate_open else "tailgate up"
+		&"gate", &"deck":
+			said = toggle_ramps()
+		&"tub", &"stakes":
+			var n := unload()
+			var how := "tub up" if bed_kind == &"tub" else "logs off the back"
+			return "%s: tipping out %d piece(s)" % [how, n] if n > 0 else "the bed is empty"
+		_:
+			return "the %s has nothing to unload" % display_name.to_lower()
+	if towing != null and is_instance_valid(towing) and towing.bed_kind != &"tub" and towing.bed_kind != &"stakes":
+		towing.set_tailgate_open(tailgate_open if (bed_kind == &"sides" or bed_kind == &"rack") else ramp_target < 0.5)
+	return said
+
+## Held open (or shut) by [X], for a walled bed.
+var tailgate_open: bool = false
+
+## Straight to open or shut: a trailer following the truck in front.
+func set_tailgate_open(open: bool) -> void:
+	match bed_kind:
+		&"sides", &"rack":
+			tailgate_open = open
+			_set_tailgate(open)
+		&"gate":
+			ramp_target = 0.0 if open else 1.0
+
 ## Drops exactly one piece - the one nearest the tailgate - off the back.
 func unload_one() -> bool:
 	if _load.is_empty():
@@ -1083,7 +1119,7 @@ func _finish_tipping() -> void:
 			return
 	_tipping.clear()
 	_set_floor_slick(false)
-	_set_tailgate(false)
+	_set_tailgate(tailgate_open)
 
 func cargo_summary() -> String:
 	if _load.is_empty():

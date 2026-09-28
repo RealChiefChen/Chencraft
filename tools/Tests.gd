@@ -3187,6 +3187,12 @@ func test_settings() -> void:
 	Settings.load_from(path)
 	check_eq(Settings.value(&"fov"), 90.0, "fov did not survive a reload")
 	check_eq(Settings.value(&"shadows"), 1, "shadows did not survive a reload")
+	# Co-op: your name and the host you last joined are remembered.
+	Settings.set_value(&"player_name", "Rowan")
+	Settings.set_value(&"last_address", "192.168.1.20:7777")
+	Settings.load_from(path)
+	check_eq(Settings.value(&"player_name"), "Rowan", "the co-op name was not remembered")
+	check_eq(Settings.value(&"last_address"), "192.168.1.20:7777", "the last host address was not remembered")
 	Settings.reset_to_defaults()
 	check_eq(Settings.value(&"fov"), 75.0, "reset should restore the default fov")
 	check(not Settings.invert_y(), "reset should restore invert_y")

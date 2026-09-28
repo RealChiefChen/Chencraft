@@ -35,6 +35,10 @@ var client_side: Object = null
 var guest_world: bool = false
 
 func _ready() -> void:
+	# The name you played under and the host you joined last time.
+	var saved_name := String(Settings.value(&"player_name")).strip_edges()
+	player_name = saved_name if saved_name != "" else "Player"
+	address = String(Settings.value(&"last_address"))
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)

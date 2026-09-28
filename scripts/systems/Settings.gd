@@ -58,6 +58,9 @@ const DEFAULTS := {
 	&"show_labels": false,
 	# Game
 	&"autosave": true,
+	# Co-op: remembered from the last time
+	&"player_name": "Player",
+	&"last_address": "",
 	# Sound
 	&"music_volume": 0.5,
 	&"sfx_volume": 0.8,
@@ -68,6 +71,8 @@ const DEFAULTS := {
 
 ## What each setting is, for the comments in the config file.
 const NOTES := {
+	&"player_name": "Your name in co-op",
+	&"last_address": "The host you joined last, as typed",
 	&"mouse_sensitivity": "Mouse look speed, 0.2 to 3.0",
 	&"invert_y": "true to invert the mouse's up and down",
 	&"fov": "Field of view in degrees, 60 to 100",

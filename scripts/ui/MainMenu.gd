@@ -186,7 +186,9 @@ func _coop_page() -> Control:
 	var name_edit := LineEdit.new()
 	name_edit.text = Net.player_name
 	name_edit.custom_minimum_size.x = 260
-	name_edit.text_changed.connect(func(t: String): Net.player_name = t.strip_edges() if t.strip_edges() != "" else "Player")
+	name_edit.text_changed.connect(func(t: String):
+		Net.player_name = t.strip_edges() if t.strip_edges() != "" else "Player"
+		Settings.set_value(&"player_name", Net.player_name))
 	name_row.add_child(name_edit)
 	col.add_child(name_row)
 
@@ -205,7 +207,8 @@ func _coop_page() -> Control:
 	var join_row := UIKit.hbox(10)
 	var address := LineEdit.new()
 	address.placeholder_text = "host's IP address (IP or IP:port)"
-	address.text = Net.address
+	var last := String(Settings.value(&"last_address"))
+	address.text = last if last != "" else Net.address
 	address.custom_minimum_size.x = 260
 	join_row.add_child(address)
 	join_row.add_child(UIKit.button("Join", func(): _on_join(address.text), ""))
@@ -246,6 +249,7 @@ func _on_join(address: String) -> void:
 		return
 	if _joining:
 		return
+	Settings.set_value(&"last_address", address)
 	var at := Net.split_address(address)
 	var host_part: String = at[0]
 	var port: int = at[1]

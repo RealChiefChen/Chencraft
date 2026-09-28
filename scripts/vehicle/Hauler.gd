@@ -1572,11 +1572,14 @@ func _build_wheels() -> void:
 	if not wheel_bodies.is_empty() or not is_inside_tree():
 		return
 	var n := maxi(1, wheel_offsets.size())
-	var share := mass * 9.8 / float(n)
+	# Springs are sized for what the vehicle is built to carry: a light
+	# trailer rated for a loader aboard (`spring_mass`) is sprung for it.
+	var sprung := maxf(mass, float(spec.get("spring_mass", mass)))
+	var share := sprung * 9.8 / float(n)
 	var wheel_mass := maxf(15.0, mass * 0.035)
 	# The joint spring is softer than its number says (Jolt), by this much.
 	var stiffness := share / SAG * 2.4
-	var damping := 2.0 * 0.55 * sqrt(stiffness * mass / float(n))
+	var damping := 2.0 * 0.55 * sqrt(stiffness * sprung / float(n))
 	var grip := PhysicsMaterial.new()
 	grip.friction = tyre_grip * grip_scale()
 	grip.rough = true

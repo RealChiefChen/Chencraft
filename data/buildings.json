@@ -231,12 +231,12 @@
       "kind": "inline",
       "cost": 20000,
       "size": [
-        2,
         3,
-        4
+        3,
+        5
       ],
       "machine": "crusher",
-      "blurb": "Top-loaded: drop ore or rough stone up to half a cubic metre into the hopper and it comes out on the belt as lumps of a tenth of a cubic metre (or smaller, set with [R])."
+      "blurb": "Top-loaded: drop ore or rough stone of any size into the big hopper and it comes out on the belt as lumps of a tenth of a cubic metre (or smaller, set with [R])."
     },
     {
       "id": "schematic_block",
@@ -837,7 +837,6 @@
       ],
       "belt_speed": 3.0,
       "max_piece": 0.52,
-      "max_in": 0.5,
       "color": [
         0.3,
         0.32,

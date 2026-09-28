@@ -45,8 +45,6 @@ const INLINE_MODES := [&"plank", &"sand", &"crush", &"smelt", &"refine", &"cut"]
 @export var belt_speed: float = 1.5
 @export var effect: StringName = &"steam"
 @export var max_piece: float = 0.4
-## Top-loaded machines (the crusher): the biggest piece the hopper takes, m3.
-@export var max_in: float = 0.5
 @export var yield_share: float = 1.0
 
 func is_inline() -> bool:
@@ -90,6 +88,5 @@ static func from_dict(d: Dictionary) -> MachineDef:
 	m.belt_speed = float(d.get("belt_speed", 1.5))
 	m.effect = StringName(d.get("effect", "steam"))
 	m.max_piece = float(d.get("max_piece", 0.4))
-	m.max_in = float(d.get("max_in", 0.5))
 	m.yield_share = float(d.get("yield", 1.0))
 	return m

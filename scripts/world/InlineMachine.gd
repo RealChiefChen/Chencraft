@@ -168,22 +168,24 @@ func _build_canopy() -> void:
 	_add_lamp(Vector3(half - 0.05, floor_y + h * 0.75, run * 0.5 - 0.3))
 	_add_effects(run, h)
 
-## The crusher is fed from above: a hopper on the roof, open to the sky, as
-## big as the biggest piece it takes. It is not fed along the belt.
+## The crusher is fed from above: a hopper on the roof, open to the sky,
+## nearly the whole roof wide. Whatever lands in it is crushed, however big.
+## It is not fed along the belt.
 const HOPPER_DEPTH := 0.8
 
 func top_loaded() -> bool:
 	return machine_def != null and machine_def.mode == MachineDef.MODE_CRUSH
 
 func hopper_opening() -> float:
-	return pow(machine_def.max_in, 1.0 / 3.0) * 1.3
+	var outer := float(def.size.x) * Plot.CELL if def != null else 3.0
+	return minf(outer, canopy_length()) - 0.3
 
 var _hopper_area: Area3D
 var _hopper_shape: CollisionShape3D
 
 func _build_hopper(outer: float, run: float, h: float) -> void:
 	var floor_y := DECK_THICKNESS
-	var open := minf(hopper_opening(), minf(outer, run) - 0.3)
+	var open := hopper_opening()
 	var roof_y := floor_y + h + 0.06
 	# The roof round the opening.
 	var side_w := (outer - open) * 0.5
@@ -201,21 +203,22 @@ func _build_hopper(outer: float, run: float, h: float) -> void:
 	_hopper_area.collision_mask = Layers.LOOSE
 	_hopper_shape = CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(open, HOPPER_DEPTH + 0.6, open)
+	# From down inside the machine to well over the rims, so a piece too
+	# big to drop through, sitting on top, is taken as well.
+	var tall := h + HOPPER_DEPTH + 1.2
+	box.size = Vector3(open + 0.3, tall, open + 0.3)
 	_hopper_shape.shape = box
-	_hopper_shape.position = Vector3(0, roof_y + (HOPPER_DEPTH + 0.6) * 0.5 - 0.6, 0)
+	_hopper_shape.position = Vector3(0, floor_y + 0.2 + tall * 0.5, 0)
 	_hopper_area.add_child(_hopper_shape)
 	_canopy.add_child(_hopper_area)
 
-## Pieces that have dropped into the hopper and are small enough: taken.
+## Pieces that have dropped into the hopper: taken, whatever their size.
 func _feed_hopper() -> void:
 	if _hopper_area == null:
 		return
 	for body in Trigger.bodies_inside(_hopper_area, _hopper_shape, 0.05):
 		var item := body as LooseItem
 		if item == null or item.state != LooseItem.State.FREE:
-			continue
-		if item.volume() > machine_def.max_in + 0.0001:
 			continue
 		if not GameData.machine_accepts(machine_def.id, item.item_id):
 			continue
@@ -248,7 +251,7 @@ func _dress_canopy(outer: float, run: float, h: float) -> Greeble:
 		g.box(Vector3(0.03, h * 0.45, run * 0.4), Transform3D(Basis(), Vector3(side * (half + 0.02), floor_y + h * 0.45, 0)), body.lightened(0.12))
 		g.rivets(Vector3(side * (half + 0.04), floor_y + h * 0.7, -run * 0.2), Vector3(side * (half + 0.04), floor_y + h * 0.7, run * 0.2), 5, steel, 0.035)
 	if top_loaded():
-		var open := minf(hopper_opening(), minf(outer, run) - 0.3)
+		var open := hopper_opening()
 		var roof_y := floor_y + h + 0.06
 		var side_w := (outer + 0.08 - open) * 0.5
 		var end_l := (run + 0.08 - open) * 0.5

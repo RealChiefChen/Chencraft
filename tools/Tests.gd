@@ -1868,16 +1868,25 @@ func test_ore_line() -> void:
 		total += lump.volume()
 		check(lump.volume() <= 0.1001, "a lump is bigger than 0.1 m3 (%.3f)" % lump.volume())
 	check_near(total, chunk_volume, 0.0001, "the crusher did not conserve ore")
-	# More than half a cubic metre will not go in: it sits in the hopper.
-	var huge := _drop_in(crusher, &"ore_iron", Solid.cube(0.7))
+	# There is no size limit: a chunk bigger than any lump, dropped in
+	# skewed, is crushed all the same.
+	var huge := _drop_in(crusher, &"ore_iron", Solid.cube(1.6))
+	huge.global_basis = Basis(Vector3.UP, 0.7)
 	var done_before := crusher.total_processed
-	await step(240)
-	check_eq(crusher.total_processed, done_before, "a 0.7 m3 chunk went into the crusher")
-	check(is_instance_valid(huge) and huge.get_parent() != null, "the oversized chunk vanished")
-	manager.despawn(huge)
+	for i in 240:
+		if crusher.total_processed > done_before:
+			break
+		await step(1)
+	check(crusher.total_processed > done_before, "a 1.6 m3 chunk sat in the hopper uncrushed")
+	check(crusher.hopper_opening() >= 2.0, "the hopper is only %.1f m across" % crusher.hopper_opening())
+	for i in 3000:
+		if crusher.queue.is_empty():
+			break
+		await step(1)
 	for lump in manager.free_items():
 		manager.despawn(lump)
 	await step(2)
+	done_before = crusher.total_processed
 	# Nothing goes in along the belt.
 	var along := _feed(crusher, &"ore_iron", Solid.cube(0.05))
 	await step(200)

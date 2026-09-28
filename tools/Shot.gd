@@ -280,6 +280,24 @@ func shot_mobilecrane() -> void:
 	await look(eye, f * Vector3(-4, 8, 6))
 	await snap("mcrane_up")
 
+## The carton pictures for everything at the vehicle dealer, one file each.
+func shot_boxart() -> void:
+	var shop: Store = world.dealer_store
+	var left := 0
+	for slot in shop.slots:
+		var product := {"box": slot.box, "kind": String(slot.kind), "target": slot.target,
+			"tier": slot.tier, "level": slot.level, "color": Color(0.8, 0.5, 0.2)}
+		left += 1
+		var id := String(slot.target)
+		shop._art.request(product, func(tex: Texture2D):
+			tex.get_image().save_png(OS.get_user_data_dir() + "/shots/box_%s.png" % id)
+			left -= 1)
+	for i in 1200:
+		if left <= 0:
+			break
+		await get_tree().process_frame
+	print("box art done, %d left" % left)
+
 func shot_menu() -> void:
 	world.show_main_menu()
 	for i in 20:

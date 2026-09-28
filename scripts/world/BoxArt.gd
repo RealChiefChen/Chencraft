@@ -197,6 +197,34 @@ func _whiten(node: Node) -> void:
 ## Fits the ortho camera to the model, seen from the front and a little above
 ## and to the side, the way a carton picture is drawn.
 func _frame(model: Node3D) -> void:
+	var box := _bounds(model)
+	var centre := box.get_center()
+	var radius := box.size.length() * 0.5
+	var dir := Vector3(0.75, 0.55, 1.0).normalized()
+	# Something long - a log trailer, a long belt - is seen more side-on
+	# (the camera goes round: a vehicle's wheels are bodies of their own and
+	# would not turn with it), or it is a sliver running away into the box.
+	if box.size.z > box.size.x * 2.5:
+		dir = Vector3(1.0, 0.5, 0.45).normalized()
+	_camera.look_at_from_position(centre + dir * (radius * 4.0 + 1.0), centre)
+	# Fitted to the outline the model actually makes on the picture, not to
+	# a sphere round it, so a long thin thing fills the carton as well.
+	var right := _camera.global_basis.x
+	var up := _camera.global_basis.y
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for i in 8:
+		var corner := box.get_endpoint(i) - centre
+		var q := Vector2(corner.dot(right), corner.dot(up))
+		lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.y))
+		hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.y))
+	var mid := (lo + hi) * 0.5
+	_camera.global_position += right * mid.x + up * mid.y
+	_camera.size = maxf(hi.x - lo.x, hi.y - lo.y) * 1.12
+	_camera.near = 0.05
+	_camera.far = radius * 10.0 + 10.0
+
+func _bounds(model: Node3D) -> AABB:
 	var box := AABB()
 	var first := true
 	for mi in _meshes(model):
@@ -205,13 +233,7 @@ func _frame(model: Node3D) -> void:
 		first = false
 	if first:
 		box = AABB(Vector3(-0.5, 0, -0.5), Vector3.ONE)
-	var centre := box.get_center()
-	var radius := box.size.length() * 0.5
-	var dir := Vector3(0.75, 0.55, 1.0).normalized()
-	_camera.look_at_from_position(centre + dir * (radius * 4.0 + 1.0), centre)
-	_camera.size = radius * 2.05
-	_camera.near = 0.05
-	_camera.far = radius * 10.0 + 10.0
+	return box
 
 func _meshes(node: Node) -> Array:
 	var out: Array = []

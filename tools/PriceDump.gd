@@ -31,7 +31,7 @@ func _ready() -> void:
 		out.buildings.append({"id": String(id), "name": b.display_name, "kind": String(b.kind), "cost": b.cost})
 	for id in GameData.tools:
 		var t: Dictionary = GameData.tools[id]
-		out.tools.append({"name": GameData.tool_name(id), "cost": int(t.get("cost", 0)),
+		out.tools.append({"name": GameData.tool_name(id), "cost": int(t.get("cost", 0)), "level": int(t.get("level", 1)),
 			"start": GameData.start_tools.has(id)})
 	for i in GameData.plot_expansions.size():
 		var e: Dictionary = GameData.plot_expansions[i]
@@ -47,7 +47,7 @@ func _ready() -> void:
 	for key in GameData.materials:
 		var m: Dictionary = GameData.materials[key]
 		out.materials.append({"name": GameData.item_name(StringName(m.get("raw_item", key))), "path": String(m.get("path", "")),
-			"raw": float(m.get("raw", 0)), "pre": float(m.get("pre", 0)), "final": float(m.get("final", 0)),
+			"level": int(m.get("level", 1)), "raw": float(m.get("raw", 0)), "pre": float(m.get("pre", 0)), "final": float(m.get("final", 0)),
 			"note": String(m.get("note", ""))})
 	print("PRICES ", JSON.stringify(out))
 	get_tree().quit()

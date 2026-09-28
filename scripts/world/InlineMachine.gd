@@ -87,6 +87,10 @@ func _apply_level() -> void:
 		minf(machine_def.tunnel.y * hole_scale, float(def.size.y) * Plot.CELL - 0.9))
 	speed = machine_def.belt_speed * float(stats.get("rate_scale", 1.0)) * Balance.num("machines.speed_multiplier", 1.0)
 
+## The last piece that went through untouched because it was too hard for
+## this tier, to say so on the status line.
+var too_hard: String = ""
+
 func tier_label() -> String:
 	return String(GameData.upgrade_level(machine_def.id, level).get("label", "T%d" % level))
 
@@ -601,6 +605,11 @@ func work(entry: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = [entry]
 	if not GameData.machine_accepts(machine_def.id, entry.id):
 		return out
+	# Harder materials need a better machine: a level-3 wood goes through a
+	# T1 or T2 planker untouched. The crusher only breaks rock up, any rock.
+	if machine_def.mode != MachineDef.MODE_CRUSH and not tier_fits(entry.id):
+		too_hard = GameData.item_name(entry.id)
+		return out
 	var def_in := GameData.item(entry.id)
 	var category: StringName = def_in.category if def_in != null else &""
 	var dims: Dictionary = entry.dims
@@ -795,9 +804,15 @@ func _along_belt() -> Basis:
 	var along := -global_transform.basis.z.normalized()
 	return Basis(along.cross(up).normalized(), along, up).orthonormalized()
 
+## Whether this machine's tier is up to working a material.
+func tier_fits(item_id: StringName) -> bool:
+	return level >= GameData.material_level(item_id)
+
 func status_line() -> String:
 	var line := "%s (%s): %s, %d through  [E] %s" % [def.display_name, tier_label(),
 		"running" if running else "stopped", total_processed, "stop" if running else "start"]
+	if too_hard != "":
+		line += "\n%s passed through untouched - it needs a higher tier" % too_hard
 	if not config_fields().is_empty():
 		line += "\n%s  [R] set sizes" % output_label()
 	return line

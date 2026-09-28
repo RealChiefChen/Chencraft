@@ -1154,6 +1154,8 @@ func _swing() -> void:
 			interacted.emit("a hammer will not fell a tree - take an axe")
 			return
 		_swing_cd = _tool_stat("cooldown", 0.4)
+		if not _tool_can_work((target as ChoppableTree).wood_item):
+			return
 		# The cut lands where the axe lands, so the limb under the crosshair is
 		# the one that comes off.
 		var said := (target as ChoppableTree).cut(_tool_stat("damage", 34.0), hit.position, global_position)
@@ -1166,6 +1168,8 @@ func _swing() -> void:
 		# Rock is not chipped away at, it is cracked: the hammer's head mass is
 		# what opens a crack, so a heavier hammer breaks a chunk in fewer blows.
 		_swing_cd = _tool_stat("cooldown", 0.55)
+		if not _tool_can_work((target as OreRock).ore_item):
+			return
 		var said := (target as OreRock).strike(_tool_stat("head_kg", 3.0))
 		if said != "":
 			interacted.emit(said)
@@ -1180,6 +1184,18 @@ func _swing() -> void:
 			_buck(piece, hit.position)
 	else:
 		_swing_cd = _tool_stat("cooldown", 0.4)
+
+## Harder woods and stones need a better tool: a level-2 material will not
+## give to a level-1 axe or hammer. Says so and returns false if the tool in
+## hand is not up to it.
+func _tool_can_work(item_id: StringName) -> bool:
+	var need := GameData.material_level(item_id)
+	var have := int(_tool_stat("level", 1.0))
+	if have >= need:
+		return true
+	interacted.emit("%s needs a level %d %s - this one is level %d" % [
+		GameData.item_name(item_id), need, _tool_kind(), have])
+	return false
 
 ## Limbing: cutting a branch on a felled trunk wherever the axe lands. Cut at
 ## the trunk it comes away whole; further out, the end comes off and a stub

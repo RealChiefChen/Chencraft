@@ -86,6 +86,7 @@ func _run_all() -> void:
 	await _test(&"a ladder plan becomes a ladder", test_ladder_plan)
 	await _test(&"a sign plan becomes a sign you can write on", test_sign_plan)
 	await _test(&"top gear is sold at the summit, the rest in town", test_gear_split)
+	await _test(&"hard materials need a better tool and a higher machine tier", test_material_levels)
 	await _test(&"save/load round-trip", test_save_load)
 	await _test(&"the title screen reads the save without loading it", test_save_summary)
 	await _test(&"settings coerce, persist and reset", test_settings)
@@ -1336,6 +1337,9 @@ func test_gem_line() -> void:
 	var sander := _inline(&"gem_polisher")
 	var cutter := _inline(&"gem_cutter", Vector3(6, 0, 0))
 	await step(3)
+	# An emerald is level 2: it takes second-tier machines.
+	sander.level = 2
+	cutter.level = 2
 	# Small enough for the cutter's 0.8 x 0.6 mouth.
 	var stone := _feed(sander, &"gem_emerald", Solid.cube(0.012))
 	var volume := stone.volume()
@@ -2859,6 +2863,51 @@ func test_gear_split() -> void:
 	check(summit.available(top_carry), "the summit does not sell the carry rack's top level")
 	check_eq(summit.price_of(top_carry), int(GameData.upgrade_level(&"carry", GameData.max_upgrade_level(&"carry")).cost), "the top rack is mispriced")
 	PlayerState.reset()
+	done()
+
+func test_material_levels() -> void:
+	_setup()
+	Economy.from_dict({"money": 90000, "day": 1})
+	check_eq(GameData.material_level(&"wood_pine"), 1, "pine is not level 1")
+	check_eq(GameData.material_level(&"wood_ebony"), 3, "ebony is not level 3")
+	check_eq(GameData.material_level(&"lumber_ebony"), 3, "ebony lumber is not level 3")
+	check_eq(GameData.material_level(&"gem_turquoise"), 2, "turquoise is not level 2")
+	check_eq(int(GameData.tools[&"ember_axe"].get("level", 0)), 3, "the ember axe is not level 3")
+	# A level-3 tree shrugs off a level-1 axe, and gives to a level-3 one.
+	var player := _make_player()
+	world.add_child(player)
+	await step(4)
+	# Thick enough that one ember-axe blow does not fell it.
+	var tree := _make_tree(6.0, 0.6, 0.6, 0)
+	tree.wood_item = &"wood_ebony"
+	tree.position = Vector3(0, 0, -2.0)
+	world.add_child(tree)
+	await step(2)
+	player.select_slot(0)
+	check_eq(player.selected_tool(), &"rusty_axe", "not holding the rusty axe")
+	player.camera.look_at(tree.global_position + Vector3(0, 1.5, 0))
+	player._swing_cd = 0.0
+	player._swing()
+	check_near(tree.trunk_cut, 0.0, 0.001, "a rusty axe cut ebony")
+	PlayerState.give_tool(&"ember_axe", false)
+	PlayerState.set_hotbar(1, &"ember_axe")
+	player.select_slot(1)
+	player._swing_cd = 0.0
+	player._swing()
+	check(tree.trunk_cut > 0.0, "the ember axe did not cut ebony")
+	# A T1 planker passes a sanded level-3 log through untouched; T3 planks it.
+	var log_dims := Solid.with_finish(Solid.cylinder(0.2, 0.2, 1.0), &"sanded")
+	var saw := plot.place(GameData.building(&"sawmill"), Vector2i(0, 0), 0, false) as InlineMachine
+	await step(2)
+	var entry := func(id: StringName) -> Dictionary:
+		return {"id": id, "dims": log_dims.duplicate(true), "owned": true, "plot": 0, "changed": false, "ready": 0.0}
+	check(bool(saw.work(entry.call(&"wood_pine"))[0].changed), "a T1 planker did not plank pine")
+	check(not bool(saw.work(entry.call(&"wood_ebony"))[0].changed), "a T1 planker planked ebony")
+	check(saw.status_line().contains("higher tier"), "the planker does not say ebony needs a higher tier")
+	saw.level = 2
+	check(not bool(saw.work(entry.call(&"wood_ebony"))[0].changed), "a T2 planker planked ebony")
+	saw.level = 3
+	check(bool(saw.work(entry.call(&"wood_ebony"))[0].changed), "a T3 planker did not plank ebony")
 	done()
 
 func test_frost_slip() -> void:

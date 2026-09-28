@@ -119,8 +119,8 @@ func _tool_card(id: StringName) -> Control:
 
 static func tool_line(def: Dictionary) -> String:
 	if String(def.get("kind", "")) == "hammer":
-		return "hammer · %.0f kg head · %.2f s" % [float(def.get("head_kg", 3)), float(def.get("cooldown", 0.5))]
-	return "axe · %.0f cut · %.2f s" % [float(def.get("damage", 34)), float(def.get("cooldown", 0.4))]
+		return "level %d hammer · %.0f kg head · %.2f s" % [int(def.get("level", 1)), float(def.get("head_kg", 3)), float(def.get("cooldown", 0.5))]
+	return "level %d axe · %.0f cut · %.2f s" % [int(def.get("level", 1)), float(def.get("damage", 34)), float(def.get("cooldown", 0.4))]
 
 ## A tool card you can pick up and drop on a slot.
 class _Card extends PanelContainer:

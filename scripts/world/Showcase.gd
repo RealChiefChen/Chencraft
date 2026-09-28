@@ -14,10 +14,10 @@ extends Node3D
 ## past the last belt for a while so you can look at them, then are cleared.
 ## None of it is saved or owned: it is a display.
 
-const ORE_FEED := [&"ore_iron", &"ore_copper", &"ore_tin", &"ore_zinc", &"ore_magnetite",
-	&"ore_tungsten", &"ore_bismuth", &"ore_gold", &"ore_platinum", &"ore_starmetal"]
-const GEM_FEED := [&"gem_quartz", &"gem_obsidian", &"gem_jade", &"gem_amethyst",
-	&"gem_emerald", &"gem_ruby", &"gem_diamond", &"gem_turquoise", &"gem_lapis", &"gem_black_opal"]
+## The machines on show are first tier, so only level-1 materials: anything
+## harder would ride through untouched.
+const ORE_FEED := [&"ore_iron", &"ore_copper", &"ore_tin", &"ore_zinc", &"ore_magnetite", &"ore_nickel"]
+const GEM_FEED := [&"gem_quartz", &"gem_obsidian", &"gem_jade", &"gem_amethyst"]
 ## Seconds between drops, and how long a finished piece stays on show.
 const DROP_EVERY := 4.0
 const SHOW_FOR := 25.0

@@ -158,6 +158,12 @@ func _apply_materials(table: Array) -> void:
 func material_for(item_id: StringName) -> Dictionary:
 	return materials.get(material_of.get(item_id, &""), {})
 
+## How hard a material is to work, 1 to 3: it takes an axe or hammer of at
+## least this level to harvest it, and a machine of at least this tier to
+## process it. Anything that is not a material is level 1.
+func material_level(item_id: StringName) -> int:
+	return int(material_for(item_id).get("level", 1))
+
 ## The stage names along a path, for the price guide.
 static func stage_names(path: String) -> Array:
 	match path:

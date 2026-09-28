@@ -156,6 +156,12 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 					if ev.has("on"):
 						var o: Array = ev.on
 						pad.set_part_on(StringName(String(o[0])), bool(o[1]))
+		"sign":
+			var se: Variant = _nodes.get(int(ev.get("id", -1)), null)
+			if se != null and String(se[1]) == "b":
+				var sign := (se[0] as Dictionary).node as Schematic
+				if sign != null and sign.is_sign():
+					sign.set_text(String(ev.get("text", "")))
 		"mcfg":
 			var entry: Variant = _nodes.get(int(ev.get("id", -1)), null)
 			if entry != null and String(entry[1]) == "b":

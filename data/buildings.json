@@ -314,6 +314,19 @@
       "blurb": "A ladder up to a roof or a platform. Fill it with material; then climb it (forward or jump to go up, back to come down)."
     },
     {
+      "id": "schematic_sign",
+      "display_name": "Plan: Sign",
+      "size": [
+        2,
+        2,
+        1
+      ],
+      "cost": 10,
+      "kind": "schematic",
+      "shape": "sign",
+      "blurb": "A signboard on two posts. Fill it with material, then [E] at it to write what it says."
+    },
+    {
       "id": "schematic_door",
       "display_name": "Plan: Door",
       "size": [

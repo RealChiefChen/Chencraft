@@ -57,7 +57,7 @@ static var MATERIAL_SHARE: float = Balance.num("build.material_share", 0.05)
 
 ## How much material this shape takes to finish.
 func capacity_m3() -> float:
-	var share := 0.5 if _wedge() else (0.3 if is_ladder() else 1.0)
+	var share := 0.5 if _wedge() else (0.3 if is_ladder() else (0.25 if is_sign() else 1.0))
 	return _size.x * _size.y * _size.z * MATERIAL_SHARE * share
 
 func _wedge() -> bool:
@@ -81,6 +81,47 @@ func _build_ladder() -> void:
 	# Its rungs face out of the plan's front, standing on the ground.
 	_ladder.transform = Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(0, _size.y * 0.5 + 0.15, 0))
 	add_child(_ladder)
+
+# --- Signs --------------------------------------------------------------------
+
+## A sign plan: filled, it becomes a board on two posts with writing on both
+## faces, which [E] lets you change.
+func is_sign() -> bool:
+	return def != null and def.shape == &"sign"
+
+const SIGN_MAX := 40
+var text: String = "SIGN"
+var _sign_labels: Array[Label3D] = []
+
+func set_text(t: String) -> void:
+	text = t.strip_edges().substr(0, SIGN_MAX)
+	for l in _sign_labels:
+		l.text = text
+
+func _build_sign() -> void:
+	var board_h := minf(1.0, _size.y * 0.5)
+	var board := Vector3(_size.x, board_h, 0.1)
+	var post := 0.12
+	for side in [-1.0, 1.0]:
+		_frame_part(Vector3(post, _size.y, post), Vector3(side * (_size.x * 0.5 - 0.25), _size.y * 0.5, 0))
+	_frame_part(board, Vector3(0, _size.y - board_h * 0.5, 0))
+	for face in [1.0, -1.0]:
+		var l := Label3D.new()
+		l.text = text
+		l.font = UITheme.display_font()
+		l.font_size = 96
+		l.pixel_size = 0.004
+		l.outline_size = 0
+		l.modulate = Color(0.1, 0.08, 0.06)
+		l.width = board.x / l.pixel_size * 0.9
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.double_sided = false
+		l.position = Vector3(0, _size.y - board_h * 0.5, face * 0.056)
+		l.rotation.y = 0.0 if face > 0.0 else PI
+		add_child(l)
+		_sign_labels.append(l)
+	for m in _door_meshes:
+		_apply_material(m, 1.0)
 
 # --- Doors --------------------------------------------------------------------
 
@@ -298,6 +339,9 @@ func _solidify() -> void:
 	elif is_ladder():
 		_fill.visible = false
 		_build_ladder()
+	elif is_sign():
+		_fill.visible = false
+		_build_sign()
 	else:
 		_shape.disabled = false
 		_fill.visible = true
@@ -422,6 +466,8 @@ func status_line() -> String:
 		var what := "%s of %s" % [def.display_name.replace("Plan: ", ""), GameData.item_name(material)]
 		if is_door():
 			return "%s  [E] %s" % [what, "shut" if open else "open"]
+		if is_sign():
+			return "\"%s\"  [E] write on it" % text
 		return what
 	if material == &"":
 		return "%s: empty plan, needs %.2f m3 of anything" % [def.display_name, capacity_m3()]
@@ -429,11 +475,16 @@ func status_line() -> String:
 		def.display_name, filled_m3, capacity_m3(), GameData.item_name(material)]
 
 func to_dict() -> Dictionary:
-	return {"filled_m3": filled_m3, "material": String(material), "open": open}
+	var d := {"filled_m3": filled_m3, "material": String(material), "open": open}
+	if is_sign():
+		d["text"] = text
+	return d
 
 func from_dict(d: Dictionary) -> void:
 	filled_m3 = float(d.get("filled_m3", 0.0))
 	material = StringName(d.get("material", ""))
+	if d.has("text"):
+		set_text(String(d.text))
 	_refresh()
 	if remaining_m3() <= 0.0001 and filled_m3 > 0.0:
 		_solidify()

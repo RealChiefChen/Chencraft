@@ -69,6 +69,7 @@ var _banner: Label
 var journal: Journal
 var inventory: InventoryPanel
 var machine_config: MachineConfigPanel
+var sign_panel: SignPanel
 var pad_panel: PadPanel
 var build_menu: BuildMenu
 var _build_menu_holder: CenterContainer
@@ -170,6 +171,11 @@ func _ready() -> void:
 	_root.add_child(pad_panel)
 	pad_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	player.pad_config_requested.connect(func(p: VehiclePad): pad_panel.open(p))
+	sign_panel = SignPanel.new()
+	sign_panel.player = player
+	_root.add_child(sign_panel)
+	sign_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	player.sign_edit_requested.connect(func(s: Schematic): sign_panel.open(s))
 	_build_menu_holder = CenterContainer.new()
 	UIKit.fill(_build_menu_holder)
 	_build_menu_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE

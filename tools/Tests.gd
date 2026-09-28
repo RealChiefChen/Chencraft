@@ -84,6 +84,7 @@ func _run_all() -> void:
 	await _test(&"plans fill with material and turn solid", test_schematic)
 	await _test(&"frost wood builds are slippery", test_frost_slip)
 	await _test(&"a ladder plan becomes a ladder", test_ladder_plan)
+	await _test(&"a sign plan becomes a sign you can write on", test_sign_plan)
 	await _test(&"save/load round-trip", test_save_load)
 	await _test(&"the title screen reads the save without loading it", test_save_summary)
 	await _test(&"settings coerce, persist and reset", test_settings)
@@ -2804,6 +2805,32 @@ func test_ladder_plan() -> void:
 	if ladder != null:
 		check(ladder.holds(plan.global_position + Vector3(0, 1.5, 0)), "halfway up is not on the ladder")
 		check(ladder.holds(plan.global_position + Vector3(0, 0.1, 0)), "the foot of the ladder is not on it")
+	done()
+
+func test_sign_plan() -> void:
+	_setup()
+	Economy.from_dict({"money": 50000, "day": 1})
+	var plan := plot.place(GameData.building(&"schematic_sign"), Vector2i(0, 0) * Plot.SUB, 0) as Schematic
+	await step(4)
+	check(plan != null and plan.is_sign(), "no sign plan")
+	var cap := plan.capacity_m3()
+	check(plan.accept_item(spawn(&"lumber_pine", Vector3(0, 6, 0), Solid.box(Vector3(0.25, cap / 0.0625 + 0.1, 0.25)))), "the plan refused wood")
+	await step(4)
+	check(plan.solid, "the full sign plan is not solid")
+	plan.set_text("  Pine Yard, this way  ")
+	check_eq(plan.text, "Pine Yard, this way", "the sign did not take its words")
+	var labels := plan.find_children("*", "Label3D", true, false)
+	check_eq(labels.size(), 2, "the sign is not written on both faces")
+	for l in labels:
+		check_eq((l as Label3D).text, "Pine Yard, this way", "a face of the sign does not say it")
+	plan.set_text("x".repeat(100))
+	check_eq(plan.text.length(), Schematic.SIGN_MAX, "a sign took more than it has room for")
+	plan.set_text("Keep out")
+	var saved := plan.to_dict()
+	var again := plot.place(GameData.building(&"schematic_sign"), Vector2i(8, 0) * Plot.SUB, 0) as Schematic
+	await step(2)
+	again.from_dict(saved)
+	check(again.solid and again.text == "Keep out", "a sign did not come back from a save with its words")
 	done()
 
 func test_frost_slip() -> void:

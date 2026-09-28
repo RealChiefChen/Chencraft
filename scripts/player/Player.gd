@@ -18,6 +18,8 @@ signal wants_to_drive(vehicle: Node3D)
 signal machine_config_requested(machine: InlineMachine)
 ## [R] at a vehicle pad: the HUD opens its paint and fittings.
 signal pad_config_requested(pad: VehiclePad)
+## [E] at a finished sign: the HUD opens a box to write on it.
+signal sign_edit_requested(sign: Schematic)
 ## Co-op, on the host: a guest's player was moved here rather than by the
 ## guest (back to base, out of a truck), so the guest must be told.
 signal warped()
@@ -1544,6 +1546,10 @@ func _interact() -> void:
 		return
 	if target is Store:
 		_use_store(target as Store, hit.get("position", global_position))
+		return
+	if target is Schematic and (target as Schematic).is_sign() and (target as Schematic).solid:
+		sign_edit_requested.emit(target as Schematic)
+		interacted.emit("")
 		return
 	if target is Schematic and (target as Schematic).is_door() and (target as Schematic).solid:
 		interacted.emit((target as Schematic).toggle_door())

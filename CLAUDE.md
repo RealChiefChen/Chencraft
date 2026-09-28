@@ -13,3 +13,6 @@
   one task per row in column A, at the top of the list (just under the DONE
   header in row 1, above the earlier batches), with a thick bar under the new
   batch. As each task is done, fill its cell red (background, not text).
+- Balance tab of that sheet: tools/PriceDump.gd dumps every price. In the
+  "Every sellable item" table, rate/level/piece/swing cells are formulas that
+  point at the materials table above it, not typed numbers.

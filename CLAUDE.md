@@ -7,3 +7,9 @@
   date and time yourself before committing.
 - Tests: `godot --headless --path . --fixed-fps 60 scenes/tests.tscn`
 - Blender sources live in assets/models/source (Godot skips that folder).
+- Task lists from the owner: before starting, add them to the "Done" tab of
+  the Pinecraft sheet
+  (https://docs.google.com/spreadsheets/d/1KP1TiR1jUg4sx_UkPvOKv9D3OYDOpfhRgl8T9DMLTxk),
+  one task per row in column A, at the top of the list (just under the DONE
+  header in row 1, above the earlier batches), with a thick bar under the new
+  batch. As each task is done, turn its text red.

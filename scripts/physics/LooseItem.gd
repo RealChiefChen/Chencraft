@@ -26,6 +26,10 @@ var spawn_index: int = 0
 ## machine on their plot. Owned pieces are what the yard buys and what a save
 ## remembers; a trunk lying in the forest is neither.
 var owned: bool = false
+## Shop stock waiting on a shelf (or bought and not yet opened): never
+## recycled to make room, and not counted against the per-plot ceiling, or a
+## busy base would empty the shops.
+var shop_stock: bool = false
 var ccd_active: bool = false
 var quiet_time: float = 0.0
 var cut_progress: float = 0.0     ## axe work done on this piece since the last cut

@@ -174,6 +174,8 @@ func restock() -> int:
 		var box := manager.spawn(slot.box, Transform3D(slot.basis, slot.spot), plot_id)
 		if box == null:
 			continue
+		# Shop stock is kept however busy the world gets (see LooseItemManager).
+		box.shop_stock = true
 		_dress_box(box, slot)
 		box.sleeping = true
 		slot.item = box

@@ -125,7 +125,8 @@ func spawn(item_id: StringName, xform: Transform3D, plot_id: int = 0,
 		_by_plot[plot_id] = plot_items
 
 	# Enforce the per-plot ceiling before adding, recycling oldest-first.
-	while plot_items.size() >= per_plot_cap:
+	# Shop stock is left out of both the count and the recycling.
+	while plot_items.size() - _shop_count(plot_items) >= per_plot_cap:
 		var victim: LooseItem = _oldest(plot_items)
 		if victim == null:
 			break
@@ -133,6 +134,7 @@ func spawn(item_id: StringName, xform: Transform3D, plot_id: int = 0,
 		stat_recycled += 1
 
 	var item: LooseItem = _acquire()
+	item.shop_stock = false
 	# A piece recycled out of a truck's fixed load comes back a whole body.
 	item.process_mode = Node.PROCESS_MODE_INHERIT
 	item.collision_layer = Layers.LOOSE
@@ -237,14 +239,24 @@ func _oldest(items: Array) -> LooseItem:
 	var best: LooseItem = null
 	for i in items:
 		var it: LooseItem = i
-		# Never recycle something the player is holding or a machine owns.
-		if it.state != LooseItem.State.FREE or it.carrier != null:
+		# Never recycle something the player is holding, a machine owns, or
+		# a shop's stock.
+		if it.state != LooseItem.State.FREE or it.carrier != null or it.shop_stock:
 			continue
 		if best == null or it.spawn_index < best.spawn_index:
 			best = it
-	if best == null and not items.is_empty():
-		best = items[0]
+	if best == null:
+		for i in items:
+			if not (i as LooseItem).shop_stock:
+				return i
 	return best
+
+static func _shop_count(items: Array) -> int:
+	var n := 0
+	for i in items:
+		if (i as LooseItem).shop_stock:
+			n += 1
+	return n
 
 # --- Per-frame maintenance -------------------------------------------------
 

@@ -174,6 +174,7 @@ func _run_all() -> void:
 	await _test(&"save slots: several games, and the old save moves in", test_save_slots)
 	await _test(&"the lumberjack is posed from what you do, and third person still aims true", test_avatar)
 	await _test(&"per-plot cap is enforced", test_cap)
+	await _test(&"shop stock stays on the shelf however busy the world gets", test_shop_stock_kept)
 	await _test(&"full automated base stays in budget", test_full_base)
 
 	_say("")
@@ -5937,6 +5938,28 @@ func test_cap() -> void:
 	# Pooling means the node count stays near the cap however many spawns happen.
 	var nodes := manager.active_count() + manager.pooled_count()
 	check(nodes <= 45, "pooling leaked nodes: %d live+pooled for a cap of 40" % nodes)
+	done()
+
+func test_shop_stock_kept() -> void:
+	_setup()
+	manager.per_plot_cap = 40
+	await step(2)
+	var stock: Array[LooseItem] = []
+	for i in 12:
+		var box := spawn(&"wood_pine", Vector3(10.0 + float(i), 1.0, 10.0))
+		box.shop_stock = true
+		stock.append(box)
+	await step(2)
+	for i in 120:
+		spawn(&"wood_pine", Vector3(randf_range(-2, 2), 4.0 + float(i) * 0.05, randf_range(-2, 2)))
+	await step(10)
+	var kept := 0
+	for box in stock:
+		if is_instance_valid(box) and box.state != LooseItem.State.POOLED and box.shop_stock:
+			kept += 1
+	check_eq(kept, 12, "shop stock was recycled to make room")
+	check(manager.active_count() <= 40 + 12, "the cap stopped holding with shop stock about (%d)" % manager.active_count())
+	check(manager.active_count() >= 40, "shop stock took up the room that everything else is allowed (%d)" % manager.active_count())
 	done()
 
 func test_full_base() -> void:

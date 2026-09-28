@@ -370,7 +370,9 @@ func _physics_process(delta: float) -> void:
 		# to the till in someone's hands or on the counter - is cleared away,
 		# and that shelf spot is empty for a while before it is restocked.
 		var outside := not contains(item.global_position)
-		var off_place := item.global_position.distance_to(slot.spot) > MISPLACED_BY
+		# Off its spot, or knocked over where it stood.
+		var off_place := item.global_position.distance_to(slot.spot) > MISPLACED_BY \
+			or (item.global_transform.basis.y.normalized()).dot((slot.basis as Basis).y.normalized()) < cos(MISPLACED_TILT)
 		var busy := counter.has(item) or in_hand.has(item) or item.state != LooseItem.State.FREE
 		if outside or (off_place and not busy):
 			slot["away"] = float(slot.get("away", 0.0)) + 0.4
@@ -393,6 +395,7 @@ func _physics_process(delta: float) -> void:
 ## Unpaid boxes moved from their places are cleared after this long (s), and
 ## restocked this long after (s).
 const MISPLACED_BY := 0.8
+const MISPLACED_TILT := deg_to_rad(35.0)
 const MISPLACED_GRACE := 4.0
 const RESTOCK_DELAY := 300.0
 var _clock: float = 0.0

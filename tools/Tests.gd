@@ -3496,6 +3496,18 @@ func test_store() -> void:
 	await step(60 * 6)
 	check(pad_slot.item == null and (not is_instance_valid(nudged) or nudged.state == LooseItem.State.POOLED),
 		"a box knocked off its place was left lying about")
+	# Knocked over where it stood: cleared away as well.
+	shop._clock += Store.RESTOCK_DELAY + 1.0
+	await step(40)
+	var tipped: LooseItem = pad_slot.item
+	check(tipped != null, "the shelf was not restocked again")
+	if tipped != null:
+		tipped.teleport(Transform3D((pad_slot.basis as Basis) * Basis(Vector3.RIGHT, PI * 0.5), pad_slot.spot as Vector3))
+		tipped.freeze = true
+		await step(60 * 6)
+		check(pad_slot.item == null, "a box knocked over on its spot was left lying there")
+		if is_instance_valid(tipped):
+			tipped.freeze = false
 
 	# Land is sold at the desk.
 	shop = town

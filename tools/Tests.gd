@@ -6635,7 +6635,7 @@ func test_vehicle_upgrades() -> void:
 	buggy.setup(manager, 0, &"buggy")
 	world.add_child(buggy)
 	await step(2)
-	check(buggy.rig != null and is_equal_approx(buggy.rig.winch_power_kg, 1000.0), "the dune buggy has no 1 t winch")
+	check(buggy.rig != null and is_equal_approx(buggy.rig.winch_power_kg, 2000.0), "the dune buggy has no 2 t winch")
 	check(buggy.rig != null and not buggy.rig.has_crane(), "the dune buggy should not have a crane")
 	# Every level of both is on the store's shelf as a part.
 	var sold: Array = []

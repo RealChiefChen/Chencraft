@@ -168,6 +168,12 @@ func on_guest_event(peer: int, ev: Dictionary) -> void:
 				var m := (entry[0] as Dictionary).node as InlineMachine
 				if m != null:
 					m.set_setting(StringName(String(ev.get("k", ""))), float(ev.get("v", 0.0)))
+		"fcfg":
+			var fe: Variant = _nodes.get(int(ev.get("id", -1)), null)
+			if fe != null and String(fe[1]) == "b":
+				var f := (fe[0] as Dictionary).node as Filter
+				if f != null and ev.get("state") is Dictionary:
+					f.from_dict(ev.state)
 		"hotbar":
 			if p.kit != null:
 				p.kit.set_hotbar(int(ev.get("slot", -1)), StringName(String(ev.get("id", ""))))

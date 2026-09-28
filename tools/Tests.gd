@@ -2658,44 +2658,65 @@ func test_splitter() -> void:
 func test_filter() -> void:
 	_setup()
 	var filter := Filter.new()
-	filter.setup(GameData.building(&"filter"))
-	filter.filter_item = &"lumber_pine"
-	filter.position = Vector3(0, 0.6, 0)
+	var def := GameData.building(&"filter")
+	filter.setup(def)
+	filter.length = def.extent().z
+	filter.width = def.extent().x * 0.9
+	# Planks drop through; everything else rides on.
+	filter.set_rules([{"type": "wood", "let": true}], false)
+	filter.position = Vector3(0, 1.5, 0)
 	world.add_child(filter)
 	await step(2)
-	for i in 4:
-		spawn(&"lumber_pine", Vector3(0, 1.1, 0))
-		await step(22)
-		spawn(&"ore_iron", Vector3(0, 1.1, 0))
-		await step(22)
-	await step(60)
-	var straight_planks := 0
-	var right_ore := 0
-	var misrouted := 0
+	var entry := filter.length * 0.5 - 0.35
+	for i in 3:
+		spawn(&"lumber_pine", Vector3(0, 1.9, entry), Solid.box(Vector3(0.3, 0.4, 0.1)))
+		await step(40)
+		spawn(&"ore_iron", Vector3(0, 1.9, entry), Solid.chunk(0.02))
+		await step(40)
+	await step(120)
+	var dropped_planks := 0
+	var carried_ore := 0
+	var wrong := 0
 	for item in manager.free_items():
 		var local: Vector3 = filter.global_transform.affine_inverse() * item.global_position
-		var went_right: bool = local.x > 0.8
-		var went_straight: bool = local.z < -0.8
+		var fell := local.y < -0.5 and absf(local.z) < filter.length * 0.5
+		var rode_off := local.z < -filter.length * 0.5
 		if item.item_id == &"lumber_pine":
-			if went_straight:
-				straight_planks += 1
-			elif went_right:
-				misrouted += 1
+			if fell:
+				dropped_planks += 1
+			elif rode_off:
+				wrong += 1
 		else:
-			if went_right:
-				right_ore += 1
-			elif went_straight:
-				misrouted += 1
-	check(straight_planks >= 3, "filter sent only %d of 4 planks straight on" % straight_planks)
-	check(right_ore >= 3, "filter diverted only %d of 4 non-matching items" % right_ore)
-	check_eq(misrouted, 0, "filter sent items the wrong way")
+			if rode_off:
+				carried_ore += 1
+			elif fell:
+				wrong += 1
+	check(dropped_planks >= 2, "only %d of 3 planks dropped through the grate" % dropped_planks)
+	check(carried_ore >= 2, "only %d of 3 ore lumps rode over the grate" % carried_ore)
+	check_eq(wrong, 0, "the filter sent pieces the wrong way")
 
-	# Inverting swaps the two paths.
-	filter.invert = true
-	var plank := spawn(&"lumber_pine", Vector3(0, 1.1, 0))
-	await step(70)
-	var local_after: Vector3 = filter.global_transform.affine_inverse() * plank.global_position
-	check(local_after.x > 0.5, "inverted filter did not divert the matching item")
+	# The rules themselves: first match wins, then the default.
+	var f2 := Filter.new()
+	f2.set_rules([
+		{"type": "ore", "stage": "crushed", "let": false},
+		{"type": "ore", "sub": "iron", "size": "under", "m3": 0.1, "let": true},
+	], true)
+	var crushed := Solid.chunk(0.05)
+	crushed["crushed"] = true
+	check(not f2.decide(&"ore_iron", crushed), "crushed iron dropped despite the first rule")
+	check(f2.decide(&"ore_iron", Solid.chunk(0.05)), "small iron ore did not drop")
+	check(f2.decide(&"ore_copper", Solid.chunk(0.5)), "the default (drop) was not used")
+	f2.drop_by_default = false
+	check(not f2.decide(&"ore_iron", Solid.chunk(0.5)), "big iron dropped with nothing letting it")
+	check(f2.decide(&"ore_iron", Solid.chunk(0.05)), "small iron stopped dropping")
+	check(Filter.stage_of(&"lumber_mahogany", Solid.box(Vector3(0.3, 1, 0.1))) == "plank", "a plank is not a plank")
+	check(Filter.stage_of(&"ingot_iron", Solid.with_finish(Solid.box(Vector3(0.1, 0.4, 0.1)), &"refined")) == "refined", "a refined bar is not refined")
+	check(Filter.type_of(&"glass") == "stone", "glass is not under stone")
+	var back := Filter.new()
+	back.from_dict(f2.to_dict())
+	check(back.rules.size() == 2 and not back.drop_by_default, "the rules did not survive a save")
+	f2.free()
+	back.free()
 	done()
 
 func test_building() -> void:

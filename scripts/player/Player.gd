@@ -18,6 +18,7 @@ signal wants_to_drive(vehicle: Node3D)
 signal machine_config_requested(machine: InlineMachine)
 ## [R] at a vehicle pad: the HUD opens its paint and fittings.
 signal pad_config_requested(pad: VehiclePad)
+signal filter_config_requested(filter: Filter)
 ## [E] at a finished sign: the HUD opens a box to write on it.
 signal sign_edit_requested(sign: Schematic)
 ## Co-op, on the host: a guest's player was moved here rather than by the
@@ -1023,6 +1024,9 @@ func _cycle_pad_attachment() -> bool:
 func _cycle_machine_output() -> bool:
 	var hit := aim_hit()
 	var target := _owner_of(hit.get("collider")) if not hit.is_empty() else null
+	if target is Filter:
+		filter_config_requested.emit(target as Filter)
+		return true
 	var m := target as InlineMachine
 	if m == null or m.config_fields().is_empty():
 		return false
@@ -1109,8 +1113,6 @@ func _update_prompt() -> void:
 	elif target is Schematic:
 		var plan := target as Schematic
 		last_prompt = ("%s" if plan.solid else "[E] add material   %s") % plan.status_line()
-	elif target is Filter:
-		last_prompt = "[E] change filter   %s" % (target as Filter).status_line()
 	elif target is Conveyor:
 		last_prompt = (target as Conveyor).status_line()
 	elif target is Hauler:
@@ -1554,14 +1556,6 @@ func _interact() -> void:
 	if target is Conveyor:
 		var belt := target as Conveyor
 		interacted.emit("belt %s" % ("running" if belt.toggle() else "stopped"))
-		return
-	if target is Filter:
-		var f := target as Filter
-		if input.pressed("sprint"):
-			f.invert = not f.invert
-		else:
-			f.cycle_filter(1)
-		interacted.emit(f.status_line())
 		return
 	if target is Store:
 		_use_store(target as Store, hit.get("position", global_position))

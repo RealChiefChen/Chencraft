@@ -48,9 +48,9 @@
       "size": [
         2,
         1,
-        2
+        3
       ],
-      "blurb": "One kind of item goes straight on, everything else out to the right. [E] to set it."
+      "blurb": "A belt with a grate in it: what its rules pick drops through, the rest rides on. Raise it over a belt or a bin. [R] to set the rules."
     },
     {
       "id": "conveyor_bend_left",

@@ -298,6 +298,8 @@ func _model_for(product: Dictionary) -> Node3D:
 		&"filter":
 			var f := Filter.new()
 			f.setup(def)
+			f.length = float(def.size.z)
+			f.width = float(def.size.x) * 0.9
 			return f
 		&"splitter":
 			var s := Splitter.new()

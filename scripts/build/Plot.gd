@@ -498,6 +498,9 @@ func _instantiate(def: BuildingDef) -> Node3D:
 		&"filter":
 			var f := Filter.new()
 			f.setup(def)
+			f.length = def.extent().z
+			f.width = def.extent().x * 0.9
+			f.speed = def.speed
 			f.sink_finder = find_sink_near
 			return f
 		&"storage":

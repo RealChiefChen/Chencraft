@@ -71,6 +71,7 @@ var inventory: InventoryPanel
 var machine_config: MachineConfigPanel
 var sign_panel: SignPanel
 var pad_panel: PadPanel
+var filter_panel: FilterPanel
 var build_menu: BuildMenu
 var _build_menu_holder: CenterContainer
 ## The crane / winch / loader controls, over the gauges while driving.
@@ -171,6 +172,11 @@ func _ready() -> void:
 	_root.add_child(pad_panel)
 	pad_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	player.pad_config_requested.connect(func(p: VehiclePad): pad_panel.open(p))
+	filter_panel = FilterPanel.new()
+	filter_panel.player = player
+	_root.add_child(filter_panel)
+	filter_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	player.filter_config_requested.connect(func(f: Filter): filter_panel.open(f))
 	sign_panel = SignPanel.new()
 	sign_panel.player = player
 	_root.add_child(sign_panel)

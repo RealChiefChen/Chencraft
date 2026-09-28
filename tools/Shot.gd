@@ -831,3 +831,19 @@ func shot_ores() -> void:
 			print("ORE ", c.ore_item, " ", c.global_position, " parts ", c.get_child_count())
 	await look(base + Vector3(8, 4.5, 12), base + Vector3(8, 0, 2.5))
 	await snap("ores")
+
+## The filter belt, raised over another, and its rules panel.
+func shot_filter() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	Economy.from_dict({"money": 90000, "day": 1})
+	var f := world.plot.place(GameData.building(&"filter"), Vector2i(-40, -40), Vector3i.ZERO, false, 1.5) as Filter
+	f.set_rules([{"type": "wood", "stage": "plank", "let": true},
+		{"type": "ore", "sub": "iron", "size": "over", "m3": 0.4, "let": false}], false)
+	await _frames(20)
+	var at := f.global_position
+	await look(at + Vector3(3, 3.5, 3.5), at + Vector3(0, 1.4, 0))
+	await snap("filter_belt")
+	world.hud.visible = true
+	world.hud.filter_panel.open(f)
+	await _frames(10)
+	await snap("filter_panel")

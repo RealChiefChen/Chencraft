@@ -60,7 +60,9 @@ var _fine: bool = false
 const REACH_MIN := 1.6
 const SLEW_ARC := deg_to_rad(155.0)
 const HEIGHT_ABOVE := 0.75        ## of the boom's length, above the turntable
-const DEPTH_BELOW := 3.0          ## m below the turntable
+## How far below the turntable the grapple may go: a long way, down a pit or
+## over a cliff - it stops on whatever it meets first (see `_floor_under`).
+const DEPTH_BELOW := 80.0
 ## Joint speeds and accelerations: rad/s (m/s for the telescope).
 ## slew and luff in rad/s, the telescope and the line in m/s.
 const JOINT_SPEED := {"slew": 0.9, "luff": 0.7, "ext": 2.0, "line": 2.6, "rot": 1.6}
@@ -115,6 +117,15 @@ var folding: bool = false
 ## The boom's length run in and run out.
 var boom_min: float = 4.8
 var boom_max: float = 11.0
+## Set from the vehicle's spec (see `configure`): a big slewing crane turns
+## all the way round, rests with its boom laid forward over the cab, and has
+## its own house - operator's cab, engine and counterweight - on the turntable.
+var slew_arc: float = SLEW_ARC
+var full_slew: bool = false
+var rest_slew: float = 0.0
+var rest_luff: float = 0.08
+var house: bool = false
+var _boom_spec: Vector2 = Vector2.ZERO
 ## The joints, where they are and how fast they are moving.
 var joints := {"slew": 0.0, "luff": 0.08, "ext": 4.8, "line": 1.2, "rot": 0.0}
 var _joint_vel := {"slew": 0.0, "luff": 0.0, "ext": 0.0, "line": 0.0, "rot": 0.0}
@@ -143,6 +154,8 @@ var _cable: MeshInstance3D
 var _column: MeshInstance3D
 var _boom: MeshInstance3D
 var _tele: MeshInstance3D
+var _mid: MeshInstance3D
+var _house: Node3D
 var _line: MeshInstance3D
 var _grapple: Node3D
 var _claws: Array[Node3D] = []
@@ -157,17 +170,30 @@ var _gizmo: Node3D
 func setup(p_vehicle: RigidBody3D) -> void:
 	vehicle = p_vehicle
 
+## The crane's shape from the vehicle spec's rig entry.
+func configure(gear: Dictionary) -> void:
+	var boom: Array = gear.get("boom", [])
+	if boom.size() == 2:
+		_boom_spec = Vector2(float(boom[0]), float(boom[1]))
+	full_slew = bool(gear.get("full_slew", false))
+	slew_arc = PI if full_slew else SLEW_ARC
+	rest_slew = float(gear.get("rest_slew", 0.0))
+	rest_luff = float(gear.get("rest_luff", 0.08))
+	house = bool(gear.get("house", false))
+
 func _ready() -> void:
 	boom_min = reach * 0.35
 	boom_max = reach * 0.8
-	joints = REST.duplicate()
-	joints.ext = boom_min
+	if _boom_spec != Vector2.ZERO:
+		boom_min = _boom_spec.x
+		boom_max = _boom_spec.y
+	joints = _rest_goals()
 	if vehicle != null and vehicle.get("spec") is Dictionary:
 		var cab: Dictionary = (vehicle.get("spec") as Dictionary).get("cab", {})
 		var body: Vector3 = vehicle.get("body_size")
 		if not cab.is_empty():
 			var size := Hauler._vec(cab.size)
-			var centre := Vector3(0, body.y * 0.5 + size.y * 0.5, float(cab.z))
+			var centre := Vector3(float(cab.get("x", 0.0)), body.y * 0.5 + size.y * 0.5, float(cab.z))
 			cab_box = AABB(centre - size * 0.5, size)
 	_build()
 	set_physics_process(true)
@@ -413,12 +439,13 @@ func clamp_target(p: Vector3) -> Vector3:
 	var h := clampf(rel.y, -DEPTH_BELOW, boom_max * HEIGHT_ABOVE)
 	var r := Vector2(rel.x, rel.z).length()
 	var ang := atan2(rel.x, rel.z) if r > 0.001 else float(joints.slew)
-	ang = clampf(ang, -SLEW_ARC, SLEW_ARC)
+	ang = clampf(ang, -slew_arc, slew_arc)
 	var most := max_reach()
 	r = clampf(r, REACH_MIN, most)
 	if r * r + h * h > most * most:
 		r = sqrt(maxf(most * most - h * h, REACH_MIN * REACH_MIN))
 	var out := head_offset + Vector3(sin(ang) * r, h, cos(ang) * r) - Vector3.UP * HANG
+	out.y = maxf(out.y, _floor_under(out))
 	if cab_box.size != Vector3.ZERO:
 		var keep_out := cab_box.grow(0.45 + _held_half_height())
 		if keep_out.has_point(out):
@@ -431,6 +458,32 @@ func clamp_target(p: Vector3) -> Vector3:
 					best = f
 			out = best
 	return out
+
+## The lowest the jaws may go at `p` (truck frame): just clear of the first
+## solid thing under them there - ground, a bed, a machine - with what they
+## hold. No floor found: the depth limit.
+func _floor_under(p: Vector3) -> float:
+	var lowest := head_offset.y - DEPTH_BELOW - HANG
+	if vehicle == null or not vehicle.is_inside_tree():
+		return lowest
+	var frame := _frame()
+	# From just over where the jaws are and are going, not from the boom: a
+	# roof or a branch over the jaws is not what they come down on.
+	var top := frame * Vector3(p.x, maxf(p.y, target.y) + 0.6, p.z)
+	var bottom := frame * Vector3(p.x, lowest, p.z)
+	var q := PhysicsRayQueryParameters3D.create(top, bottom,
+		Layers.WORLD | Layers.VEHICLE | Layers.MACHINE | Layers.KERB)
+	var skip: Array[RID] = []
+	if held != null and is_instance_valid(held):
+		skip.append(held.get_rid())
+	if _vehicle_ok():
+		skip.append(held_vehicle.get_rid())
+	q.exclude = skip
+	var hit := vehicle.get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return lowest
+	var local: Vector3 = frame.affine_inverse() * (hit.position as Vector3)
+	return local.y + CLAW_FLOOR * 0.5 + _held_half_height()
 
 ## How far out the crane reaches with what it is holding.
 func max_reach() -> float:
@@ -542,18 +595,19 @@ func _step_joints(goals: Dictionary, delta: float, speed_scale: float) -> void:
 		var goal := float(goals[k])
 		# The rotator turns the short way; the slew never swings through the
 		# cab, so it goes the way the arc allows.
-		var err := angle_difference(cur, goal) if k == "rot" else goal - cur
+		var wraps := k == "rot" or (k == "slew" and full_slew)
+		var err := angle_difference(cur, goal) if wraps else goal - cur
 		var top: float = JOINT_SPEED[k] * speed_scale
 		var want := clampf(err * 5.0, -top, top)
 		# A faster crane brakes harder too, or it would overshoot its mark.
 		_joint_vel[k] = move_toward(float(_joint_vel[k]), want, float(JOINT_ACCEL[k]) * maxf(1.0, speed_scale) * delta)
 		cur += float(_joint_vel[k]) * delta
-		joints[k] = wrapf(cur, -PI, PI) if k == "rot" else cur
+		joints[k] = wrapf(cur, -PI, PI) if wraps else cur
 
 func _settled(goals: Dictionary, tolerance: float = 0.02) -> bool:
 	for k: String in joints:
-		var err := angle_difference(float(joints[k]), float(goals[k])) if k == "rot" \
-			else float(goals[k]) - float(joints[k])
+		var err := angle_difference(float(joints[k]), float(goals[k])) \
+			if k == "rot" or (k == "slew" and full_slew) else float(goals[k]) - float(joints[k])
 		if absf(err) > tolerance:
 			return false
 	return true
@@ -861,6 +915,8 @@ func _overlaps(item: LooseItem, xform: Transform3D) -> bool:
 func _rest_goals() -> Dictionary:
 	var rest := REST.duplicate()
 	rest.ext = boom_min
+	rest.slew = rest_slew
+	rest.luff = rest_luff
 	return rest
 
 func _work_crane(delta: float) -> void:
@@ -987,10 +1043,58 @@ func _build() -> void:
 	_column = _box_part(paint, "CraneColumn")
 	_boom = _box_part(paint, "CraneBoom")
 	_tele = _box_part(_mat(CRANE_YELLOW.lightened(0.25), 0.4), "CraneTelescope")
+	if house:
+		_mid = _box_part(_mat(CRANE_YELLOW.lightened(0.12), 0.35), "CraneMidSection")
+		_build_house()
 	_line = _line_mesh(CRANE_DARK)
 	_line.name = "CraneLine"
 	_build_grapple()
 	_build_aids()
+
+## A big slewing crane's house on the turntable, turning with the boom: the
+## boom's foot between two cheek plates, the operator's cab beside it, the
+## engine deck behind and the counterweight slabs hung off the back. Built
+## with the boom running along +Z.
+func _build_house() -> void:
+	var body: Vector3 = vehicle.get("body_size") if vehicle != null and vehicle.get("body_size") != null else Vector3(2.8, 0.9, 10)
+	var deck := body.y * 0.5 - head_offset.y      # the carrier's top, from the pivot
+	var g := Greeble.new()
+	var yellow := CRANE_YELLOW
+	var shade := CRANE_YELLOW.darkened(0.18)
+	var dark := CRANE_DARK
+	var steel := Color(0.55, 0.56, 0.58)
+	var glass := Color(0.25, 0.35, 0.42)
+	var w := minf(body.x - 0.2, 2.6)
+	# The slewing ring and the house's floor.
+	g.prism(16, 1.2, 1.15, 0.3, Transform3D(Basis(), Vector3(0, deck, 0)), dark)
+	g.block(Vector3(w, 0.35, 4.6), Vector3(0, deck + 0.45, -1.3), shade)
+	# The boom's foot: two tall cheek plates with the pin through them.
+	for sx in [-1.0, 1.0]:
+		g.block(Vector3(0.14, -deck + 0.3, 1.8), Vector3(sx * 0.5, (deck + 0.3) * 0.5 + 0.15, -0.3), yellow)
+	g.prism(10, 0.14, 0.14, 1.2, Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(-0.6, 0, 0)), steel)
+	# The engine deck behind, with its grilles and a stack.
+	var hood_h := -deck - 0.35
+	g.block(Vector3(w, hood_h, 2.6), Vector3(0, deck + 0.6 + hood_h * 0.5, -2.2), yellow)
+	for sx in [-1.0, 1.0]:
+		g.vent(1.8, hood_h * 0.6, Transform3D(Basis(Vector3.UP, sx * PI * 0.5), Vector3(sx * (w * 0.5 + 0.01), deck + 0.6 + hood_h * 0.5, -2.2)), dark, 6)
+	g.pipe(Vector3(0.8, deck + 0.6 + hood_h, -1.4), Vector3(0.8, deck + 0.6 + hood_h + 0.9, -1.4), 0.09, steel.darkened(0.3), 6)
+	# Counterweight slabs, stacked off the back.
+	for i in 3:
+		g.block(Vector3(w + 0.1, 0.42, 0.9), Vector3(0, deck + 0.75 + float(i) * 0.46, -3.95), dark.lightened(0.06 * float(i % 2)))
+	g.stripes(w, 0.16, Transform3D(Basis(Vector3.UP, PI), Vector3(0, deck + 1.1, -4.41)))
+	# The operator's cab, beside the boom foot, glazed front and side.
+	var cab := Vector3(-(w * 0.5 - 0.5), deck + 0.6 + 0.8, 0.6)
+	g.block(Vector3(0.95, 1.6, 1.7), cab, yellow.darkened(0.05))
+	g.block(Vector3(0.8, 0.9, 0.05), cab + Vector3(0, 0.25, 0.86), glass)
+	g.block(Vector3(0.05, 0.8, 1.2), cab + Vector3(-0.48, 0.25, 0.1), glass)
+	g.block(Vector3(0.8, 0.05, 1.0), cab + Vector3(0, 0.81, 0.2), glass)
+	g.box(Vector3(0.2, 0.1, 0.12), Transform3D(Basis(), cab + Vector3(0.2, 0.86, 0.7)), Color(1.0, 0.6, 0.1), true)
+	# Hydraulic rams under the boom, for the look of it.
+	for sx in [-1.0, 1.0]:
+		g.pipe(Vector3(sx * 0.35, deck + 0.7, 0.9), Vector3(sx * 0.35, -0.15, 2.4), 0.11, steel, 8)
+	_house = g.instance("CraneHouse")
+	_house.top_level = true
+	add_child(_house)
 
 func _mat(color: Color, metal: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -1142,12 +1246,23 @@ func _draw() -> void:
 	var sleeve: Vector3 = frame * Vector3(pose.sleeve)
 	var tip: Vector3 = frame * Vector3(pose.tip)
 	var up := frame.basis.y.normalized()
-	_span(_column, base - up * 0.5, base + up * 0.25, 0.26)
-	# The boom: a heavy outer section off the turntable, and the telescoping
-	# inner one sliding out of it to the tip.
-	_span(_boom, base, sleeve, 0.18)
 	var run := (tip - base).normalized()
-	_span(_tele, base + run * boom_min * 0.3, tip + run * 0.05, 0.12)
+	if house:
+		_column.visible = false
+		var slew_basis := frame.basis * Basis(Vector3.UP, float(joints.slew))
+		_house.global_transform = Transform3D(slew_basis, base)
+		# A big telescopic boom: three sections, each sliding out of the last.
+		var reach_out := (tip - base).length()
+		var mid_end := base + run * lerpf(boom_min * 0.95, reach_out, 0.5)
+		_span(_boom, base - run * 0.6, base + run * boom_min * 0.98, 0.34)
+		_span(_mid, base + run * boom_min * 0.3, mid_end, 0.27)
+		_span(_tele, base + run * boom_min * 0.5, tip + run * 0.3, 0.2)
+	else:
+		_span(_column, base - up * 0.5, base + up * 0.25, 0.26)
+		# The boom: a heavy outer section off the turntable, and the
+		# telescoping inner one sliding out of it to the tip.
+		_span(_boom, base, sleeve, 0.18)
+		_span(_tele, base + run * boom_min * 0.3, tip + run * 0.05, 0.12)
 	# The grapple hangs from the tip; holding a log it is wherever the log is.
 	var yaw := float(pose.yaw)
 	var grip: Vector3 = held.global_position if held != null else frame * Vector3(pose.jaw)

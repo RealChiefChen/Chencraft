@@ -432,16 +432,16 @@
     },
     {
       "id": "pad_crane_truck",
-      "display_name": "Crane Truck Pad",
+      "display_name": "Mobile Crane Pad",
       "kind": "pad",
       "vehicle": "crane_truck",
       "cost": 110000,
       "size": [
         4,
         1,
-        9
+        12
       ],
-      "blurb": "Spawns your crane truck. Brings it back when it is lost."
+      "blurb": "Spawns your mobile crane. Brings it back when it is lost."
     },
     {
       "id": "pad_trailer",

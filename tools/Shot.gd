@@ -251,6 +251,35 @@ func shot_drive() -> void:
 		await get_tree().physics_frame
 	await snap("crane_banner")
 
+## The mobile crane: on the road with its boom laid forward, then set up with
+## the boom run out and up.
+func shot_mobilecrane() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var at := world.plot.global_position + Vector3(0, 0, 60)
+	at.y = world.terrain.height_at(at.x, at.z)
+	var v := Hauler.new()
+	v.setup(world.manager, 0, &"crane_truck")
+	world.add_child(v)
+	v.global_position = at + Vector3(0, v.spawn_height(), 0)
+	for i in 90:
+		await get_tree().physics_frame
+	var f := v.global_transform
+	var eye := f * Vector3(-9.0, 3.5, -10.0)
+	world.player.global_position = eye
+	await look(eye, f * Vector3(0, 1.2, 0))
+	await snap("mcrane_road")
+	eye = f * Vector3(9.0, 2.5, 6.0)
+	await look(eye, f * Vector3(0, 1.5, 0))
+	await snap("mcrane_back")
+	v.rig.set_operating(true)
+	v.rig.target = v.rig.clamp_target(Vector3(-12.0, 14.0, 16.0))
+	for i in 400:
+		await get_tree().physics_frame
+	eye = f * Vector3(-26.0, 8.0, -18.0)
+	world.player.global_position = eye
+	await look(eye, f * Vector3(-4, 8, 6))
+	await snap("mcrane_up")
+
 func shot_menu() -> void:
 	world.show_main_menu()
 	for i in 20:

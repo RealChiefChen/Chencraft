@@ -123,6 +123,7 @@ func _run_all() -> void:
 	await _test(&"a vehicle left alone stays put", test_parked_holds)
 	await _test(&"getting out does not shove the vehicle", test_exit_still)
 	await _test(&"the crane claw drops, grabs and comes back up", test_crane_claw)
+	await _test(&"the crane lets its grapple down a drop until it meets the ground", test_crane_reaches_down)
 	await _test(&"vehicles reach their rated top speed", test_top_speed)
 	await _test(&"store-bought buildings are counted copies", test_building_copies)
 	await _test(&"winch and crane respect their power ratings", test_vehicle_rig)
@@ -4135,6 +4136,49 @@ func test_exit_still() -> void:
 		check(worst < 0.3, "the %s moved %.2f m when the driver got out" % [id, worst])
 		truck.queue_free()
 		await step(1)
+	done()
+
+## Parked at the top of a 10 m drop, the crane lets the claw right down to the
+## ground at the bottom - and not through it.
+func test_crane_reaches_down() -> void:
+	_setup(false)
+	var ledge := StaticBody3D.new()
+	ledge.collision_layer = Layers.WORLD
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(8, 10, 16)
+	cs.shape = box
+	ledge.add_child(cs)
+	world.add_child(ledge)
+	ledge.global_position = Vector3(0, 5, 0)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"crane_truck")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, 10.0 + truck.spawn_height(), 0)
+	await step(90)
+	var rig := truck.rig
+	rig.set_operating(true)
+	var frame := truck.global_transform
+	var out := frame.affine_inverse() * Vector3(9.0, frame.origin.y, 2.0)
+	rig.target = rig.clamp_target(Vector3(out.x, rig.head_offset.y, out.z))
+	for i in 600:
+		await step(1)
+		if rig._settled(rig.solve(rig.target, rig.target_yaw), 0.01):
+			break
+	rig.claw()
+	for i in 1500:
+		await step(1)
+		if rig.claw_state != &"down":
+			break
+	var low := rig.target.y
+	var jaw_y := (truck.global_transform * Vector3(0, low, 0)).y
+	check(jaw_y < 1.0, "the claw stopped %.1f m above the ground below the drop" % jaw_y)
+	check(jaw_y > -0.05, "the claw went through the ground (%.2f)" % jaw_y)
+	# Driven down by hand it stops on the ground too.
+	for i in 300:
+		rig.drive(Vector3(0, -1, 0), 0.0, false, 1.0 / 60.0)
+	jaw_y = (truck.global_transform * Vector3(0, rig.target.y, 0)).y
+	check(jaw_y > -0.05, "driven down, the claw went into the ground (%.2f)" % jaw_y)
 	done()
 
 func test_crane_claw() -> void:

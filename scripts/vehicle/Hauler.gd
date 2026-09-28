@@ -465,6 +465,7 @@ func _build() -> void:
 		rig.reach = float(gear.get("reach", 14))
 		rig.head_offset = _vec(gear.get("head", [0, 1.1, -1.2]))
 		rig.setup(self)
+		rig.configure(gear)
 		add_child(rig)
 
 	var arms: Variant = spec.get("loader", null)

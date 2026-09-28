@@ -47,6 +47,8 @@ static func dress(v: Hauler) -> void:
 		&"deck":
 			_deck(v, g)
 	var gear: Variant = v.spec.get("rig", null)
+	if gear is Dictionary and bool(gear.get("carrier", false)):
+		_carrier(v, g, Hauler._vec(gear.get("head", [0, 2.5, 1])))
 	if gear is Dictionary and bool(gear.get("mast", false)):
 		_mast(v, g, Hauler._vec(gear.get("head", [0, 3, -1])))
 	if gear is Dictionary and v.style == &"buggy":
@@ -70,7 +72,7 @@ static func _truck(v: Hauler, g: Greeble) -> void:
 	# The cab: body, glass, roof, a light bar, door lines and mirrors.
 	var cab_spec: Dictionary = v.spec.get("cab", {})
 	var cab_size := Hauler._vec(cab_spec.get("size", [2.3, 0.95, 1.5]))
-	var cab := Vector3(0, top + cab_size.y * 0.5, float(cab_spec.get("z", -1.55)))
+	var cab := Vector3(float(cab_spec.get("x", 0.0)), top + cab_size.y * 0.5, float(cab_spec.get("z", -1.55)))
 	var hx := cab_size.x * 0.5
 	var hz := cab_size.z * 0.5
 	g.block(cab_size, cab, paint.darkened(0.08))
@@ -404,6 +406,39 @@ static func _mast(v: Hauler, g: Greeble, head: Vector3) -> void:
 		# Outriggers folded against the chassis.
 		g.block(Vector3(0.3, 0.3, 0.9), Vector3(side * (v.body_size.x * 0.5 + 0.15), 0.0, head.z), DARK)
 		g.block(Vector3(0.3, 0.06, 0.3), Vector3(side * (v.body_size.x * 0.5 + 0.15), -0.35, head.z + 0.3), STEEL)
+
+## A mobile crane's carrier: the deck the house turns on, walkways and
+## toolboxes down each side, outrigger boxes front and back, and the boom rest
+## on the nose that the boom lies in on the road.
+static func _carrier(v: Hauler, g: Greeble, head: Vector3) -> void:
+	var size := v.body_size
+	var top := size.y * 0.5
+	var yellow := v.paint
+	var cab_spec: Dictionary = v.spec.get("cab", {})
+	var cab_x := float(cab_spec.get("x", 0.0))
+	var cab_size := Hauler._vec(cab_spec.get("size", [1.4, 1.4, 1.8]))
+	# Walkway plates along the top, with a diamond-plate shade.
+	g.block(Vector3(size.x - 0.1, 0.06, size.z - 2.4), Vector3(0, top + 0.03, 0.9), STEEL.darkened(0.15))
+	# Engine cover beside the cab, where the other half of a full cab would be.
+	var nose_z := float(cab_spec.get("z", -4.0))
+	g.block(Vector3(size.x - cab_size.x - 0.2, 0.9, cab_size.z), Vector3(cab_x + cab_size.x * 0.5 + (size.x - cab_size.x - 0.2) * 0.5 + 0.05, top + 0.45, nose_z), yellow.darkened(0.12))
+	g.vent(0.9, 0.5, Transform3D(Basis(Vector3.UP, PI), Vector3(cab_x + cab_size.x * 0.5 + 0.6, top + 0.45, nose_z - cab_size.z * 0.5 - 0.01)), DARK, 5)
+	# The boom rest: a cradle on a post, just behind the cab.
+	var rest_z := nose_z + cab_size.z * 0.5 + 0.5
+	g.block(Vector3(0.25, head.y - top - 0.55, 0.25), Vector3(0, top + (head.y - top - 0.55) * 0.5, rest_z), DARK)
+	g.block(Vector3(0.95, 0.12, 0.35), Vector3(0, head.y - 0.5, rest_z), STEEL)
+	for sx in [-1.0, 1.0]:
+		g.block(Vector3(0.1, 0.35, 0.35), Vector3(sx * 0.45, head.y - 0.3, rest_z), STEEL)
+		# Toolboxes and steps down the sides, between the axle groups.
+		g.block(Vector3(0.35, 0.55, 2.2), Vector3(sx * (size.x * 0.5 + 0.12), -0.05, -0.55), yellow.darkened(0.2))
+		for k in 3:
+			g.block(Vector3(0.38, 0.03, 0.5), Vector3(sx * (size.x * 0.5 + 0.12), 0.24 + float(k) * 0.0, -1.3 + float(k) * 0.75), DARK)
+		# Outrigger boxes, beams stowed in them.
+		for z in [-size.z * 0.5 + 1.0, size.z * 0.5 - 0.35]:
+			g.block(Vector3(0.28, 0.4, 0.55), Vector3(sx * (size.x * 0.5 + 0.1), -0.2, z), DARK)
+			g.block(Vector3(0.4, 0.12, 0.4), Vector3(sx * (size.x * 0.5 + 0.15), -0.45, z), STEEL)
+	# Hazard stripes across the back.
+	g.stripes(size.x - 0.3, 0.2, Transform3D(Basis(), Vector3(0, -0.1, size.z * 0.5 + 0.01)))
 
 # --- Wheels ----------------------------------------------------------------
 

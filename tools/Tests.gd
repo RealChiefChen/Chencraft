@@ -1315,6 +1315,14 @@ func test_material_values() -> void:
 				# Cut from rough, not from polished: one or the other.
 				var jewel := Solid.cylinder(r0, r0 * 0.5, r0 * 0.9)
 				fin = fin_def.base_value_of(jewel) / v3
+			"stone":
+				# Dug, and crushed, it is worth the same; sandstone alone goes
+				# on, into glass.
+				var lump := Solid.chunk(0.4)
+				var v4 := Solid.volume(lump)
+				raw = raw_def.base_value_of(lump) / v4
+				pre = raw
+				fin = fin_def.base_value_of(Solid.box(Vector3(0.6, v4 / 0.03, 0.05))) / v4
 		# The wood check uses a plank from the log's mean radius, as the planker does.
 		var tol := 0.02
 		check_near(raw / float(m.raw), 1.0, tol, "%s raw value" % id)

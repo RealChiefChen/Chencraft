@@ -87,6 +87,7 @@ func _run_all() -> void:
 	await _test(&"a sign plan becomes a sign you can write on", test_sign_plan)
 	await _test(&"top gear is sold at the summit, the rest in town", test_gear_split)
 	await _test(&"hard materials need a better tool and a higher machine tier", test_material_levels)
+	await _test(&"a blueprint turned any way fills exactly its grid footprint", test_turned_blueprints)
 	await _test(&"save/load round-trip", test_save_load)
 	await _test(&"the title screen reads the save without loading it", test_save_summary)
 	await _test(&"settings coerce, persist and reset", test_settings)
@@ -2863,6 +2864,33 @@ func test_gear_split() -> void:
 	check(summit.available(top_carry), "the summit does not sell the carry rack's top level")
 	check_eq(summit.price_of(top_carry), int(GameData.upgrade_level(&"carry", GameData.max_upgrade_level(&"carry")).cost), "the top rack is mispriced")
 	PlayerState.reset()
+	done()
+
+func test_turned_blueprints() -> void:
+	_setup()
+	Economy.from_dict({"money": 90000, "day": 1})
+	var def := GameData.building(&"schematic_ramp")
+	var worst := 0.0
+	var worst_rot := Vector3i.ZERO
+	for rx in 4:
+		for ry in 4:
+			for rz in 4:
+				var rot := Vector3i(rx, ry, rz)
+				var node := plot.place(def, Vector2i(0, 0), rot, false) as Schematic
+				if node == null:
+					continue
+				await step(1)
+				var box: AABB = (node._ghost.global_transform * node._ghost.get_aabb())
+				var fp := Plot.oriented_extent(def.extent(), rot)
+				var base := plot.cell_to_world(Vector2i(0, 0), def.size, rot, def.trim)
+				var want := AABB(base - Vector3(fp.x * 0.5, 0, fp.z * 0.5), fp)
+				var off := maxf((box.position - want.position).abs().length(), (box.end - want.end).abs().length())
+				if off > worst:
+					worst = off
+					worst_rot = rot
+				plot.remove(node)
+				await step(1)
+	check(worst < 0.02, "a ramp turned %s sits %.2f m off its footprint" % [worst_rot, worst])
 	done()
 
 func test_material_levels() -> void:

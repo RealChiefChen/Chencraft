@@ -1595,6 +1595,22 @@ func _distance_to(v: Hauler, p: Player = null) -> float:
 	var half := v.body_size * 0.5
 	return Vector3(maxf(absf(local.x) - half.x, 0.0), 0.0, maxf(absf(local.z) - half.z, 0.0)).length()
 
+## The nearest vehicle with a ramped deck within `reach` of the player
+## (measured to its outline), leaving out `skip`.
+func _deck_near(p: Player, reach: float, skip: Hauler = null) -> Hauler:
+	var best: Hauler = null
+	var best_d := reach
+	for v in vehicles():
+		if v == skip or v.bed_kind != &"deck":
+			continue
+		var local := v.global_transform.affine_inverse() * p.global_position
+		var half := v.body_size * 0.5
+		var d := Vector2(maxf(absf(local.x) - half.x, 0.0), maxf(absf(local.z) - half.z, 0.0)).length()
+		if d <= best_d:
+			best = v
+			best_d = d
+	return best
+
 func vehicle_at_hand(reach: float = 6.0, p: Player = null) -> Hauler:
 	if p == null:
 		p = player
@@ -2285,6 +2301,12 @@ func handle_key(p: Player, event: InputEvent) -> void:
 		var v := vehicle_at_hand(8.0, p)
 		if v != null and v.towing != null and is_instance_valid(v.towing) and v.towing.bed_kind == &"deck":
 			v = v.towing
+		# Nothing of its own to unload - a loader parked on the low-loader, or
+		# being driven onto or off it: [X] works the deck's ramps instead.
+		if v == null or (v.bed_kind != &"deck" and not v.has_bed()):
+			var deck := _deck_near(p, 8.0, v)
+			if deck != null:
+				v = deck
 		if v != null:
 			if v.bed_kind == &"deck":
 				_tell(p, v.toggle_ramps())

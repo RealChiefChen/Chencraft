@@ -185,14 +185,16 @@ func cell_to_world(cell: Vector2i, size: Vector3i, rot: Variant, trim: Vector3i 
 
 ## A size in metres after the same quarter turns as `oriented_size`.
 static func oriented_extent(v: Vector3, rot: Vector3i) -> Vector3:
-	var out := v
-	for i in posmod(rot.x, 4):
-		out = Vector3(out.x, out.z, out.y)
-	for i in posmod(rot.y, 4):
-		out = Vector3(out.z, out.y, out.x)
-	for i in posmod(rot.z, 4):
-		out = Vector3(out.y, out.x, out.z)
-	return out
+	var out := orientation_basis(rot) * v
+	return Vector3(absf(out.x), absf(out.y), absf(out.z))
+
+## Where a building's origin goes, from the middle of the floor of its
+## footprint, so that a building turned on its side or upside down still
+## fills its footprint exactly. Buildings are modelled standing on their
+## origin, `extent` high; turned on its side that origin ends up at a side.
+static func tilt_offset(extent: Vector3, rot: Vector3i) -> Vector3:
+	var fp := oriented_extent(extent, rot)
+	return Vector3(0, fp.y * 0.5, 0) - orientation_basis(rot) * Vector3(0, extent.y * 0.5, 0)
 
 ## Whether a building can be sized to the fine grid rather than whole metres.
 static func fine_scalable(def: BuildingDef) -> bool:
@@ -202,14 +204,8 @@ static func fine_scalable(def: BuildingDef) -> bool:
 ## steps per axis, so a rotated box still occupies whole cells and the
 ## occupancy grid stays exact.
 static func oriented_size(size: Vector3i, rot: Vector3i) -> Vector3i:
-	var out := size
-	for i in posmod(rot.x, 4):
-		out = Vector3i(out.x, out.z, out.y)
-	for i in posmod(rot.y, 4):
-		out = Vector3i(out.z, out.y, out.x)
-	for i in posmod(rot.z, 4):
-		out = Vector3i(out.y, out.x, out.z)
-	return out
+	var out := orientation_basis(rot) * Vector3(size)
+	return Vector3i(roundi(absf(out.x)), roundi(absf(out.y)), roundi(absf(out.z)))
 
 static func rotated_footprint(size: Vector3i, yaw: int) -> Vector3i:
 	return oriented_size(size, Vector3i(0, yaw, 0))
@@ -316,7 +312,8 @@ func _spawn_node(def: BuildingDef, cell: Vector2i, orientation: Vector3i, lift: 
 	var node := _instantiate(def)
 	if node == null:
 		return null
-	node.position = to_local(cell_to_world(cell, def.size, orientation, def.trim)) + Vector3(0, lift, 0)
+	node.position = to_local(cell_to_world(cell, def.size, orientation, def.trim)) + Vector3(0, lift, 0) \
+		+ tilt_offset(def.extent(), orientation)
 	node.basis = orientation_basis(orientation)
 	add_child(node)
 	# The models speak for themselves now; a name over each is optional.

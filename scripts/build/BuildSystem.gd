@@ -766,7 +766,8 @@ func _update_ghost() -> void:
 	_ensure_preview(def)
 	if _preview != null:
 		_preview.visible = true
-		_preview.global_transform = Transform3D(plot.global_transform.basis * Plot.orientation_basis(rot), base)
+		_preview.global_transform = Transform3D(plot.global_transform.basis * Plot.orientation_basis(rot),
+			base + plot.global_transform.basis * Plot.tilt_offset(def.extent(), rot))
 		_tint_preview(last_error == "")
 
 func try_place() -> bool:

@@ -375,6 +375,20 @@ func _physics_process(delta: float) -> void:
 		var item := slot.item as LooseItem
 		if item == null or not is_instance_valid(item):
 			continue
+		if item.item_id != slot.box or not item.shop_stock:
+			# The piece that was here is something else now (recycled by an
+			# older version): forget it and put the box back.
+			slot.item = null
+			slot["back_at"] = 0.0
+			lost = true
+			continue
+		if item.state == LooseItem.State.POOLED and not item.owned:
+			# Gone from under the shop (put away by something else): back on
+			# the shelf now, not left empty until the next load.
+			slot.item = null
+			slot["back_at"] = 0.0
+			lost = true
+			continue
 		if item.owned or item.state == LooseItem.State.POOLED:
 			continue
 		# Unpaid stock that has been knocked off its place - not on the way

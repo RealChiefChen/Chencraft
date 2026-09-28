@@ -42,6 +42,9 @@ var cave_name: String = "Cave"
 ## and the sloping tunnel.
 var with_chamber: bool = true
 var dir: Vector3 = Vector3(0, 0, 1)
+## Rock over the cells cut out of the hillside past the door: [along, top],
+## relative to the mouth. See `Terrain._cut_cave_holes`.
+var caps: Array = []
 var _rng := RandomNumberGenerator.new()
 var _body: StaticBody3D
 var _mesh: Greeble
@@ -323,6 +326,14 @@ func _build_surface() -> void:
 			_mesh.box(size, Transform3D(Basis(Vector3.UP, _rng.randf_range(-0.4, 0.4)),
 				Vector3(sx * 3.2, roof + size.y * 0.35, z2 + 1.5)), Color(0.44, 0.43, 0.45).lightened(_rng.randf_range(-0.05, 0.06)))
 		z2 += 4.0
+	# The cells of hillside cut away over the slope, filled back in with rock
+	# down to the tunnel's roof, so the hill has no holes in it.
+	for cap in caps:
+		var z0 := float(cap[0])
+		var bottom := roof_at(z0)
+		var top := maxf(float(cap[1]) + 0.3, bottom + 0.6)
+		_solid(Vector3(SHAFT_WIDTH + 1.6, top - bottom, 6.2),
+			Transform3D(Basis(), Vector3(0, (top + bottom) * 0.5, z0 + 3.0)), Color(0.40, 0.39, 0.41))
 	var post := Vector3(-SHAFT_WIDTH * 0.5 - 2.0, 0, -1.5)
 	_mesh.block(Vector3(0.2, 2.4, 0.2), post + Vector3(0, 1.2, 0), TIMBER)
 	_mesh.block(Vector3(1.8, 0.7, 0.12), post + Vector3(0, 2.1, 0), TIMBER.lightened(0.15))

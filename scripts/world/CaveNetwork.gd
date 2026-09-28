@@ -105,6 +105,50 @@ func plan(p_terrain: Terrain, zones: Array, links: Array, seed_value: int) -> vo
 			if int(rooms[i].zone) == int(link[0]) or int(rooms[i].zone) == int(link[1]):
 				joined.append(i)
 		_repair(joined)
+	_prune_unreached()
+
+## Drops any cavern (and its tunnels) that no cave mouth leads to: one the
+## tunnelling could not join up is a sealed bubble in the rock, never seen and
+## never reached, with its ore wasted.
+func _prune_unreached() -> void:
+	var ids: Array = []
+	for i in rooms.size():
+		ids.append(i)
+	var comp := _components(ids)
+	var lit: Dictionary = {}
+	for i in ids:
+		if rooms[i].entrance != null:
+			lit[comp[i]] = true
+	var keep_room: Dictionary = {}
+	var new_rooms: Array = []
+	for i in ids:
+		if lit.has(comp[i]):
+			keep_room[i] = new_rooms.size()
+			new_rooms.append(rooms[i])
+	if new_rooms.size() == rooms.size():
+		return
+	var keep_tunnel: Dictionary = {}
+	var new_tunnels: Array = []
+	for ti in tunnels.size():
+		var t: Dictionary = tunnels[ti]
+		if keep_room.has(int(t.a)) and keep_room.has(int(t.b)):
+			keep_tunnel[ti] = new_tunnels.size()
+			t.a = keep_room[int(t.a)]
+			t.b = keep_room[int(t.b)]
+			new_tunnels.append(t)
+	for ri in new_rooms.size():
+		var room: Dictionary = new_rooms[ri]
+		room.index = ri
+		var links: Array = []
+		for ti in room.links:
+			if keep_tunnel.has(ti):
+				links.append(keep_tunnel[ti])
+		room.links = links
+	rooms.assign(new_rooms)
+	tunnels.assign(new_tunnels)
+	_grid.clear()
+	for ti in tunnels.size():
+		_index_tunnel(ti)
 
 func _kind_at(zone: Dictionary, p: Vector2) -> Kind:
 	var best := Kind.RIVER
@@ -249,7 +293,7 @@ func _connect(ids: Array) -> void:
 ## more can be joined.
 func _repair(ids: Array) -> void:
 	var tried: Dictionary = {}
-	for round_index in 60:
+	for round_index in 240:
 		var comp := _components(ids)
 		var groups: Dictionary = {}
 		for id in ids:

@@ -1175,6 +1175,7 @@ func _build_caves() -> void:
 		var cave := Cave.new()
 		cave.name = String(plan.name).replace(" ", "").replace("'", "")
 		cave.with_chamber = false
+		cave.caps = plan.get("caps", [])
 		cave.setup(plan.entrance, plan.dir, String(plan.name), _rng.randi())
 		add_child(cave)
 		caves.append(cave)

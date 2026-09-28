@@ -294,6 +294,30 @@ func _check_quarry() -> void:
 	_require(steep < 0.14, "the haul road is %.0f%% steep somewhere" % (steep * 100.0))
 	_require(t.height_at(bottom.x, bottom.z) - floor_h < 2.0, "the haul road does not reach the floor")
 
+## Every cave's way in is open from the door to the cavern: a ray down the
+## middle of the passage, head high, hits nothing - no hillside across it.
+func _check_cave_ways() -> void:
+	var t: Terrain = world.terrain
+	var space := world.get_world_3d().direct_space_state
+	var blocked := 0
+	for c in t.caves:
+		var e: Vector3 = c.entrance
+		var d: Vector3 = c.dir
+		var z := -2.0
+		var end := Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH + 4.0
+		while z < end:
+			var a := e + d * z + Vector3(0, Cave.floor_at(maxf(z, 0.0)) + 1.8, 0)
+			var b := e + d * (z + 2.0) + Vector3(0, Cave.floor_at(z + 2.0) + 1.8, 0)
+			var q := PhysicsRayQueryParameters3D.create(a, b, Layers.WORLD)
+			var hit := space.intersect_ray(q)
+			if not hit.is_empty():
+				blocked += 1
+				print("cave %s blocked %.1f m in, by %s" % [c.name, z, hit.collider])
+				break
+			z += 2.0
+	print("caves: %d ways in, %d blocked" % [t.caves.size(), blocked])
+	_require(blocked == 0, "%d cave ways in are blocked" % blocked)
+
 ## Hollow Isle is reached by road, and the road runs into the Hidden Valley.
 func _check_hollow() -> void:
 	var t: Terrain = world.terrain
@@ -414,6 +438,7 @@ func _report() -> void:
 	_check_roads()
 	_check_bridges_clear()
 	_check_quarry()
+	_check_cave_ways()
 	_check_hollow()
 	print("\n--- world smoke test ---")
 	print("frames            %d" % frames)

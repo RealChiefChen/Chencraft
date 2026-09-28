@@ -538,6 +538,40 @@ func shot_halls() -> void:
 		await look(eye, eye + d * 20.0 + Vector3(0, 1.5, 0))
 		await snap("hall_%d" % i)
 
+## Down the way in of one cave, a frame every few metres.
+func shot_walkin() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var t: Terrain = world.terrain
+	var c: Dictionary = t.caves[int(args.get("n", "0"))]
+	var e: Vector3 = c.entrance
+	var d: Vector3 = c.dir
+	var z := 0.0
+	var k := 0
+	while z < Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH + 10.0:
+		var eye := e + d * z + Vector3(0, Cave.floor_at(z) + 1.7, 0)
+		world.player.global_position = eye
+		await look(eye, eye + d * 10.0 + Vector3(0, Cave.floor_at(z + 10.0) - Cave.floor_at(z), 0))
+		await snap("walk_%d" % k)
+		z += 8.0
+		k += 1
+
+## From just outside each door, looking in along the way in.
+func shot_doors() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var t: Terrain = world.terrain
+	var only := int(args.get("n", "-1"))
+	var back := float(args.get("back", "3"))
+	for i in t.caves.size():
+		if only >= 0 and i != only:
+			continue
+		var c: Dictionary = t.caves[i]
+		var e: Vector3 = c.entrance
+		var d: Vector3 = c.dir
+		var eye := e - d * back + Vector3(0, 1.7, 0)
+		world.player.global_position = eye
+		await look(eye, eye + d * 20.0 - Vector3(0, 2.0, 0))
+		await snap("door_%d" % i)
+
 ## Where each road ends at a place: the last stretch, from behind and above.
 func shot_roadends() -> void:
 	Settings.set_value(&"moving_sun", false, false)

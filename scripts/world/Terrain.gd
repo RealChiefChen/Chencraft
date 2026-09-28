@@ -84,7 +84,7 @@ var _road_core := PackedByteArray()
 ## meshing.
 var cache_path: String = ""
 ## Bumped whenever generation changes, so an old cache is not trusted.
-const GENERATOR_VERSION := 24
+const GENERATOR_VERSION := 25
 
 var _cells: int = 0
 var _heights: PackedFloat32Array = PackedFloat32Array()
@@ -492,6 +492,7 @@ func generate() -> void:
 		_lap("caves")
 		_flatten_sites()
 		_flatten_clear_zones()
+		_cut_cave_holes()
 		_save_cache()
 	_block_bridges()
 	_build_mesh()
@@ -2245,14 +2246,42 @@ func _take_cave(c: Array, spacing: float, names: Array) -> bool:
 	# Level the mouth and the approach to it.
 	# A good yard in front of the door, to drive up to and turn round in.
 	reserve_site(Vector3(entrance.x, ground, entrance.z) - dir * 6.0, 20.0)
-	var side := Vector3(-dir.z, 0.0, dir.x)
-	for along in [Cave.SHAFT_LENGTH * 0.25, Cave.SHAFT_LENGTH * 0.75]:
-		var p: Vector3 = entrance + dir * along
-		var gx := int(floor(_grid_coord(p.x)))
-		var gz := int(floor(_grid_coord(p.z)))
-		if gx >= 0 and gz >= 0 and gx < _cells and gz < _cells:
-			_holes[gz * _cells + gx] = 1
 	return true
+
+## Cuts each cave's way in out of the ground, once the land is final: the
+## level passage, and on down the slope every cell whose ground would come
+## down through the tunnel - otherwise the hillside closes the passage off
+## where the slope starts, a wall of grass across the way in. Each cell cut
+## past the door gets a cap of rock (`caps`: along, top, both relative to the
+## mouth) for `Cave` to build, so the hill has no hole in it.
+func _cut_cave_holes() -> void:
+	for cave in caves:
+		var e: Vector3 = cave.entrance
+		var dir: Vector3 = cave.dir
+		var ground := float(cave.ground)
+		var caps: Array = []
+		var k := 0
+		while float(k) * CELL < Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH:
+			var z0 := float(k) * CELL
+			var p: Vector3 = e + dir * (z0 + CELL * 0.5)
+			var gx := int(floor(_grid_coord(p.x)))
+			var gz := int(floor(_grid_coord(p.z)))
+			if gx < 0 or gz < 0 or gx >= _cells or gz >= _cells:
+				break
+			var lo := INF
+			var hi := -INF
+			for c in [[0, 0], [1, 0], [0, 1], [1, 1]]:
+				var h := _heights[_index(gx + int(c[0]), gz + int(c[1]))]
+				lo = minf(lo, h)
+				hi = maxf(hi, h)
+			var in_shaft := z0 < Cave.SHAFT_LENGTH
+			if not in_shaft and lo > ground + Cave.roof_at(z0) + 1.0:
+				break
+			_holes[gz * _cells + gx] = 1
+			if not in_shaft:
+				caps.append([z0, hi - ground])
+			k += 1
+		cave["caps"] = caps
 
 ## How much rock is over a cave dug here, in metres of spare cover; zero or
 ## less means no.

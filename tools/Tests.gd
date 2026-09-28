@@ -89,6 +89,7 @@ func _run_all() -> void:
 	await _test(&"hard materials need a better tool and a higher machine tier", test_material_levels)
 	await _test(&"a blueprint turned any way fills exactly its grid footprint", test_turned_blueprints)
 	await _test(&"sandstone refines into glass; building stone only crushes", test_stone)
+	await _test(&"utility and mower trailers have gates that come down as ramps", test_trailer_gates)
 	await _test(&"save/load round-trip", test_save_load)
 	await _test(&"the title screen reads the save without loading it", test_save_summary)
 	await _test(&"settings coerce, persist and reset", test_settings)
@@ -2884,6 +2885,44 @@ func test_gear_split() -> void:
 	check(summit.available(top_carry), "the summit does not sell the carry rack's top level")
 	check_eq(summit.price_of(top_carry), int(GameData.upgrade_level(&"carry", GameData.max_upgrade_level(&"carry")).cost), "the top rack is mispriced")
 	PlayerState.reset()
+	done()
+
+func test_trailer_gates() -> void:
+	_setup()
+	for id in [&"trailer", &"mower_trailer"]:
+		var t := Hauler.new()
+		t.setup(manager, 0, id)
+		world.add_child(t)
+		t.global_position = Vector3(0 if id == &"trailer" else 8, t.spawn_height(), 0)
+		await step(40)
+		check(t.has_ramps() and t.bed_kind == &"gate", "the %s has no gate" % id)
+		check(not t.ramps_down, "the %s's gate starts down" % id)
+		# Closed, the gate stands across the back of the bed.
+		var up := t.ramp_transform(0.0, 1.0)
+		check(up.basis.z.y > 0.9, "the %s's gate is not stood up when shut" % id)
+		t.toggle_ramps()
+		for i in 400:
+			await step(1)
+			if t.ramp_pose <= 0.0:
+				break
+		check(t.ramps_down, "the %s's gate did not come down" % id)
+		var foot := t.global_transform * (t.ramp_transform(0.0, 0.0) * Vector3(0, 0, t.ramp_length() * 0.5))
+		check(foot.y < 0.4, "the %s's gate does not reach the ground (%.2f m up)" % [id, foot.y])
+		t.toggle_ramps()
+		for i in 400:
+			await step(1)
+			if t.ramp_pose >= 1.0:
+				break
+		check(not t.ramps_down, "the %s's gate did not go back up" % id)
+	var mower: Dictionary = GameData.vehicle(&"mower_trailer")
+	check_eq(float(mower.mass), 200.0, "the mower trailer is not 200 kg")
+	check(mower.has("hitch"), "the mower trailer has no hitch on the back")
+	check_eq(GameData.building(&"pad_mower_trailer").cost, 2500, "the mower trailer pad is not $2,500")
+	var sold := false
+	for p in GameData.store_products():
+		if p.target == &"pad_mower_trailer" and String(GameData.store_def(StringName(p.store)).get("name", "")) == "VEHICLE DEALER":
+			sold = true
+	check(sold, "the vehicle dealer does not sell the mower trailer")
 	done()
 
 func test_stone() -> void:

@@ -14,6 +14,8 @@ const DARK := Color(0.14, 0.14, 0.15)
 const STEEL := Color(0.60, 0.61, 0.64)
 const GLASS := Color(0.22, 0.32, 0.40)
 const WOOD := Color(0.46, 0.34, 0.22)
+## Expanded steel mesh, as on a trailer gate.
+const MESH := Color(0.30, 0.31, 0.33)
 const AMBER := Color(1.0, 0.62, 0.15)
 const HEADLIGHT := Color(1.0, 0.95, 0.75)
 const TAIL := Color(1.0, 0.15, 0.1)
@@ -46,6 +48,8 @@ static func dress(v: Hauler) -> void:
 			_tub(v)
 		&"deck":
 			_deck(v, g)
+		&"gate":
+			_gate_bed(v, g)
 	var gear: Variant = v.spec.get("rig", null)
 	if gear is Dictionary and bool(gear.get("carrier", false)):
 		_carrier(v, g, Hauler._vec(gear.get("head", [0, 2.5, 1])))
@@ -317,6 +321,66 @@ static func _walled_bed(v: Hauler, g: Greeble) -> void:
 	v._tailgate_mesh = gate.instance("Tailgate")
 	v._tailgate_mesh.position = Vector3(0, v.bed_floor, v.bed_back + 0.12)
 	v.add_child(v._tailgate_mesh)
+
+## An open steel utility bed: a timber floor in a channel frame, sides of
+## square tube - a top rail and a bottom rail with spindles between - and a
+## mesh gate across the back on its own node, that folds down into a ramp.
+static func _gate_bed(v: Hauler, g: Greeble) -> void:
+	var frame := v.paint
+	var rail := 0.06
+	var boards := maxi(2, int(v.bed_length / 0.4))
+	for i in boards:
+		var z := v.bed_front + (float(i) + 0.5) * v.bed_length / float(boards)
+		g.block(Vector3(v.bed_half_width * 2.0, 0.05, v.bed_length / float(boards) - 0.03), Vector3(0, v.bed_floor + 0.025, z), WOOD)
+	var top := v.bed_floor + v.wall_height
+	for side in [-1.0, 1.0]:
+		var x: float = side * (v.bed_half_width + rail * 0.5)
+		# The channel the floor sits in, then the rails and the spindles.
+		g.block(Vector3(0.1, 0.16, v.bed_length + 0.1), Vector3(side * (v.bed_half_width + 0.05), v.bed_floor - 0.04, v.bed_mid_z), frame.darkened(0.2))
+		g.block(Vector3(rail, rail, v.bed_length + 0.08), Vector3(x, top - rail * 0.5, v.bed_mid_z), frame)
+		g.block(Vector3(rail, rail, v.bed_length), Vector3(x, v.bed_floor + 0.1, v.bed_mid_z), frame)
+		if v.wall_height > 0.5:
+			g.block(Vector3(rail * 0.8, rail * 0.8, v.bed_length), Vector3(x, v.bed_floor + v.wall_height * 0.55, v.bed_mid_z), frame)
+		var spindles := maxi(3, int(v.bed_length / 0.3))
+		for k in spindles + 1:
+			var z := v.bed_front + float(k) * v.bed_length / float(spindles)
+			g.block(Vector3(0.03, v.wall_height - 0.1, 0.03), Vector3(x, v.bed_floor + v.wall_height * 0.5 + 0.05, z), frame.lightened(0.05))
+		for z in [v.bed_front, v.bed_back]:
+			g.block(Vector3(rail + 0.02, v.wall_height + 0.06, rail + 0.02), Vector3(x, v.bed_floor + v.wall_height * 0.5, z), frame.darkened(0.1))
+	# The front: the same rails across, over the A-frame.
+	var across := v.bed_half_width * 2.0 + rail * 2.0
+	var head_z := v.bed_front - 0.05
+	g.block(Vector3(across, rail, rail), Vector3(0, v.bed_floor + v.headboard_height - rail * 0.5, head_z), frame)
+	g.block(Vector3(across, rail, rail), Vector3(0, v.bed_floor + 0.1, head_z), frame)
+	var bars := maxi(3, int(across / 0.3))
+	for k in bars + 1:
+		var x := -across * 0.5 + across * float(k) / float(bars)
+		g.block(Vector3(0.03, v.headboard_height - 0.1, 0.03), Vector3(x, v.bed_floor + v.headboard_height * 0.5 + 0.05, head_z), frame.lightened(0.05))
+	# The gate: a tube frame with expanded mesh in it, hinged at the floor.
+	v.ramp_meshes.clear()
+	var gate := Greeble.new()
+	gate.layer_step = LAYER
+	var w := v.ramp_width()
+	var l := v.ramp_length()
+	for sx in [-1.0, 1.0]:
+		gate.block(Vector3(0.06, 0.06, l), Vector3(sx * (w * 0.5 - 0.03), 0.03, l * 0.5), frame)
+	gate.block(Vector3(w, 0.06, 0.06), Vector3(0, 0.03, 0.03), frame)
+	gate.block(Vector3(w, 0.06, 0.06), Vector3(0, 0.03, l - 0.03), frame)
+	var mesh := MESH
+	var cells := maxi(3, int(w / 0.12))
+	for k in cells:
+		var x := -w * 0.5 + 0.06 + (w - 0.12) * (float(k) + 0.5) / float(cells)
+		gate.block(Vector3(0.015, 0.02, l - 0.1), Vector3(x, 0.03, l * 0.5), mesh)
+	var rows := maxi(3, int(l / 0.12))
+	for k in rows:
+		var z := 0.06 + (l - 0.12) * (float(k) + 0.5) / float(rows)
+		gate.block(Vector3(w - 0.1, 0.02, 0.015), Vector3(0, 0.035, z), mesh)
+	# Spring-assist handles on the top corners.
+	for sx in [-1.0, 1.0]:
+		gate.block(Vector3(0.05, 0.1, 0.05), Vector3(sx * (w * 0.5 - 0.12), 0.08, l - 0.1), DARK)
+	var mi := gate.instance("Gate")
+	v.add_child(mi)
+	v.ramp_meshes.append(mi)
 
 ## A low-loader's deck: timber boards on steel, a kerb each side, a
 ## headboard, and the two ramps, each its own node so it can fold.

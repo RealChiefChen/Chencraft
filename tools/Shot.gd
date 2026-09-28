@@ -847,3 +847,23 @@ func shot_filter() -> void:
 	world.hud.filter_panel.open(f)
 	await _frames(10)
 	await snap("filter_panel")
+
+## The utility trailer and the mower trailer, gates up and down.
+func shot_trailers() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var base := Vector3(-12, World.PLOT_GROUND + 0.1, -12)
+	var made: Array = []
+	for i in 2:
+		var t := Hauler.new()
+		t.setup(world.manager, 0, &"trailer" if i == 0 else &"mower_trailer")
+		world.add_child(t)
+		t.global_position = base + Vector3(float(i) * 5.0, t.spawn_height(), 0)
+		made.append(t)
+	await _frames(60)
+	await look(base + Vector3(-3.5, 3.2, 7.5), base + Vector3(2.5, 0.6, 0))
+	await snap("trailers_shut")
+	for t in made:
+		t.set_ramps(true)
+	await _frames(20)
+	await snap("trailers_open")

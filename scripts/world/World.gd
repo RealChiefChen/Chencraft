@@ -1690,7 +1690,7 @@ func _deck_near(p: Player, reach: float, skip: Hauler = null) -> Hauler:
 	var best: Hauler = null
 	var best_d := reach
 	for v in vehicles():
-		if v == skip or v.bed_kind != &"deck":
+		if v == skip or not v.has_ramps():
 			continue
 		var local := v.global_transform.affine_inverse() * p.global_position
 		var half := v.body_size * 0.5
@@ -2388,16 +2388,17 @@ func handle_key(p: Player, event: InputEvent) -> void:
 	elif Controls.pressed(event, &"unload"):
 		p.act(&"lever" if p.driving() else &"use")
 		var v := vehicle_at_hand(8.0, p)
-		if v != null and v.towing != null and is_instance_valid(v.towing) and v.towing.bed_kind == &"deck":
+		if v != null and v.towing != null and is_instance_valid(v.towing) \
+				and (v.towing.bed_kind == &"deck" or (v.towing.has_ramps() and not v.has_bed())):
 			v = v.towing
 		# Nothing of its own to unload - a loader parked on the low-loader, or
 		# being driven onto or off it: [X] works the deck's ramps instead.
-		if v == null or (v.bed_kind != &"deck" and not v.has_bed()):
+		if v == null or (not v.has_ramps() and not v.has_bed()):
 			var deck := _deck_near(p, 8.0, v)
 			if deck != null:
 				v = deck
 		if v != null:
-			if v.bed_kind == &"deck":
+			if v.has_ramps():
 				_tell(p, v.toggle_ramps())
 			elif not v.has_bed():
 				_tell(p, "the %s has nothing to unload" % v.display_name.to_lower())

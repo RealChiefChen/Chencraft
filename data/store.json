@@ -177,6 +177,10 @@
             },
             {
               "kind": "unlock",
+              "target": "pad_mower_trailer"
+            },
+            {
+              "kind": "unlock",
               "target": "pad_trailer"
             },
             {

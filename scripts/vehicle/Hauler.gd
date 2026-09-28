@@ -437,6 +437,8 @@ func _build() -> void:
 			_build_tub()
 		&"deck":
 			_build_deck()
+		&"gate":
+			_build_gate_bed()
 
 	if has_bed():
 		_cargo_area = Area3D.new()
@@ -534,16 +536,43 @@ func _build_deck() -> void:
 		_ramps_flat.append(_collider(Vector3(RAMP_WIDTH, 0.14, RAMP_LENGTH), Vector3.ZERO))
 	_pose_ramps()
 
+## A walled bed whose tailgate is a ramp: sides and a headboard, and a
+## full-width gate across the back that stands up to close the bed and comes
+## down to the ground to wheel or drive things aboard.
+func _build_gate_bed() -> void:
+	var t := 0.12
+	for side in [-1.0, 1.0]:
+		_collider(Vector3(t, wall_height, bed_length + 0.2),
+			Vector3(side * (bed_half_width + t * 0.5), bed_floor + wall_height * 0.5, bed_mid_z))
+	_collider(Vector3(bed_half_width * 2.0 + t * 2.0, headboard_height, 0.2),
+		Vector3(0, bed_floor + headboard_height * 0.5, bed_front - 0.1))
+	_ramps_flat.append(_collider(Vector3(ramp_width(), 0.1, ramp_length()), Vector3.ZERO))
+	_pose_ramps()
+
+## Whether this bed has ramps (or a ramp gate) to work with [X].
+func has_ramps() -> bool:
+	return bed_kind == &"deck" or bed_kind == &"gate"
+
+## A ramp's length and width: the low-loader's pair, or a gate as tall as
+## the sides and as wide as the bed.
+func ramp_length() -> float:
+	return maxf(0.6, wall_height + 0.1) if bed_kind == &"gate" else RAMP_LENGTH
+
+func ramp_width() -> float:
+	return bed_half_width * 2.0 + 0.2 if bed_kind == &"gate" else RAMP_WIDTH
+
 ## Across the deck, where each ramp sits: under the wheels of the widest
-## machine it carries.
+## machine it carries. A gate is one, across the whole back.
 func ramp_xs() -> Array[float]:
+	if bed_kind == &"gate":
+		return [0.0]
 	var x := bed_half_width - RAMP_WIDTH * 0.5
 	return [-x, x]
 
 ## The ramp's angle down from level when its foot is on the ground.
 func _ramp_down_angle() -> float:
 	var ground := -(wheel_radius - _lowest_wheel_y() + SAG)
-	return asin(clampf((bed_floor - ground) / RAMP_LENGTH, 0.0, 1.0))
+	return asin(clampf((bed_floor - ground) / ramp_length(), 0.0, 1.0))
 
 ## A ramp at `pose` (0 down, 1 up): hinged on the deck's back edge; the
 ## transform is the middle of the ramp's plate.
@@ -551,7 +580,7 @@ func ramp_transform(x: float, pose: float) -> Transform3D:
 	var angle := lerpf(_ramp_down_angle(), -PI * 0.5, pose)
 	var basis := Basis(Vector3.RIGHT, angle)
 	var hinge := Vector3(x, bed_floor - 0.07, bed_back)
-	return Transform3D(basis, hinge + basis * Vector3(0, 0, RAMP_LENGTH * 0.5))
+	return Transform3D(basis, hinge + basis * Vector3(0, 0, ramp_length() * 0.5))
 
 func ramp_down_transform(x: float) -> Transform3D:
 	return ramp_transform(x, 0.0)
@@ -559,12 +588,15 @@ func ramp_down_transform(x: float) -> Transform3D:
 ## [X]: down if up, up if down; stops them if they are on the move. Says what
 ## it did.
 func toggle_ramps() -> String:
-	if bed_kind != &"deck":
+	if not has_ramps():
 		return ""
+	var what := "gate" if bed_kind == &"gate" else "ramps"
 	if not is_equal_approx(ramp_pose, ramp_target):
 		ramp_target = ramp_pose
-		return "ramps held at %d%%" % int(round((1.0 - ramp_pose) * 100.0))
+		return "%s held at %d%%" % [what, int(round((1.0 - ramp_pose) * 100.0))]
 	ramp_target = 0.0 if ramp_pose > 0.5 else 1.0
+	if bed_kind == &"gate":
+		return "gate coming down" if ramp_target < 0.5 else "gate going up"
 	return "ramps coming down - drive aboard" if ramp_target < 0.5 else "ramps going up"
 
 ## Straight to down or up (loading a save, a co-op picture, tests).
@@ -572,14 +604,14 @@ func set_ramps(down: bool) -> void:
 	set_ramp_pose(0.0 if down else 1.0)
 
 func set_ramp_pose(pose: float) -> void:
-	if bed_kind != &"deck":
+	if not has_ramps():
 		return
 	ramp_pose = clampf(pose, 0.0, 1.0)
 	ramp_target = ramp_pose
 	_pose_ramps()
 
 func _update_ramps(delta: float) -> void:
-	if bed_kind != &"deck" or is_equal_approx(ramp_pose, ramp_target):
+	if not has_ramps() or is_equal_approx(ramp_pose, ramp_target):
 		return
 	ramp_pose = move_toward(ramp_pose, ramp_target, RAMP_SPEED * delta)
 	_pose_ramps()
@@ -591,7 +623,7 @@ func _pose_ramps() -> void:
 		_ramps_flat[i].transform = ramp_transform(xs[i], ramp_pose)
 	for i in ramp_meshes.size():
 		var t := ramp_transform(xs[i], ramp_pose)
-		ramp_meshes[i].transform = Transform3D(t.basis, t.origin - t.basis * Vector3(0, 0, RAMP_LENGTH * 0.5))
+		ramp_meshes[i].transform = Transform3D(t.basis, t.origin - t.basis * Vector3(0, 0, ramp_length() * 0.5))
 
 func stake_positions() -> Array[float]:
 	var out: Array[float] = []
@@ -1001,6 +1033,10 @@ func _set_floor_slick(slick: bool) -> void:
 	(physics_material_override as PhysicsMaterial).friction = 0.1 if slick else BED_FRICTION
 
 func _set_tailgate(open: bool) -> void:
+	if bed_kind == &"gate":
+		# The gate is the tailgate: down for tipping out, back up after.
+		ramp_target = 0.0 if open else 1.0
+		return
 	if _tailgate == null:
 		return
 	_tailgate.disabled = open

@@ -477,6 +477,19 @@
       "blurb": "Spawns your utility trailer. Brings it back when it is lost."
     },
     {
+      "id": "pad_mower_trailer",
+      "display_name": "Lawnmower Trailer Pad",
+      "kind": "pad",
+      "vehicle": "mower_trailer",
+      "cost": 2500,
+      "size": [
+        2,
+        1,
+        4
+      ],
+      "blurb": "Spawns your lawnmower trailer. Brings it back when it is lost."
+    },
+    {
       "id": "pad_log_trailer",
       "display_name": "Logging Trailer Pad",
       "kind": "pad",

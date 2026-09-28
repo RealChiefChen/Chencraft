@@ -246,10 +246,10 @@ func _market() -> void:
 ## was dug or felled, with the change at each step - so the oddities (a wood
 ## that is worth less as planks, a crystal worth less smelted) are there to see.
 func _price_guide() -> void:
-	for path in ["wood", "metal", "gem"]:
+	for path in ["wood", "metal", "gem", "stone"]:
 		var stages: Array = GameData.stage_names(path)
 		_section({"wood": "Price guide: timber", "metal": "Price guide: metals",
-			"gem": "Price guide: stones"}[path])
+			"gem": "Price guide: gemstones", "stone": "Price guide: building stone"}[path])
 		var grid := GridContainer.new()
 		grid.columns = 5
 		grid.add_theme_constant_override("h_separation", 22)

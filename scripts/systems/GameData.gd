@@ -146,6 +146,11 @@ func _apply_materials(table: Array) -> void:
 			"metal":
 				final_def.value_per_m3 = pre / smelt_yield
 				final_def.finish_value = {&"refined": fin / pre}
+			"stone":
+				# Building stone is sold as it is (or crushed); sandstone alone
+				# goes on, refined into glass.
+				if final_def != raw_def:
+					final_def.value_per_m3 = fin
 			"gem":
 				raw_def.finish_value = {&"polished": pre / raw}
 				# A cut jewel is priced on its own: it was never polished.
@@ -173,6 +178,8 @@ static func stage_names(path: String) -> Array:
 			return ["Ore", "Smelted", "Refined"]
 		"gem":
 			return ["Rough", "Polished", "Cut (instead)"]
+		"stone":
+			return ["As dug", "Crushed", "Refined (glass)"]
 	return ["Raw", "Pre", "Final"]
 
 ## Cross-checks every reference between the tables, so a typo in a data file
@@ -275,6 +282,9 @@ func machine_accepts(machine_id: StringName, item_id: StringName) -> bool:
 		return false
 	if not m.accepts_category(def.category):
 		return false
+	# Stone is only refined if it turns into something (sandstone into glass).
+	if m.mode == MachineDef.MODE_REFINE and def.category == &"stone":
+		return m.output_for(item_id) != &""
 	if m.mode == MachineDef.MODE_ASSEMBLE or m.mode == MachineDef.MODE_SAND \
 			or m.mode == MachineDef.MODE_CRUSH or m.mode == MachineDef.MODE_REFINE:
 		return true

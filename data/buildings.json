@@ -852,7 +852,8 @@
       "mode": "crush",
       "accepts": [
         "ore",
-        "gem"
+        "gem",
+        "stone"
       ],
       "tunnel": [
         1.0,
@@ -907,8 +908,12 @@
       "display_name": "Refiner",
       "mode": "refine",
       "accepts": [
-        "metal"
+        "metal",
+        "stone"
       ],
+      "conversion": {
+        "stone_sandstone": "glass"
+      },
       "tunnel": [
         1.0,
         0.75

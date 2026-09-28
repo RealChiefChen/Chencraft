@@ -598,6 +598,9 @@ func exit_clear(dims: Dictionary, xform: Transform3D, also: int = 0) -> bool:
 	q.collision_mask = Layers.LOOSE | Layers.PLAYER | Layers.VEHICLE | also
 	return get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
+## The longest sheet of glass the refiner turns out, metres.
+const GLASS_PANE := 1.2
+
 ## Does this machine's job to one entry. Returns what comes out - one entry,
 ## or several for the crusher - each marked `changed` if the machine did
 ## anything to it.
@@ -633,7 +636,19 @@ func work(entry: Dictionary) -> Array[Dictionary]:
 			if category != &"jewel" and not Solid.has_finish(dims, finish):
 				_change(entry, entry.id, Solid.with_finish(dims, finish))
 		MachineDef.MODE_REFINE:
-			if not Solid.has_finish(dims, &"refined"):
+			var into := machine_def.output_for(entry.id)
+			if into != &"":
+				# Sandstone melts down into glass: sheets 5 cm thick.
+				var v := Solid.volume(dims)
+				var cs: Vector3 = Solid.bounds(GameData.item(into).default_dims())
+				var run := v / maxf(0.0001, cs.x * cs.z)
+				var count := clampi(int(ceil(run / GLASS_PANE)), 1, 128)
+				_change(entry, into, Solid.box(Vector3(cs.x, run / float(count), cs.z)))
+				for i in range(1, count):
+					var more := entry.duplicate(true)
+					more.ready = float(entry.ready) + 0.05 * float(i)
+					out.append(more)
+			elif not Solid.has_finish(dims, &"refined"):
 				_change(entry, entry.id, Solid.with_finish(dims, &"refined"))
 		MachineDef.MODE_CUT:
 			var to := machine_def.output_for(entry.id)
@@ -755,7 +770,8 @@ func _shape_output(entry: Dictionary) -> Array[Dictionary]:
 				each = Solid.box(Vector3(t * 1.6, run / float(n), t))
 		MachineDef.MODE_REFINE:
 			var t := setting(&"section_cm") / 100.0
-			if t > 0.0:
+			# Glass comes out as sheets whatever the bar size is set to.
+			if t > 0.0 and machine_def.output_for(entry.id) == &"" and GameData.item(entry.id).category != &"glass":
 				var run := v / (t * t)
 				n = maxi(1, int(ceil(run / MAX_BAR)))
 				each = Solid.box(Vector3(t, run / float(n), t))

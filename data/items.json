@@ -1170,6 +1170,146 @@
       "volatility": 0.3
     },
     {
+      "id": "stone_sandstone",
+      "display_name": "Sandstone",
+      "category": "stone",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.34,
+        0.22,
+        0.26
+      ],
+      "density": 700,
+      "value_per_m3": 60,
+      "color": [
+        0.95,
+        0.72,
+        0.42
+      ],
+      "volatility": 0.3
+    },
+    {
+      "id": "stone_limestone",
+      "display_name": "Limestone",
+      "category": "stone",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.34,
+        0.22,
+        0.26
+      ],
+      "density": 720,
+      "value_per_m3": 70,
+      "color": [
+        0.92,
+        0.88,
+        0.72
+      ],
+      "volatility": 0.3
+    },
+    {
+      "id": "stone_slate",
+      "display_name": "Slate",
+      "category": "stone",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.34,
+        0.22,
+        0.26
+      ],
+      "density": 800,
+      "value_per_m3": 110,
+      "color": [
+        0.34,
+        0.42,
+        0.54
+      ],
+      "volatility": 0.3
+    },
+    {
+      "id": "stone_granite",
+      "display_name": "Granite",
+      "category": "stone",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.34,
+        0.22,
+        0.26
+      ],
+      "density": 850,
+      "value_per_m3": 130,
+      "color": [
+        0.86,
+        0.58,
+        0.56
+      ],
+      "volatility": 0.3
+    },
+    {
+      "id": "stone_basalt",
+      "display_name": "Basalt",
+      "category": "stone",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.34,
+        0.22,
+        0.26
+      ],
+      "density": 900,
+      "value_per_m3": 100,
+      "color": [
+        0.2,
+        0.2,
+        0.26
+      ],
+      "volatility": 0.3
+    },
+    {
+      "id": "stone_marble",
+      "display_name": "Marble",
+      "category": "stone",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.34,
+        0.22,
+        0.26
+      ],
+      "density": 820,
+      "value_per_m3": 260,
+      "color": [
+        0.96,
+        0.96,
+        0.99
+      ],
+      "volatility": 0.3
+    },
+    {
+      "id": "glass",
+      "display_name": "Glass",
+      "category": "glass",
+      "shape": "box",
+      "variable": true,
+      "cross_section": [
+        0.6,
+        0.05
+      ],
+      "length": 0.9,
+      "density": 620,
+      "value_per_m3": 480,
+      "color": [
+        0.66,
+        0.93,
+        0.96
+      ],
+      "volatility": 0.3
+    },
+    {
       "id": "gem_quartz",
       "display_name": "Rough Quartz",
       "category": "gem",
@@ -2112,6 +2252,72 @@
       "pre": 4600,
       "final": 6200,
       "note": "Ice caves only; its colour shows best polished"
+    },
+    {
+      "id": "sandstone",
+      "level": 1,
+      "path": "stone",
+      "raw_item": "stone_sandstone",
+      "final_item": "glass",
+      "raw": 60,
+      "pre": 60,
+      "final": 480,
+      "note": "Refined, it turns into glass"
+    },
+    {
+      "id": "limestone",
+      "level": 1,
+      "path": "stone",
+      "raw_item": "stone_limestone",
+      "final_item": "stone_limestone",
+      "raw": 70,
+      "pre": 70,
+      "final": 70,
+      "note": "Building stone: sold as it is, or crushed"
+    },
+    {
+      "id": "slate",
+      "level": 1,
+      "path": "stone",
+      "raw_item": "stone_slate",
+      "final_item": "stone_slate",
+      "raw": 110,
+      "pre": 110,
+      "final": 110,
+      "note": "Building stone: sold as it is, or crushed"
+    },
+    {
+      "id": "granite",
+      "level": 1,
+      "path": "stone",
+      "raw_item": "stone_granite",
+      "final_item": "stone_granite",
+      "raw": 130,
+      "pre": 130,
+      "final": 130,
+      "note": "Building stone: sold as it is, or crushed"
+    },
+    {
+      "id": "basalt",
+      "level": 1,
+      "path": "stone",
+      "raw_item": "stone_basalt",
+      "final_item": "stone_basalt",
+      "raw": 100,
+      "pre": 100,
+      "final": 100,
+      "note": "Building stone: sold as it is, or crushed"
+    },
+    {
+      "id": "marble",
+      "level": 1,
+      "path": "stone",
+      "raw_item": "stone_marble",
+      "final_item": "stone_marble",
+      "raw": 260,
+      "pre": 260,
+      "final": 260,
+      "note": "Building stone: sold as it is, or crushed"
     }
   ]
 }

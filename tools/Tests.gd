@@ -88,6 +88,7 @@ func _run_all() -> void:
 	await _test(&"top gear is sold at the summit, the rest in town", test_gear_split)
 	await _test(&"hard materials need a better tool and a higher machine tier", test_material_levels)
 	await _test(&"a blueprint turned any way fills exactly its grid footprint", test_turned_blueprints)
+	await _test(&"sandstone refines into glass; building stone only crushes", test_stone)
 	await _test(&"save/load round-trip", test_save_load)
 	await _test(&"the title screen reads the save without loading it", test_save_summary)
 	await _test(&"settings coerce, persist and reset", test_settings)
@@ -2862,6 +2863,32 @@ func test_gear_split() -> void:
 	check(summit.available(top_carry), "the summit does not sell the carry rack's top level")
 	check_eq(summit.price_of(top_carry), int(GameData.upgrade_level(&"carry", GameData.max_upgrade_level(&"carry")).cost), "the top rack is mispriced")
 	PlayerState.reset()
+	done()
+
+func test_stone() -> void:
+	_setup()
+	Economy.from_dict({"money": 90000, "day": 1})
+	var refiner := plot.place(GameData.building(&"refiner"), Vector2i(0, 0), 0, false) as InlineMachine
+	var crusher := plot.place(GameData.building(&"crusher"), Vector2i(0, 24), 0, false) as InlineMachine
+	var furnace := plot.place(GameData.building(&"furnace"), Vector2i(0, 48), 0, false) as InlineMachine
+	await step(2)
+	var lump := func(id: StringName, v: float) -> Dictionary:
+		return {"id": id, "dims": Solid.chunk(v), "owned": true, "plot": 0, "changed": false, "ready": 0.0}
+	var glass := refiner.work(lump.call(&"stone_sandstone", 0.3))
+	check(glass.size() >= 1 and glass[0].id == &"glass" and bool(glass[0].changed), "sandstone did not refine into glass")
+	var total := 0.0
+	for e in glass:
+		total += Solid.volume(e.dims)
+		check(Solid.bounds(e.dims).y <= InlineMachine.GLASS_PANE + 0.001, "a sheet of glass is too long")
+	check_near(total, 0.3, 0.0001, "refining sandstone lost some of it")
+	check(Economy.price_of(&"glass", glass[0].dims) > Economy.price_of(&"stone_sandstone", Solid.chunk(Solid.volume(glass[0].dims))),
+		"glass is worth no more than the sandstone it came from")
+	check(not GameData.machine_accepts(&"refiner", &"stone_granite"), "the refiner takes granite")
+	check(not GameData.machine_accepts(&"furnace", &"stone_marble"), "the smelter takes marble")
+	check(GameData.machine_accepts(&"crusher", &"stone_basalt"), "the crusher will not take basalt")
+	var crushed := crusher.work(lump.call(&"stone_basalt", 0.2))
+	check(crushed.size() >= 2 and crushed[0].id == &"stone_basalt", "basalt was not crushed")
+	check(Economy.price_of(&"stone_marble") > 0, "marble cannot be sold")
 	done()
 
 func test_turned_blueprints() -> void:

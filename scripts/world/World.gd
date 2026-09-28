@@ -1166,6 +1166,20 @@ const WILD_ORE := [
 		"quota": 8, "volume": [0.15, 0.7], "embed": [0.50, 0.70], "near": 1785.0},
 	{"item": &"gem_turquoise", "biomes": [Terrain.Biome.DESERT, Terrain.Biome.MOUNTAIN],
 		"quota": 10, "volume": [0.15, 0.7], "embed": [0.50, 0.70], "near": 1575.0},
+	# Building stone: plenty of it, each in its own country. Sandstone is the
+	# one that goes further, into glass.
+	{"item": &"stone_limestone", "biomes": [Terrain.Biome.WOODLAND],
+		"quota": 40, "volume": [0.4, 2.0], "embed": [0.2, 0.5]},
+	{"item": &"stone_sandstone", "biomes": [Terrain.Biome.DESERT],
+		"quota": 44, "volume": [0.4, 2.0], "embed": [0.2, 0.5]},
+	{"item": &"stone_slate", "biomes": [Terrain.Biome.TAIGA, Terrain.Biome.SWAMP],
+		"quota": 32, "volume": [0.4, 2.0], "embed": [0.25, 0.55]},
+	{"item": &"stone_granite", "biomes": [Terrain.Biome.MOUNTAIN],
+		"quota": 32, "volume": [0.4, 2.0], "embed": [0.25, 0.55], "near": 300.0},
+	{"item": &"stone_basalt", "biomes": [Terrain.Biome.DESERT, Terrain.Biome.MOUNTAIN],
+		"quota": 24, "volume": [0.4, 2.0], "embed": [0.25, 0.55], "near": 900.0},
+	{"item": &"stone_marble", "biomes": [Terrain.Biome.SNOW],
+		"quota": 20, "volume": [0.4, 2.0], "embed": [0.3, 0.6]},
 	# Lapis is rare, and could be anywhere at all.
 	{"item": &"gem_lapis", "biomes": [Terrain.Biome.WOODLAND, Terrain.Biome.SWAMP, Terrain.Biome.DESERT,
 		Terrain.Biome.MOUNTAIN, Terrain.Biome.TAIGA, Terrain.Biome.SNOW],
@@ -1192,6 +1206,7 @@ func _build_quarry() -> void:
 		{"item": &"ore_copper", "volume": [0.30, 2.2], "embed": [0.35, 0.60]},
 		{"item": &"ore_tin", "volume": [0.35, 2.4], "embed": [0.30, 0.55]},
 		{"item": &"gem_quartz", "volume": [0.25, 1.4], "embed": [0.35, 0.60]},
+		{"item": &"stone_granite", "volume": [0.4, 2.0], "embed": [0.25, 0.50]},
 		{"item": &"ore_gold", "volume": [0.20, 1.4], "embed": [0.45, 0.70]},
 	]
 	var per_ore: int = maxi(1, rock_count / ores.size())

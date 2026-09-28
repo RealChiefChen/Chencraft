@@ -151,7 +151,7 @@ func _build_mesh(color: Color) -> void:
 func is_rough_stone() -> bool:
 	if dims.get("shape", Solid.BOX) != Solid.BOX:
 		return false
-	if category == &"ore":
+	if category == &"ore" or category == &"stone":
 		return true
 	return category == &"gem" and not Solid.has_finish(dims, &"polished")
 

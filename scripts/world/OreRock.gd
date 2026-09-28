@@ -246,10 +246,11 @@ func _rebuild() -> void:
 	_parts.clear()
 	var r := radius()
 	var ore_def := GameData.item(ore_item)
-	var stone: Color = HOST_STONE.get(ore_item, Color(0.47, 0.45, 0.42))
+	var plain := ore_def != null and ore_def.category == &"stone"
+	var stone: Color = HOST_STONE.get(ore_item, ore_def.color if plain else Color(0.47, 0.45, 0.42))
 	var seam: Color = _vivid(ore_def.color if ore_def != null else Color(0.5, 0.5, 0.5))
 	# The rock takes a stain of what is in it.
-	stone = stone.lightened(0.08).lerp(seam, 0.22)
+	stone = stone.lightened(0.08).lerp(seam, 0.0 if plain else 0.22)
 	var gem := _is_gem()
 	var glint := GLOWING_ORES.has(ore_item) or gem
 	var centre := _centre()
@@ -288,9 +289,18 @@ func _rebuild() -> void:
 		_shape.transform = Transform3D(yaw, centre)
 		var body := Transform3D(yaw, centre)
 		g.box(size, body, stone)
+		# Building stone is all one rock: laid down in beds, lighter and
+		# darker, and nothing else in it.
+		var style := 3 if plain else absi(hash(String(ore_item))) % 3
 		# Each ore has its own look: bands of metal wrapped round the block,
 		# nuggets clustered on it, or spikes of crystal - picked by the ore.
-		match absi(hash(String(ore_item))) % 3:
+		match style:
+			3:
+				for k in 3:
+					var y := (float(k) - 1.0) * size.y * 0.3
+					g.box(Vector3(size.x * 1.02, size.y * 0.1, size.z * 1.02),
+						body * Transform3D(Basis(), Vector3(0, y, 0)),
+						stone.lightened(0.15) if k % 2 == 0 else stone.darkened(0.15))
 			0:
 				for k in 3:
 					var at := (float(k) - 1.0) * size.x * 0.3 + form.randf_range(-0.05, 0.05) * size.x

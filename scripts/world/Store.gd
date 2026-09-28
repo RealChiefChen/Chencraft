@@ -375,9 +375,9 @@ func _physics_process(delta: float) -> void:
 			continue
 		if item.owned or item.state == LooseItem.State.POOLED:
 			continue
-		# Unpaid stock that has been knocked off its place - not on the way
-		# to the till in someone's hands or on the counter - is cleared away,
-		# and that shelf spot is empty for a while before it is restocked.
+		# Unpaid stock that has been off its place for a minute - not on the
+		# way to the till in someone's hands or on the counter - is cleared
+		# away, and a fresh box goes straight back on the shelf.
 		var outside := not contains(item.global_position)
 		# Off its spot, or knocked over where it stood.
 		var off_place := item.global_position.distance_to(slot.spot) > MISPLACED_BY \
@@ -387,7 +387,7 @@ func _physics_process(delta: float) -> void:
 			slot["away"] = float(slot.get("away", 0.0)) + 0.4
 		else:
 			slot["away"] = 0.0
-		if outside or float(slot.away) >= MISPLACED_GRACE:
+		if float(slot.away) >= MISPLACED_GRACE:
 			manager.despawn(item)
 			slot.item = null
 			slot["away"] = 0.0
@@ -402,11 +402,11 @@ func _physics_process(delta: float) -> void:
 		restock()
 
 ## Unpaid boxes moved from their places are cleared after this long (s), and
-## restocked this long after (s).
+## restocked this long after (s): at once.
 const MISPLACED_BY := 0.8
 const MISPLACED_TILT := deg_to_rad(35.0)
-const MISPLACED_GRACE := 4.0
-const RESTOCK_DELAY := 300.0
+const MISPLACED_GRACE := 60.0
+const RESTOCK_DELAY := 0.0
 var _clock: float = 0.0
 
 ## What players are dragging or carrying right now.

@@ -3591,32 +3591,40 @@ func test_store() -> void:
 	var outside := shop.global_position + Vector3(0, 1, 60)
 	fresh.teleport(Transform3D(Basis(), outside))
 	await step(40)
+	check(pad_slot.item == fresh and is_instance_valid(fresh) and fresh.state == LooseItem.State.FREE,
+		"a moved box was cleared before it had been gone a minute")
+	# A minute on, it is gone and a fresh box is on the shelf at once.
+	pad_slot["away"] = Store.MISPLACED_GRACE - 0.5
+	await step(60)
 	var stranded := 0
 	for item in manager.free_items():
 		if item.item_id == pad_slot.box and not shop.contains(item.global_position):
 			stranded += 1
 	check_eq(stranded, 0, "unpaid stock survived being carried out of the shop")
-	check(pad_slot.item == null, "the shelf was restocked at once")
-	# Five minutes on, it is back.
-	shop._clock += Store.RESTOCK_DELAY + 1.0
-	await step(40)
-	check(pad_slot.item != null, "the shelf did not put a replacement out after five minutes")
+	# (The pool may hand back the very same box object, so check where it is.)
+	var on_shelf := func() -> bool:
+		var it: LooseItem = pad_slot.item
+		return it != null and is_instance_valid(it) and it.state == LooseItem.State.FREE \
+			and it.global_position.distance_to(pad_slot.spot) < Store.MISPLACED_BY
+	check(on_shelf.call(), "the shelf was not restocked at once")
 	# Knocked off its place inside the shop and left: cleared away too.
 	var nudged: LooseItem = pad_slot.item
 	nudged.teleport(Transform3D(Basis(), (pad_slot.spot as Vector3) + (pad_slot.basis as Basis).z * 3.0 + Vector3(0, 0.2, 0)))
-	await step(60 * 6)
-	check(pad_slot.item == null and (not is_instance_valid(nudged) or nudged.state == LooseItem.State.POOLED),
-		"a box knocked off its place was left lying about")
+	await step(60 * 2)
+	check(pad_slot.item == nudged, "a nudged box was cleared within a minute")
+	pad_slot["away"] = Store.MISPLACED_GRACE - 0.5
+	await step(60)
+	check(on_shelf.call(), "a box knocked off its place was left lying about")
 	# Knocked over where it stood: cleared away as well.
-	shop._clock += Store.RESTOCK_DELAY + 1.0
-	await step(40)
 	var tipped: LooseItem = pad_slot.item
-	check(tipped != null, "the shelf was not restocked again")
 	if tipped != null:
 		tipped.teleport(Transform3D((pad_slot.basis as Basis) * Basis(Vector3.RIGHT, PI * 0.5), pad_slot.spot as Vector3))
 		tipped.freeze = true
-		await step(60 * 6)
-		check(pad_slot.item == null, "a box knocked over on its spot was left lying there")
+		await step(60)
+		pad_slot["away"] = Store.MISPLACED_GRACE - 0.5
+		await step(60)
+		check(on_shelf.call() and (pad_slot.item as LooseItem).global_transform.basis.y.dot((pad_slot.basis as Basis).y) > 0.9,
+			"a box knocked over on its spot was left lying there")
 		if is_instance_valid(tipped):
 			tipped.freeze = false
 

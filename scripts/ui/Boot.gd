@@ -58,6 +58,7 @@ var _spin: float = 0.0
 var _done: bool = false
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_started_ms = Time.get_ticks_msec()
 	_tip_index = randi() % TIPS.size()
 	_build_screen()

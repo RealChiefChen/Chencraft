@@ -1358,7 +1358,7 @@ func test_gem_line() -> void:
 	check_near(cut.volume(), volume * cutter.machine_def.yield_share, 0.0001, "the jewel is the wrong size")
 	check(not Solid.has_finish(cut.dims, &"polished"), "a cut jewel came out polished")
 	# And a jewel is not polished afterwards.
-	var jewel := _feed(sander, cut.item_id, cut.dims)
+	var jewel := _feed(sander, cut.item_id, Solid.cylinder(0.1, 0.05, 0.09))
 	jewel = await _through(sander, jewel)
 	check(jewel != null and not Solid.has_finish(jewel.dims, &"polished"), "a cut jewel was polished")
 	# An emerald is one of the stones worth more cut than polished.

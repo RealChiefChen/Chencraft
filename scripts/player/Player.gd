@@ -982,7 +982,11 @@ func on_ice() -> bool:
 		var body := c.get_collider() as Node
 		if body != null and body.has_meta(&"slippery") and c.get_normal().y > 0.6:
 			return true
-	return false
+	# Standing still there may be no fresh contact: look straight down too.
+	var q := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.2, 0),
+		global_position - Vector3(0, 1.4, 0), Layers.WORLD | Layers.MACHINE, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return not hit.is_empty() and (hit.collider as Node).has_meta(&"slippery")
 
 func aim_hit() -> Dictionary:
 	var space := get_world_3d().direct_space_state

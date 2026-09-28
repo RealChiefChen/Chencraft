@@ -1628,7 +1628,9 @@ func _build_menus() -> void:
 			hud.toast("Saved to slot %d" % n, UITheme.GOOD))
 	add_child(pause_menu)
 
-	var menu_wanted := show_menu and get_tree().current_scene == self and not MainMenu.skip_once
+	# Started by the loading screen, the world is not the current scene yet
+	# (Boot hands it over once it is built), but it is the game all the same.
+	var menu_wanted := show_menu and (get_tree().current_scene == self or staged_load) and not MainMenu.skip_once
 	MainMenu.skip_once = false
 	if menu_wanted:
 		main_menu = MainMenu.new()

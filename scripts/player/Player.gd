@@ -461,8 +461,11 @@ func _on_key(event: InputEvent) -> void:
 		return
 	var building := build_system != null and build_system.active
 	if building:
+		if Controls.pressed(event, &"add_select"):
+			build_system.toggle_select(true)
+			return
 		if Controls.pressed(event, &"edit_select"):
-			build_system.toggle_select(event is InputEventKey and (event as InputEventKey).shift_pressed)
+			build_system.toggle_select(false)
 			return
 		if build_system.editing():
 			var mode := Controls.slot_pressed(event)

@@ -50,6 +50,7 @@ const ACTIONS := [
 	[&"build_menu", "Build menu", "Build mode", ["E"]],
 	[&"pick_block", "Copy the building you aim at", "Build mode", ["MMB"]],
 	[&"edit_select", "Select a building to edit", "Build mode", ["F"]],
+	[&"add_select", "Add / take a building off the selection", "Build mode", ["G"]],
 	[&"rotate_x", "Rotate about X", "Build mode", ["Z"]],
 	[&"rotate_y", "Rotate about Y", "Build mode", ["X"]],
 	[&"rotate_z", "Rotate about Z", "Build mode", ["C"]],

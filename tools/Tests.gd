@@ -3868,6 +3868,11 @@ func test_build_multiselect() -> void:
 	check_near(b.global_position.z - b_was.z, 2.0 * Plot.CELL, 0.01, "the second building did not move with the first")
 	a = plot.placed[bs.selected].node
 	check(c.global_position.is_equal_approx(c_was), "a building not selected moved")
+	# [G] is the add-to-selection key, on its own - not Shift+F.
+	var g := InputEventKey.new()
+	g.physical_keycode = KEY_G
+	g.pressed = true
+	check(Controls.pressed(g, &"add_select"), "G does not add to the selection")
 	bs.remove_selected()
 	await step(2)
 	check(not is_instance_valid(a) or a.is_queued_for_deletion() or a.get_parent() == null, "the first selected building was not removed")

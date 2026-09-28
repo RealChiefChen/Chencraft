@@ -353,8 +353,9 @@ func editing() -> bool:
 ## flies and looks about as usual.
 func toggle_select(add: bool = false) -> void:
 	if add and editing():
-		# Shift+F: the building under the crosshair joins the selection (or
-		# leaves it), and moves and goes with it.
+		# [G]: the building under the crosshair joins the selection (or
+		# leaves it), and moves and goes with it. With nothing selected it
+		# starts the selection, as [F] does.
 		var at := _aimed_index()
 		if at >= 0 and at != selected:
 			var node: Node3D = plot.placed[at].node
@@ -671,7 +672,7 @@ func edit_hint() -> String:
 	for i in 3:
 		parts.append(("[%s]" % names[i]) if i == int(edit_mode) else names[i])
 	var many := ("   ·   %d selected" % selection_count()) if not multi.is_empty() else ""
-	return "   ".join(parts) + "      aim at a handle, hold LMB and move the mouse   ·   [Shift+F] add/remove more   ·   [Del] remove   ·   [F] done" + many
+	return "   ".join(parts) + "      aim at a handle, hold LMB and move the mouse   ·   [%s] add/remove more   ·   [Del] remove   ·   [F] done" % Controls.key(&"add_select") + many
 
 ## What the crosshair is on: the ray hit against the ground and buildings -
 ## and plans not yet filled, which have nothing solid to hit, by the box

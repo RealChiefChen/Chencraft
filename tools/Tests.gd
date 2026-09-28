@@ -85,6 +85,7 @@ func _run_all() -> void:
 	await _test(&"frost wood builds are slippery", test_frost_slip)
 	await _test(&"a ladder plan becomes a ladder", test_ladder_plan)
 	await _test(&"a sign plan becomes a sign you can write on", test_sign_plan)
+	await _test(&"top gear is sold at the summit, the rest in town", test_gear_split)
 	await _test(&"save/load round-trip", test_save_load)
 	await _test(&"the title screen reads the save without loading it", test_save_summary)
 	await _test(&"settings coerce, persist and reset", test_settings)
@@ -2833,6 +2834,33 @@ func test_sign_plan() -> void:
 	check(again.solid and again.text == "Keep out", "a sign did not come back from a save with its words")
 	done()
 
+func test_gear_split() -> void:
+	_setup()
+	PlayerState.reset()
+	var town := Store.new()
+	town.setup(manager, plot, 0, &"general")
+	world.add_child(town)
+	var summit := Store.new()
+	summit.setup(manager, plot, 0, &"summit")
+	summit.position = Vector3(80, 0, 0)
+	world.add_child(summit)
+	await step(4)
+	var find := func(shop: Store, target: StringName) -> Dictionary:
+		for slot in shop.slots:
+			if slot.kind == &"upgrade" and slot.target == target:
+				return slot
+		return {}
+	var town_carry: Dictionary = find.call(town, &"carry")
+	var top_carry: Dictionary = find.call(summit, &"carry")
+	check(not town_carry.is_empty() and not top_carry.is_empty(), "the carry rack is not stocked in both shops")
+	check(town.available(town_carry) and not summit.available(top_carry), "a new player is offered the top rack")
+	PlayerState.levels[&"carry"] = GameData.max_upgrade_level(&"carry") - 1
+	check(not town.available(town_carry), "town still sells the carry rack's top level")
+	check(summit.available(top_carry), "the summit does not sell the carry rack's top level")
+	check_eq(summit.price_of(top_carry), int(GameData.upgrade_level(&"carry", GameData.max_upgrade_level(&"carry")).cost), "the top rack is mispriced")
+	PlayerState.reset()
+	done()
+
 func test_frost_slip() -> void:
 	_setup()
 	Economy.from_dict({"money": 50000, "day": 1})
@@ -3375,7 +3403,7 @@ func test_store() -> void:
 	await step(4)
 	Economy.from_dict({"money": 100000, "day": 1})
 
-	check(shop.slots.size() > 20, "the store has only %d shelf slots" % shop.slots.size())
+	check(shop.slots.size() > 12, "the store has only %d shelf slots" % shop.slots.size())
 	var sections := {}
 	for slot in shop.slots:
 		sections[slot.section] = true
@@ -3400,7 +3428,7 @@ func test_store() -> void:
 	var pads := 0
 	for slot in dealer.slots:
 		pads += int(String(slot.target).begins_with("pad_"))
-	check(pads >= 8, "the dealer has only %d vehicles" % pads)
+	check(pads >= 5, "the dealer has only %d vehicles" % pads)
 	# Each box stands beside a model of what is in it.
 	var shown := 0
 	for c in dealer.get_children():
@@ -3412,16 +3440,16 @@ func test_store() -> void:
 			stocked += 1
 			var box: LooseItem = slot.item
 			check(shop.contains(box.global_position), "a %s box is not on a shelf in the shop" % slot.box)
-	check(stocked > 20, "only %d boxes on the shelves" % stocked)
+	check(stocked > 12, "only %d boxes on the shelves" % stocked)
 
-	# The steel axe is a tool: priced off tools.json, and opening it puts the
+	# The timber axe is a tool: priced off tools.json, and opening it puts the
 	# axe in the inventory and on the hotbar.
 	var axe_slot: Dictionary = {}
 	for slot in shop.slots:
-		if slot.kind == &"tool" and slot.target == &"steel_axe":
+		if slot.kind == &"tool" and slot.target == &"timber_axe":
 			axe_slot = slot
-	check(not axe_slot.is_empty(), "the store does not stock a steel axe")
-	check_eq(shop.price_of(axe_slot), int(GameData.tool(&"steel_axe").cost), "the axe box is mispriced")
+	check(not axe_slot.is_empty(), "the store does not stock a timber axe")
+	check_eq(shop.price_of(axe_slot), int(GameData.tool(&"timber_axe").cost), "the axe box is mispriced")
 	var box: LooseItem = axe_slot.item
 	check(box != null, "no axe box on the shelf")
 	check(not box.owned, "shelf stock starts out owned")
@@ -3442,10 +3470,10 @@ func test_store() -> void:
 	check_eq(int(receipt.bought), 1, "the till bought %d box(es)" % int(receipt.bought))
 	check_eq(Economy.money, money_before - price, "money did not move by the price")
 	check(box.owned, "a paid box is still not the player's")
-	check(not PlayerState.owns_tool(&"steel_axe"), "the axe was handed over before the box was opened")
+	check(not PlayerState.owns_tool(&"timber_axe"), "the axe was handed over before the box was opened")
 	shop.open_box(box)
-	check(PlayerState.owns_tool(&"steel_axe"), "opening the box did not give the axe")
-	check(PlayerState.hotbar.has(&"steel_axe"), "the new axe did not go on the hotbar")
+	check(PlayerState.owns_tool(&"timber_axe"), "opening the box did not give the axe")
+	check(PlayerState.hotbar.has(&"timber_axe"), "the new axe did not go on the hotbar")
 	await step(4)
 	check_eq(box.state, LooseItem.State.POOLED, "the opened box is still lying about")
 	shop.restock()

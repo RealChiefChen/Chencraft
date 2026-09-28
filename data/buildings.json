@@ -15,6 +15,7 @@
     },
     {
       "id": "conveyor_fast",
+      "hidden": true,
       "display_name": "Fast Conveyor",
       "kind": "conveyor",
       "cost": 850,
@@ -28,6 +29,7 @@
     },
     {
       "id": "splitter",
+      "hidden": true,
       "display_name": "3-Way Splitter",
       "kind": "splitter",
       "cost": 510,
@@ -82,6 +84,7 @@
     },
     {
       "id": "splitter_t",
+      "hidden": true,
       "display_name": "T Splitter",
       "kind": "splitter",
       "cost": 450,
@@ -111,7 +114,7 @@
       "display_name": "Aligning Belt",
       "kind": "conveyor",
       "belt": "align",
-      "cost": 580,
+      "cost": 1300,
       "size": [
         1,
         1,
@@ -124,7 +127,7 @@
       "id": "sawmill",
       "display_name": "Planker",
       "kind": "inline",
-      "cost": 660,
+      "cost": 920,
       "size": [
         2,
         3,
@@ -137,7 +140,7 @@
       "id": "sander",
       "display_name": "Sander",
       "kind": "inline",
-      "cost": 920,
+      "cost": 660,
       "size": [
         2,
         3,
@@ -214,6 +217,7 @@
     },
     {
       "id": "storage",
+      "hidden": true,
       "display_name": "Storage Bin",
       "kind": "storage",
       "cost": 450,
@@ -252,6 +256,7 @@
     },
     {
       "id": "schematic_slab",
+      "hidden": true,
       "display_name": "Plan: Slab",
       "size": [
         2,
@@ -264,6 +269,7 @@
     },
     {
       "id": "schematic_wall",
+      "hidden": true,
       "display_name": "Plan: Wall",
       "size": [
         3,
@@ -277,6 +283,7 @@
     },
     {
       "id": "schematic_pillar",
+      "hidden": true,
       "display_name": "Plan: Pillar",
       "size": [
         1,
@@ -356,7 +363,7 @@
       "id": "vehicle_pad",
       "display_name": "Hauler Pad",
       "kind": "pad",
-      "cost": 11000,
+      "cost": 25000,
       "size": [
         4,
         1,
@@ -383,7 +390,7 @@
       "display_name": "Quad Bike Pad",
       "kind": "pad",
       "vehicle": "quad",
-      "cost": 1600,
+      "cost": 3000,
       "size": [
         3,
         1,
@@ -409,7 +416,7 @@
       "display_name": "Buggy Pad",
       "kind": "pad",
       "vehicle": "buggy",
-      "cost": 6600,
+      "cost": 15000,
       "size": [
         4,
         1,
@@ -461,7 +468,7 @@
       "display_name": "Utility Trailer Pad",
       "kind": "pad",
       "vehicle": "trailer",
-      "cost": 2100,
+      "cost": 8000,
       "size": [
         3,
         1,
@@ -474,7 +481,7 @@
       "display_name": "Logging Trailer Pad",
       "kind": "pad",
       "vehicle": "log_trailer",
-      "cost": 9500,
+      "cost": 20000,
       "size": [
         4,
         1,
@@ -487,7 +494,7 @@
       "display_name": "Dump Trailer Pad",
       "kind": "pad",
       "vehicle": "dump_trailer",
-      "cost": 13000,
+      "cost": 18000,
       "size": [
         4,
         1,
@@ -500,7 +507,7 @@
       "display_name": "Low-Loader Pad",
       "kind": "pad",
       "vehicle": "low_loader",
-      "cost": 16000,
+      "cost": 14000,
       "size": [
         4,
         1,
@@ -551,6 +558,7 @@
     },
     {
       "id": "conveyor_long",
+      "hidden": true,
       "display_name": "Long Belt",
       "kind": "conveyor",
       "cost": 450,
@@ -565,6 +573,7 @@
     },
     {
       "id": "conveyor_wide",
+      "hidden": true,
       "display_name": "Wide Belt",
       "kind": "conveyor",
       "cost": 580,

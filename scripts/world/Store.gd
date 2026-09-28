@@ -94,10 +94,12 @@ func price_of(slot: Dictionary) -> int:
 			return int(GameData.tool(target).get("cost", -1))
 		&"upgrade":
 			if not PlayerKit.personal(target):
-				return PlayerState.next_cost(target)
+				return PlayerState.next_cost(target) if _next_fits(PlayerState, slot) else -1
 			# Priced for whoever is furthest behind: that is who it is for.
 			var cost := -1
 			for k in kits():
+				if not _next_fits(k, slot):
+					continue
 				var c: int = k.next_cost(target)
 				if c >= 0 and (cost < 0 or c < cost):
 					cost = c
@@ -126,12 +128,19 @@ func available(slot: Dictionary) -> bool:
 			return false
 		&"upgrade":
 			if not PlayerKit.personal(target):
-				return not PlayerState.at_max(target)
+				return not PlayerState.at_max(target) and _next_fits(PlayerState, slot)
 			for k in kits():
-				if not k.at_max(target):
+				if not k.at_max(target) and _next_fits(k, slot):
 					return true
 			return false
 	return true
+
+## A gear box can be for only some of a track's levels (`min_next`,
+## `max_next`: the level it raises you to): the ordinary levels in town, the
+## top one up at the summit.
+static func _next_fits(kit: Object, slot: Dictionary) -> bool:
+	var next: int = int(kit.call("level", slot.target)) + 1
+	return next >= int(slot.get("min_next", 0)) and next <= int(slot.get("max_next", 999))
 
 ## Whose tools and gear the shelf stocks for: this machine's player and, in
 ## co-op, every guest. Set by World.
@@ -613,6 +622,7 @@ func _lay_out_sections() -> void:
 			slots.append({
 				"box": p.box, "kind": StringName(p.kind), "target": StringName(p.target),
 				"tier": int(p.get("tier", 0)), "level": int(p.get("level", 0)), "section": p.section, "color": BoxArt._color(p.color),
+				"min_next": int(p.get("min_next", 0)), "max_next": int(p.get("max_next", 999)),
 				"spot": to_global(spot), "basis": global_transform.basis * frame.basis, "item": null,
 				"show_at": show_at, "show_w": show_w})
 

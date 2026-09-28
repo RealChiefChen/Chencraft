@@ -20,15 +20,7 @@
           "products": [
             {
               "kind": "tool",
-              "target": "steel_axe"
-            },
-            {
-              "kind": "tool",
               "target": "timber_axe"
-            },
-            {
-              "kind": "tool",
-              "target": "twin_bit_axe"
             },
             {
               "kind": "tool",
@@ -59,11 +51,13 @@
           "products": [
             {
               "kind": "upgrade",
-              "target": "carry"
+              "target": "carry",
+              "max_next": 4
             },
             {
               "kind": "upgrade",
-              "target": "boots"
+              "target": "boots",
+              "max_next": 3
             },
             {
               "kind": "part",
@@ -77,11 +71,6 @@
             },
             {
               "kind": "part",
-              "target": "transmission",
-              "level": 4
-            },
-            {
-              "kind": "part",
               "target": "tyres",
               "level": 2
             },
@@ -89,11 +78,6 @@
               "kind": "part",
               "target": "tyres",
               "level": 3
-            },
-            {
-              "kind": "part",
-              "target": "tyres",
-              "level": 4
             }
           ]
         },
@@ -197,19 +181,7 @@
             },
             {
               "kind": "unlock",
-              "target": "pad_log_trailer"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_dump_trailer"
-            },
-            {
-              "kind": "unlock",
               "target": "pad_loader"
-            },
-            {
-              "kind": "unlock",
-              "target": "pad_low_loader"
             }
           ]
         }
@@ -316,6 +288,41 @@
           ]
         },
         {
+          "title": "PRO GEAR",
+          "color": [
+            0.3,
+            0.62,
+            0.36
+          ],
+          "box": [
+            1.0,
+            0.8,
+            0.7
+          ],
+          "products": [
+            {
+              "kind": "part",
+              "target": "transmission",
+              "level": 4
+            },
+            {
+              "kind": "part",
+              "target": "tyres",
+              "level": 4
+            },
+            {
+              "kind": "upgrade",
+              "target": "carry",
+              "min_next": 5
+            },
+            {
+              "kind": "upgrade",
+              "target": "boots",
+              "min_next": 4
+            }
+          ]
+        },
+        {
           "title": "HEAVY VEHICLES",
           "color": [
             0.18,
@@ -339,6 +346,18 @@
             {
               "kind": "unlock",
               "target": "pad_crane_truck"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_log_trailer"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_dump_trailer"
+            },
+            {
+              "kind": "unlock",
+              "target": "pad_low_loader"
             }
           ]
         },

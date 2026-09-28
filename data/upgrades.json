@@ -150,14 +150,14 @@
         },
         {
           "level": 2,
-          "cost": 4000,
+          "cost": 5500,
           "hole_scale": 1.0,
           "rate_scale": 1.4,
           "label": "Mill Planker"
         },
         {
           "level": 3,
-          "cost": 19800,
+          "cost": 27600,
           "hole_scale": 1.35,
           "rate_scale": 1.85,
           "label": "Headrig Planker"
@@ -177,14 +177,14 @@
         },
         {
           "level": 2,
-          "cost": 5500,
+          "cost": 4000,
           "hole_scale": 1.0,
           "rate_scale": 1.4,
           "label": "Wide-Belt Sander"
         },
         {
           "level": 3,
-          "cost": 27600,
+          "cost": 19800,
           "hole_scale": 1.35,
           "rate_scale": 1.85,
           "label": "Twin-Head Sander"
@@ -349,19 +349,19 @@
     },
     {
       "tier": 1,
-      "cost": 3100,
+      "cost": 25000,
       "half_extent": 30.0,
       "item_cap": 260
     },
     {
       "tier": 2,
-      "cost": 28000,
+      "cost": 80000,
       "half_extent": 38.0,
       "item_cap": 320
     },
     {
       "tier": 3,
-      "cost": 240000,
+      "cost": 300000,
       "half_extent": 48.0,
       "item_cap": 400
     }

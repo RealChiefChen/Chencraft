@@ -338,6 +338,8 @@ static func box_id(p: Dictionary) -> StringName:
 		id += "_p%d" % int(p.get("level", 2))
 	elif String(p.get("kind", "")) == "upgrade":
 		id += "_up"
+		if p.has("min_next"):
+			id += "%d" % int(p.min_next)
 	return StringName(id)
 
 ## What a product is called on its box.

@@ -89,6 +89,7 @@ func _run_all() -> void:
 	await _test(&"hard materials need a better tool and a higher machine tier", test_material_levels)
 	await _test(&"a blueprint turned any way fills exactly its grid footprint", test_turned_blueprints)
 	await _test(&"sandstone refines into glass; building stone only crushes", test_stone)
+	await _test(&"a field kept to a minimum grows one back at once", test_field_minimum)
 	await _test(&"utility and mower trailers have gates that come down as ramps", test_trailer_gates)
 	await _test(&"save/load round-trip", test_save_load)
 	await _test(&"the title screen reads the save without loading it", test_save_summary)
@@ -2931,6 +2932,36 @@ func test_trailer_gates() -> void:
 		if p.target == &"pad_mower_trailer" and String(GameData.store_def(StringName(p.store)).get("name", "")) == "VEHICLE DEALER":
 			sold = true
 	check(sold, "the vehicle dealer does not sell the mower trailer")
+	done()
+
+func test_field_minimum() -> void:
+	_setup(false)
+	var field := ResourceField.new()
+	field.quota = 3
+	field.min_present = 1
+	field.refill_seconds = 9999.0
+	field.spawn_clearance = 0.0
+	field.setup([{"item": &"gem_black_opal", "volume": [0.1, 0.2], "embed": [0.5, 0.6]}],
+		func(kind: Dictionary, form_seed: int) -> Node3D:
+			var rock := OreRock.new()
+			rock.manager = manager
+			rock.ore_item = kind.item
+			rock.seed_form(form_seed)
+			rock.volume = 0.15
+			return rock,
+		ResourceField.annulus(6.0, 14.0), 7)
+	world.add_child(field)
+	field.prefill()
+	check_eq(field.count(), 3, "the field did not fill")
+	for node in field.alive.duplicate():
+		(node as OreRock).shatter()
+	await step(30)
+	check(field.count() >= 1, "the field ran out and did not grow one back")
+	check(field.count() < 3, "the field refilled to quota without waiting")
+	var opal := GameData.item(&"gem_black_opal")
+	var obsidian := GameData.item(&"gem_obsidian")
+	check(opal.color != obsidian.color and OreRock.PLAY_OF_COLOUR.has(&"gem_black_opal"),
+		"black opal looks just like obsidian")
 	done()
 
 func test_stone() -> void:

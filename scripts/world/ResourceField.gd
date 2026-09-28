@@ -21,6 +21,8 @@ signal retired(field: ResourceField, node: Node3D)
 @export var quota: int = 60
 ## Seconds between refill attempts once the field is below quota.
 @export var refill_seconds: float = 3.0
+## The least there ever is: below this, one is grown back straight away.
+@export var min_present: int = 0
 ## Nodes are kept this far apart, so a forest is not a thicket of overlaps.
 @export var min_spacing: float = 3.4
 ## How many positions to try before giving up on this attempt.
@@ -331,6 +333,11 @@ func _step(delta: float) -> void:
 			if _churn_timer <= 0.0:
 				_churn_timer = churn_seconds * _rng.randf_range(0.7, 1.3)
 				retire_one()
+		return
+	# Some finds are never allowed to run out: with fewer than this about,
+	# one grows back at once rather than after the refill wait.
+	if count() < min_present and _try_spawn() != null:
+		_quota_timer = 0.0
 		return
 	_timer -= delta
 	if _timer > 0.0:

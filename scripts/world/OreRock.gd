@@ -199,6 +199,11 @@ func _consume() -> void:
 ## in sandstone and cobalt in dark slate read differently from across a valley.
 const GLOWING_ORES := [&"ore_gold", &"ore_cobalt", &"ore_sunstone", &"ore_bismuth",
 	&"ore_platinum", &"ore_starmetal"]
+## Stones whose crystals flash many colours rather than one.
+const PLAY_OF_COLOUR := {
+	&"gem_black_opal": [Color(0.15, 0.95, 0.45), Color(0.2, 0.55, 1.0), Color(1.0, 0.5, 0.1),
+		Color(1.0, 0.3, 0.7), Color(0.2, 0.95, 0.95), Color(0.75, 0.3, 1.0)],
+}
 const HOST_STONE := {
 	&"ore_copper": Color(0.55, 0.46, 0.38), &"ore_silver": Color(0.56, 0.58, 0.62),
 	&"ore_cobalt": Color(0.28, 0.30, 0.34), &"ore_sunstone": Color(0.78, 0.64, 0.44),
@@ -273,12 +278,14 @@ func _rebuild() -> void:
 		hull.points = pts
 		_shape.shape = hull
 		_shape.transform = Transform3D(Basis(), centre)
-		g.dodecahedron(R, Transform3D(yaw, centre), seam.lerp(stone, 0.45))
+		var play: Array = PLAY_OF_COLOUR.get(ore_item, [])
+		# Black opal is black, with the play of colour breaking out of it.
+		g.dodecahedron(R, Transform3D(yaw, centre), ore_def.color if not play.is_empty() else seam.lerp(stone, 0.45))
 		for i in 6:
 			var dir := Vector3(form.randf_range(-1, 1), form.randf_range(0.1, 1.0), form.randf_range(-1, 1)).normalized()
 			var size := R * form.randf_range(0.28, 0.45)
 			g.dodecahedron(size, Transform3D(Basis(dir, form.randf() * TAU), centre + dir * R * 0.85),
-				seam.lightened(form.randf_range(0.0, 0.15)), true)
+				(play[i % play.size()] as Color) if not play.is_empty() else seam.lightened(form.randf_range(0.0, 0.15)), true)
 	else:
 		var size := BLOCK * r
 		size.x *= form.randf_range(0.9, 1.1)

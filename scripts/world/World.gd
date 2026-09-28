@@ -1273,6 +1273,8 @@ func _build_crater() -> void:
 		opal.quota = 3
 		opal.min_spacing = 30.0
 		opal.refill_seconds = 240.0
+		# There is always at least one to find.
+		opal.min_present = 1
 		opal.setup([{"item": &"gem_black_opal", "volume": [0.1, 0.5], "embed": [0.5, 0.75]}],
 			_build_rock, _from_pool(opal_pool), _rng.randi())
 		add_child(opal)

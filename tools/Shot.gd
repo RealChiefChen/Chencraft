@@ -873,11 +873,12 @@ func shot_opal() -> void:
 	Settings.set_value(&"moving_sun", false, false)
 	world.hud.visible = false
 	var base := Vector3(-12, World.PLOT_GROUND + 0.05, -12)
-	var embeds := [0.2, 0.6, 0.85]
-	for i in embeds.size():
+	var ids := [&"gem_obsidian", &"gem_black_opal", &"gem_black_opal"]
+	var embeds := [0.3, 0.3, 0.7]
+	for i in ids.size():
 		var rock := OreRock.new()
 		rock.manager = world.manager
-		rock.ore_item = &"gem_black_opal"
+		rock.ore_item = ids[i]
 		rock.seed_form(77 + i)
 		rock.embed = embeds[i]
 		rock.volume = 0.5

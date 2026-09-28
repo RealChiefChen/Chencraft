@@ -4058,12 +4058,13 @@ func test_rig_home() -> void:
 	var r := truck.rig
 	r.set_operating(true)
 	var start := r.target
+	var start_yaw := r.target_yaw
 	for i in 60:
 		r.drive(Vector3(1, 0.5, -1), 1.0, false, 1.0 / 60.0)
 		await step(1)
 	check(r.target.distance_to(start) > 0.5, "the crane did not move")
 	r.home()
-	check(r.target.distance_to(start) < 0.001 and absf(r.target_yaw) < 0.001, "the crane did not go back to its start")
+	check(r.target.distance_to(start) < 0.001 and absf(angle_difference(r.target_yaw, start_yaw)) < 0.001, "the crane did not go back to its start")
 	var l := loader.loader
 	var lift0 := l.lift
 	var tilt0 := l.tilt
@@ -4312,7 +4313,9 @@ func test_crane_reaches_down() -> void:
 	truck.global_position = Vector3(0, 10.0 + truck.spawn_height(), 0)
 	await step(90)
 	var rig := truck.rig
+	check(float(rig.fk().tip.z) < float(rig.head_offset.z), "the mobile crane's boom does not rest forward")
 	rig.set_operating(true)
+	check(rig.target.z < rig.head_offset.z, "taking the controls swung the mobile crane's boom round to the back")
 	var frame := truck.global_transform
 	var out := frame.affine_inverse() * Vector3(9.0, frame.origin.y, 2.0)
 	rig.target = rig.clamp_target(Vector3(out.x, rig.head_offset.y, out.z))
@@ -4328,6 +4331,15 @@ func test_crane_reaches_down() -> void:
 	var low := rig.target.y
 	var jaw_y := (truck.global_transform * Vector3(0, low, 0)).y
 	check(jaw_y < 1.0, "the claw stopped %.1f m above the ground below the drop" % jaw_y)
+	# The reach is a domed cylinder: run all the way out, the hook goes down
+	# without the boom coming in.
+	var far := rig.max_reach()
+	var at_head := rig.clamp_target(Vector3(0, rig.head_offset.y - rig.HANG, far))
+	var deep := rig.clamp_target(Vector3(0, rig.head_offset.y - rig.HANG - 12.0, far))
+	check_near(Vector2(deep.x, deep.z).length(), Vector2(at_head.x, at_head.z).length(), 0.05,
+		"lowering the hook at full reach drew the boom in")
+	check_near(float(rig.solve(deep, 0.0).ext), float(rig.solve(at_head, 0.0).ext), 0.05,
+		"lowering the hook at full reach shortened the boom")
 	check(jaw_y > -0.05, "the claw went through the ground (%.2f)" % jaw_y)
 	# Driven down by hand it stops on the ground too.
 	for i in 300:

@@ -384,12 +384,14 @@ func set_operating(on: bool) -> void:
 		folding = true
 	_apply_plant()
 
-## Sends the grapple back to where operator mode starts it: behind the
-## turntable, over the bed, square to the truck. The crane gets there at its
-## own pace, carrying whatever it holds.
+## Sends the grapple back to where operator mode starts it: out the way the
+## boom rests (behind the turntable over the bed on a bobtail, forward over
+## the cab on the mobile crane), square to the truck. The crane gets there at
+## its own pace, carrying whatever it holds.
 func home() -> void:
-	target = clamp_target(head_offset + Vector3(0, 0.3, boom_min * 0.9))
-	target_yaw = 0.0
+	var way := Vector3(sin(rest_slew), 0.0, cos(rest_slew))
+	target = clamp_target(head_offset + Vector3(0, 0.3, 0) + way * boom_min * 0.9)
+	target_yaw = rest_slew
 	_target_vel = Vector3.ZERO
 	_yaw_vel = 0.0
 
@@ -442,7 +444,10 @@ func clamp_target(p: Vector3) -> Vector3:
 	ang = clampf(ang, -slew_arc, slew_arc)
 	var most := max_reach()
 	r = clampf(r, REACH_MIN, most)
-	if r * r + h * h > most * most:
+	# The reach is a domed cylinder, not a ball: the full radius all the way
+	# down, so letting the line out with the boom run out does not draw the
+	# boom in; only above the boom head does it round off.
+	if h > 0.0 and r * r + h * h > most * most:
 		r = sqrt(maxf(most * most - h * h, REACH_MIN * REACH_MIN))
 	var out := head_offset + Vector3(sin(ang) * r, h, cos(ang) * r) - Vector3.UP * HANG
 	out.y = maxf(out.y, _floor_under(out))

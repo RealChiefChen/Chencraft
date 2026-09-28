@@ -204,6 +204,62 @@ func prism(sides: int, r_bottom: float, r_top: float, height: float, xform: Tran
 			if r_top > 0.001:
 				tri(axis_top, top[i], top[j], up, color.lightened(0.06), glow)
 
+## The corners of a dodecahedron with circumradius 1: twelve pentagons, the
+## shape rough gemstone comes out of the ground in here.
+static func dodecahedron_points() -> PackedVector3Array:
+	var phi := (1.0 + sqrt(5.0)) * 0.5
+	var inv := 1.0 / phi
+	var pts := PackedVector3Array()
+	for x in [-1.0, 1.0]:
+		for y in [-1.0, 1.0]:
+			for z in [-1.0, 1.0]:
+				pts.append(Vector3(x, y, z))
+	for a in [-1.0, 1.0]:
+		for b in [-1.0, 1.0]:
+			pts.append(Vector3(0, a * inv, b * phi))
+			pts.append(Vector3(a * inv, b * phi, 0))
+			pts.append(Vector3(a * phi, 0, b * inv))
+	for i in pts.size():
+		pts[i] = pts[i] / sqrt(3.0)
+	return pts
+
+## A dodecahedron of circumradius `radius` about `xform`'s origin (which may
+## be scaled to stretch it). Each face gets a slightly different shade so the
+## facets read.
+func dodecahedron(radius: float, xform: Transform3D, color: Color, glow: bool = false) -> void:
+	var phi := (1.0 + sqrt(5.0)) * 0.5
+	var pts := dodecahedron_points()
+	var normals: Array[Vector3] = []
+	for a in [-1.0, 1.0]:
+		for b in [-1.0, 1.0]:
+			normals.append(Vector3(0, a * phi, b).normalized())
+			normals.append(Vector3(a, 0, b * phi).normalized())
+			normals.append(Vector3(a * phi, b, 0).normalized())
+	var centre := xform * Vector3.ZERO
+	for fi in normals.size():
+		var n: Vector3 = normals[fi]
+		var best := -INF
+		for p in pts:
+			best = maxf(best, p.dot(n))
+		var face: Array[Vector3] = []
+		for p in pts:
+			if p.dot(n) > best - 0.01:
+				face.append(p)
+		var mid := Vector3.ZERO
+		for p in face:
+			mid += p
+		mid /= float(face.size())
+		var u := (face[0] - mid).normalized()
+		var v := n.cross(u)
+		face.sort_custom(func(a: Vector3, b: Vector3) -> bool:
+			return atan2((a - mid).dot(v), (a - mid).dot(u)) < atan2((b - mid).dot(v), (b - mid).dot(u)))
+		var shade := color.lightened(0.08) if fi % 3 == 0 else (color.darkened(0.08) if fi % 3 == 1 else color)
+		var c0 := xform * (mid * radius)
+		for k in face.size():
+			var a := xform * (face[k] * radius)
+			var b := xform * (face[(k + 1) % face.size()] * radius)
+			tri(c0, a, b, c0 - centre, shade, glow)
+
 ## A prism lying from `from` to `to`: pipes, rollers, rails, beams.
 func pipe(from: Vector3, to: Vector3, radius: float, color: Color, sides: int = 6,
 		glow: bool = false) -> void:

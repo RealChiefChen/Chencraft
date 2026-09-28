@@ -143,7 +143,7 @@ func _drop(line: Dictionary) -> void:
 	var pick: int = mini(feed.size() - 1, int(pow(_rng.randf(), 1.6) * float(feed.size())))
 	var id: StringName = feed[pick]
 	var vol: Vector2 = line.volume
-	var dims := Solid.cube(_rng.randf_range(vol.x, vol.y))
+	var dims := Solid.chunk(_rng.randf_range(vol.x, vol.y))
 	var at := head.global_transform * Vector3(_rng.randf_range(-0.1, 0.1), 1.6, 1.2)
 	# A top-loaded first machine (the crusher) is fed through its hopper.
 	var first: InlineMachine = (line.machines as Array)[0]

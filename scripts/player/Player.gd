@@ -1277,7 +1277,7 @@ func _crack(item: LooseItem) -> void:
 	var owned := item.owned
 	var velocity := item.linear_velocity
 	manager.despawn(item)
-	var half := Solid.keep_finish(dims, Solid.cube(v * 0.5))
+	var half := Solid.keep_finish(dims, Solid.chunk(v * 0.5))
 	var side := pow(v * 0.5, 1.0 / 3.0)
 	for s in [-1.0, 1.0]:
 		var piece := manager.spawn(id, Transform3D(at.basis, at.origin + at.basis.x.normalized() * s * side * 0.55),

@@ -232,6 +232,12 @@ func _check_spread() -> void:
 		if id == &"gem_diamond":
 			diamonds += 1
 			_require(pos.y < world.terrain.height_at(pos.x, pos.z) - 6.0, "a diamond is not underground")
+			var den: Dictionary = world.network.rooms[world.diamond_cavern]
+			_require(Vector2(pos.x - den.centre.x, pos.z - den.centre.z).length() < maxf(float(den.rx), float(den.rz)) + 2.0,
+				"a diamond is outside the diamond cavern")
+		if id == &"gem_black_opal":
+			_require(Vector2(pos.x - 1150.0, pos.z - 1150.0).length() < 250.0 and pos.y > world.terrain.height_at(pos.x, pos.z) - 4.0,
+				"a black opal is not on the surface of the starmetal isle")
 		if id == &"ore_starmetal" and pos.y > world.terrain.height_at(pos.x, pos.z) - 4.0:
 			starmetal += 1
 			_require(Vector2(pos.x - 1160.0, pos.z - 1170.0).length() < 70.0, "surface starmetal is outside the crater")

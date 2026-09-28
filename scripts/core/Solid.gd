@@ -23,6 +23,14 @@ static func cube(volume_m3: float) -> Dictionary:
 	var side: float = pow(maxf(0.000001, volume_m3), 1.0 / 3.0)
 	return box(Vector3(side, side, side))
 
+## A lump of ore of a given volume: a rectangular block, longer one way than
+## the others the way rock breaks, rather than a neat cube.
+const CHUNK_SHAPE := Vector3(0.95, 1.45, 0.75)
+
+static func chunk(volume_m3: float) -> Dictionary:
+	var k: float = pow(maxf(0.000001, volume_m3) / (CHUNK_SHAPE.x * CHUNK_SHAPE.y * CHUNK_SHAPE.z), 1.0 / 3.0)
+	return box(CHUNK_SHAPE * k)
+
 # --- Finishes -----------------------------------------------------------------
 
 ## What a piece has been through that makes it worth more: sanded wood, refined

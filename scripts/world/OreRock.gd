@@ -18,6 +18,8 @@ signal broken(rock: OreRock)
 signal yielded(rock: OreRock, ore_volume: float)
 
 @export var ore_item: StringName = &"ore_iron"
+## The most of a chunk that is ever buried.
+const MAX_EMBED := 0.95
 ## How much of the chunk is buried, as a fraction. The pull needed to free it
 ## is its mass plus this much of its mass again.
 @export var embed: float = 0.45
@@ -135,7 +137,7 @@ func _fracture(index: int) -> String:
 	_drop_ore(piece, Vector3.UP * 1.2)
 	volume -= piece
 	# What is left sits deeper in its hole than what came off it.
-	embed = clampf(embed + 0.06, 0.0, 0.85)
+	embed = clampf(embed + 0.06, 0.0, MAX_EMBED)
 	if volume <= MIN_CHUNK:
 		var last := volume
 		_drop_ore(last, Vector3.UP * 1.0)
@@ -171,10 +173,10 @@ func shatter() -> int:
 func _drop_ore(piece_volume: float, impulse: Vector3) -> LooseItem:
 	if manager == null or piece_volume <= 0.0:
 		return null
-	var top := global_position + Vector3(0, radius() * (1.0 - embed) + 0.35, 0)
+	var top := global_position + Vector3(0, showing() + 0.35, 0)
 	var spot := top + Vector3(_rng.randf_range(-0.3, 0.3), 0.0, _rng.randf_range(-0.3, 0.3))
 	var item := manager.spawn(ore_item, Transform3D(Basis(), spot), plot_id, impulse,
-		Solid.cube(piece_volume))
+		Solid.chunk(piece_volume))
 	yielded.emit(self, piece_volume)
 	return item
 
@@ -213,6 +215,31 @@ const HOST_STONE := {
 	&"gem_lapis": Color(0.70, 0.68, 0.64),
 }
 
+## An ore chunk is a rectangular block of its host rock, longer one way than
+## the others; a gem is a dodecahedron. Both sit `embed` of their height in
+## the ground.
+const BLOCK := Vector3(2.0, 1.3, 1.5)
+
+func _is_gem() -> bool:
+	var def := GameData.item(ore_item)
+	return def != null and def.category == &"gem"
+
+## How tall the chunk stands, bottom to top, before any of it is buried.
+func _height() -> float:
+	return radius() * (1.9 if _is_gem() else BLOCK.y)
+
+## The chunk's middle, relative to the ground it is bedded in.
+func _centre() -> Vector3:
+	return Vector3(0, _height() * (0.5 - embed), 0)
+
+## How far the chunk stands out of the ground.
+func showing() -> float:
+	return _height() * (1.0 - embed)
+
+## Bright, clean ore colours, so a seam reads from across a valley.
+func _vivid(c: Color) -> Color:
+	return Color.from_hsv(c.h, clampf(c.s * 1.35 + 0.1, 0.0, 1.0), clampf(c.v * 1.15 + 0.12, 0.0, 1.0))
+
 func _rebuild() -> void:
 	for p in _parts:
 		p.queue_free()
@@ -220,51 +247,71 @@ func _rebuild() -> void:
 	var r := radius()
 	var ore_def := GameData.item(ore_item)
 	var stone: Color = HOST_STONE.get(ore_item, Color(0.47, 0.45, 0.42))
-	var seam: Color = ore_def.color if ore_def != null else Color(0.5, 0.5, 0.5)
-	# Buried up to `embed`, so the chunk reads as part of the ground rather
-	# than something dropped on it.
-	var lift := -r * embed
+	var seam: Color = _vivid(ore_def.color if ore_def != null else Color(0.5, 0.5, 0.5))
+	# The rock takes a stain of what is in it.
+	stone = stone.lightened(0.08).lerp(seam, 0.22)
+	var gem := _is_gem()
+	var glint := GLOWING_ORES.has(ore_item) or gem
+	var centre := _centre()
+	var form := RandomNumberGenerator.new()
+	form.seed = _rng.seed                 # same rock, same lumps, as it shrinks
+	var yaw := Basis(Vector3.UP, form.randf() * PI)
 
 	if _shape == null:
 		_shape = CollisionShape3D.new()
-		_shape.shape = BoxShape3D.new()
 		add_child(_shape)
-	(_shape.shape as BoxShape3D).size = Vector3(r * 1.9, r * 1.5, r * 1.9)
-	_shape.position = Vector3(0, lift + r * 0.75, 0)
-
-	var form := RandomNumberGenerator.new()
-	form.seed = _rng.seed                 # same rock, same lumps, as it shrinks
-
-	# One merged mesh: a slabby main block, a few shoulders of rock leaning on
-	# it, and the ore itself as crystals breaking out of the surface - so iron,
-	# copper and gold read differently at a glance, and gold catches the light.
 	var g := Greeble.new()
-	g.box(Vector3(r * 1.7, r * 1.4, r * 1.6), Transform3D(
-		Basis(Vector3.UP, form.randf() * PI) * Basis(Vector3.FORWARD, form.randf_range(-0.2, 0.2)),
-		Vector3(0, lift + r * 0.7, 0)), stone)
-	for i in 3:
-		var scale: float = form.randf_range(0.45, 0.75)
-		var angle: float = TAU * float(i) / 3.0 + form.randf_range(-0.4, 0.4)
-		g.box(Vector3(r * scale, r * scale * 0.9, r * scale),
-			Transform3D(Basis(Vector3.UP, form.randf() * PI) * Basis(Vector3.RIGHT, form.randf_range(-0.4, 0.4)),
-				Vector3(cos(angle) * r * 0.7, lift + r * form.randf_range(0.3, 0.95), sin(angle) * r * 0.7)),
-			stone.lightened(form.randf_range(0.0, 0.12)))
-	# Stones grow as bigger, glassier crystals than metal ores do.
-	var gem := ore_def != null and ore_def.category == &"gem"
-	var glint := GLOWING_ORES.has(ore_item) or gem
-	var grow := 1.7 if gem else 1.0
-	for i in (7 if gem else 5):
-		var angle2: float = TAU * form.randf()
-		var out := Vector3(cos(angle2), form.randf_range(0.2, 0.9), sin(angle2)).normalized()
-		var at := Vector3(0, lift + r * 0.75, 0) + out * r * 0.72
-		var up := out.lerp(Vector3.UP, 0.3).normalized()
-		var side := up.cross(Vector3.FORWARD if absf(up.z) < 0.9 else Vector3.RIGHT).normalized()
-		var basis := Basis(side, up, side.cross(up))
-		for k in 2:
-			var tilt := Basis(Vector3.FORWARD, form.randf_range(-0.4, 0.4))
-			g.prism(6, r * form.randf_range(0.08, 0.14) * grow, 0.0, r * form.randf_range(0.35, 0.6) * grow,
-				Transform3D(basis * tilt, at + side * r * 0.1 * float(k)), seam, glint)
-		g.box(Vector3(r * 0.34, r * 0.1, r * 0.3), Transform3D(basis, at - up * r * 0.02), seam.darkened(0.2))
+	if gem:
+		# A gem: a big dodecahedron of the stone itself, cloudy in its matrix,
+		# with smaller bright ones breaking out of it.
+		var R := r * 0.95
+		var hull := ConvexPolygonShape3D.new()
+		var pts := Greeble.dodecahedron_points()
+		for i in pts.size():
+			pts[i] = yaw * pts[i] * R
+		hull.points = pts
+		_shape.shape = hull
+		_shape.transform = Transform3D(Basis(), centre)
+		g.dodecahedron(R, Transform3D(yaw, centre), seam.lerp(stone, 0.45))
+		for i in 6:
+			var dir := Vector3(form.randf_range(-1, 1), form.randf_range(0.1, 1.0), form.randf_range(-1, 1)).normalized()
+			var size := R * form.randf_range(0.28, 0.45)
+			g.dodecahedron(size, Transform3D(Basis(dir, form.randf() * TAU), centre + dir * R * 0.85),
+				seam.lightened(form.randf_range(0.0, 0.15)), true)
+	else:
+		var size := BLOCK * r
+		size.x *= form.randf_range(0.9, 1.1)
+		size.z *= form.randf_range(0.9, 1.1)
+		var box := BoxShape3D.new()
+		box.size = size
+		_shape.shape = box
+		_shape.transform = Transform3D(yaw, centre)
+		var body := Transform3D(yaw, centre)
+		g.box(size, body, stone)
+		# Each ore has its own look: bands of metal wrapped round the block,
+		# nuggets clustered on it, or spikes of crystal - picked by the ore.
+		match absi(hash(String(ore_item))) % 3:
+			0:
+				for k in 3:
+					var at := (float(k) - 1.0) * size.x * 0.3 + form.randf_range(-0.05, 0.05) * size.x
+					g.box(Vector3(size.x * 0.16, size.y * 1.04, size.z * 1.04),
+						body * Transform3D(Basis(Vector3.FORWARD, form.randf_range(-0.25, 0.25)), Vector3(at, 0, 0)), seam, glint)
+			1:
+				for k in 9:
+					var face := Vector3(form.randf_range(-0.5, 0.5) * size.x, size.y * 0.5, form.randf_range(-0.5, 0.5) * size.z)
+					if k % 3 == 1:
+						face = Vector3(size.x * 0.5 * (1.0 if form.randf() < 0.5 else -1.0), form.randf_range(-0.3, 0.45) * size.y, form.randf_range(-0.4, 0.4) * size.z)
+					var nug := r * form.randf_range(0.26, 0.42)
+					g.box(Vector3(nug, nug * 0.8, nug), body * Transform3D(Basis(Vector3.UP, form.randf() * PI), face), seam, glint)
+			_:
+				for k in 9:
+					var out := Vector3(form.randf_range(-0.45, 0.45) * size.x, size.y * 0.5, form.randf_range(-0.45, 0.45) * size.z)
+					var tilt := Basis(Vector3(form.randf_range(-1, 1), 0, form.randf_range(-1, 1)).normalized(), form.randf_range(0.0, 0.5))
+					g.prism(4, r * form.randf_range(0.13, 0.2), 0.0, r * form.randf_range(0.55, 0.9),
+						body * Transform3D(tilt, out - Vector3(0, r * 0.05, 0)), seam, glint)
+		# A lighter cap of weathered rock where it stands out of the ground.
+		g.box(Vector3(size.x * 0.7, size.y * 0.06, size.z * 0.7),
+			body * Transform3D(Basis(), Vector3(0, size.y * 0.5, 0)), stone.lightened(0.1))
 	var mi := g.instance("Rock")
 	add_child(mi)
 	_parts.append(mi)
@@ -277,14 +324,14 @@ func _refresh_cracks() -> void:
 		c.queue_free()
 	_crack_meshes.clear()
 	var r := radius()
-	var lift := -r * embed
+	var centre := _centre()
 	for crack in cracks:
 		var depth: float = clampf(float(crack.depth), 0.0, 1.0)
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = Vector3(r * 0.06, r * 1.45 * depth, r * 2.0 * depth)
 		mi.mesh = bm
-		mi.position = Vector3((float(crack.t) - 0.5) * r * 1.6, lift + r * 0.75, 0)
+		mi.position = centre + Vector3((float(crack.t) - 0.5) * r * 1.6, 0, 0)
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(0.06, 0.06, 0.07)
 		mat.roughness = 1.0

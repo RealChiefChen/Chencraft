@@ -1166,8 +1166,10 @@ const WILD_ORE := [
 		"quota": 8, "volume": [0.15, 0.7], "embed": [0.50, 0.70], "near": 1785.0},
 	{"item": &"gem_turquoise", "biomes": [Terrain.Biome.DESERT, Terrain.Biome.MOUNTAIN],
 		"quota": 10, "volume": [0.15, 0.7], "embed": [0.50, 0.70], "near": 1575.0},
-	{"item": &"gem_lapis", "biomes": [Terrain.Biome.MOUNTAIN, Terrain.Biome.SNOW],
-		"quota": 6, "volume": [0.15, 0.6], "embed": [0.55, 0.70], "near": 1890.0},
+	# Lapis is rare, and could be anywhere at all.
+	{"item": &"gem_lapis", "biomes": [Terrain.Biome.WOODLAND, Terrain.Biome.SWAMP, Terrain.Biome.DESERT,
+		Terrain.Biome.MOUNTAIN, Terrain.Biome.TAIGA, Terrain.Biome.SNOW],
+		"quota": 5, "volume": [0.15, 0.6], "embed": [0.55, 0.75]},
 ]
 
 ## Underground, by how far out the cave is: the nearest are worked-over seams of
@@ -1176,10 +1178,10 @@ const CAVE_TIERS := [
 	[&"ore_copper", &"ore_iron", &"ore_tin", &"ore_zinc", &"gem_quartz", &"gem_amethyst"],
 	[&"ore_silver", &"ore_magnetite", &"ore_nickel", &"gem_jade", &"ore_cobalt", &"ore_gold"],
 	[&"ore_gold", &"gem_emerald", &"gem_ruby", &"ore_platinum", &"ore_tungsten", &"ore_sunstone",
-		&"gem_turquoise", &"gem_lapis", &"gem_black_opal"],
+		&"gem_turquoise"],
 ]
 ## The farthest cave of all: diamonds, and nowhere else.
-const DEEPEST_CAVE := [&"gem_diamond", &"gem_diamond", &"gem_black_opal", &"ore_platinum", &"gem_diamond"]
+const DEEPEST_CAVE := [&"ore_platinum", &"ore_starmetal", &"gem_sapphire", &"ore_platinum", &"gem_sapphire"]
 
 ## The quarry works the same way: a patch per ore, stocked to a quota.
 func _build_quarry() -> void:
@@ -1243,6 +1245,56 @@ func _build_crater() -> void:
 	add_child(field)
 	field.prefill()
 	rock_fields.append(field)
+	# Black opal: a rare stone lying about on the surface of the starmetal
+	# island, nowhere else.
+	var isle: Dictionary = ISLANDS[4]
+	var opal_pool := PackedVector3Array()
+	for p in terrain.points_in_biomes([0, 1, 2, 3, 4, 5], 4):
+		if Vector2(p.x, p.z).distance_to(isle.centre) < float(isle.radius) * 0.85 and not terrain.is_road(p.x, p.z):
+			opal_pool.append(p)
+	if not opal_pool.is_empty():
+		var opal := ResourceField.new()
+		opal.name = "Isle_BlackOpal"
+		opal.quota = 3
+		opal.min_spacing = 30.0
+		opal.refill_seconds = 240.0
+		opal.setup([{"item": &"gem_black_opal", "volume": [0.1, 0.5], "embed": [0.5, 0.75]}],
+			_build_rock, _from_pool(opal_pool), _rng.randi())
+		add_child(opal)
+		opal.prefill()
+		rock_fields.append(opal)
+
+## Diamonds: a few, in one cavern only, the deepest one under the mountains.
+func _build_diamond_cavern() -> void:
+	var best: Dictionary = {}
+	var best_cover := -INF
+	for room in network.rooms:
+		var c: Vector3 = room.centre
+		if terrain.biome_at(c.x, c.z) != Terrain.Biome.MOUNTAIN:
+			continue
+		var cover := terrain.height_at(c.x, c.z) - float(room.floor)
+		if cover > best_cover:
+			best_cover = cover
+			best = room
+	if best.is_empty():
+		return
+	diamond_cavern = int(best.index)
+	var field := ResourceField.new()
+	field.name = "DiamondCavern"
+	field.quota = 4
+	field.min_spacing = 5.0
+	field.refill_seconds = 300.0
+	field.spawn_clearance = 0.0
+	field.wake_distance = 240.0
+	var cavern := best
+	field.setup([{"item": &"gem_diamond", "volume": [0.1, 0.45], "embed": [0.55, 0.8]}], _build_rock,
+		func(rng: RandomNumberGenerator) -> Vector3: return network.floor_point(cavern, rng), _rng.randi())
+	add_child(field)
+	field.prefill()
+	rock_fields.append(field)
+
+## The cavern the diamonds are in, by room index; -1 until the caves are built.
+var diamond_cavern: int = -1
 
 ## The caves: the networks are planned under every island, the surface mouths
 ## the terrain found are built as trench-and-portal entrances into their first
@@ -1307,6 +1359,7 @@ func _build_caves() -> void:
 			add_child(grove)
 			grove.prefill()
 			tree_fields.append(grove)
+	_build_diamond_cavern()
 
 ## The giant mushroom of the fungal caves: a pale stem and a glowing cap.
 const GLOWCAP := {"name": "Glowcap", "item": &"wood_glowcap",
@@ -1399,6 +1452,9 @@ func _check_discovery(delta: float) -> void:
 			PlayerState.discovered.append(poi.name)
 			hud.show_banner("Discovered", poi.name)
 
+## The biggest chunk of ore that turns up in the ground, m3.
+const MAX_CHUNK := 2.0
+
 func _build_rock(kind: Dictionary, form_seed: int) -> Node3D:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = form_seed
@@ -1407,8 +1463,10 @@ func _build_rock(kind: Dictionary, form_seed: int) -> Node3D:
 	rock.plot_id = 0
 	rock.ore_item = kind.item
 	rock.seed_form(form_seed)
-	rock.embed = rng.randf_range(kind.embed[0], kind.embed[1])
-	rock.volume = rng.randf_range(kind.volume[0], kind.volume[1])
+	# Every kind can come as big as MAX_CHUNK and bedded almost all the way
+	# in; the big and the deep are the rarer ends of the range.
+	rock.embed = lerpf(float(kind.embed[0]), OreRock.MAX_EMBED, pow(rng.randf(), 1.4))
+	rock.volume = lerpf(float(kind.volume[0]), MAX_CHUNK, pow(rng.randf(), 1.6))
 	return rock
 
 ## The buyer's yard: material left inside the fence is bought when the player

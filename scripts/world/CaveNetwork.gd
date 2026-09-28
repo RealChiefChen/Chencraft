@@ -45,11 +45,11 @@ const PALETTE := {
 const ORES := {
 	Kind.RIVER: [&"ore_copper", &"ore_magnetite", &"ore_silver", &"gem_jade", &"gem_emerald"],
 	Kind.DESERT: [&"gem_turquoise", &"ore_gold", &"ore_bismuth", &"gem_ruby", &"ore_sunstone"],
-	Kind.CRYSTAL: [&"gem_quartz", &"gem_amethyst", &"ore_platinum", &"gem_lapis", &"gem_diamond"],
+	Kind.CRYSTAL: [&"gem_quartz", &"gem_amethyst", &"ore_platinum", &"gem_amethyst", &"gem_quartz"],
 	Kind.ICE: [&"ore_nickel", &"ore_silver", &"ore_platinum", &"gem_sapphire", &"gem_sapphire"],
 	Kind.FUNGAL: [&"ore_zinc", &"ore_cobalt", &"gem_jade", &"ore_cobalt", &"gem_emerald"],
-	Kind.MAGMA: [&"gem_obsidian", &"ore_tungsten", &"gem_obsidian", &"ore_sunstone", &"gem_black_opal"],
-	Kind.ABYSS: [&"ore_platinum", &"gem_diamond", &"gem_black_opal", &"ore_starmetal", &"gem_sapphire"],
+	Kind.MAGMA: [&"gem_obsidian", &"ore_tungsten", &"gem_obsidian", &"ore_sunstone", &"ore_tungsten"],
+	Kind.ABYSS: [&"ore_platinum", &"gem_sapphire", &"ore_platinum", &"ore_starmetal", &"gem_sapphire"],
 }
 
 ## Cover of rock kept over every cavern and tunnel, metres.

@@ -1000,14 +1000,12 @@ func test_crack_loose() -> void:
 	var stone := spawn(&"gem_quartz", Vector3(0, 0.6, -2), Solid.cube(0.5))
 	var total := stone.volume()
 	await step(10)
-	var mouth := minf(cutter.hole.x, cutter.hole.y)
 	var guard := 0
 	while guard < 4000:
 		guard += 1
 		var big: LooseItem = null
 		for item in manager.free_items():
-			var b := Solid.bounds(item.dims)
-			if maxf(b.x, maxf(b.y, b.z)) > mouth * 0.9 and item.is_rough_stone():
+			if not Solid.fits_through(item.dims, cutter.hole * 0.9) and item.is_rough_stone():
 				big = item
 		if big == null:
 			break
@@ -1019,8 +1017,7 @@ func test_crack_loose() -> void:
 	check(manager.active_count() >= 2, "the stone was never cracked")
 	check_near(loose_volume(), total, 0.0001, "cracking the stone lost some of it")
 	for item in manager.free_items():
-		var b := Solid.bounds(item.dims)
-		check(maxf(b.x, maxf(b.y, b.z)) <= mouth * 0.9, "a piece is still too big for the cutter")
+		check(Solid.fits_through(item.dims, cutter.hole * 0.9), "a piece is still too big for the cutter")
 	# Tiny bits are left alone.
 	var bit := spawn(&"gem_quartz", Vector3(3, 0.6, -2), Solid.cube(0.004))
 	await step(2)

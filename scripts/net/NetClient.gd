@@ -45,6 +45,10 @@ func _ready() -> void:
 
 func _hello() -> void:
 	Net.rpc_id(1, "c_hello", Net.player_name)
+	# You in the shirt the others see you in.
+	var me: Variant = world.get("player") if world != null else null
+	if me is Player and (me as Player).avatar != null:
+		(me as Player).avatar.set_look("", Avatar.color_for(multiplayer.get_unique_id()))
 	if OS.has_environment("NET_TRACE"):
 		print("[guest] hello sent")
 

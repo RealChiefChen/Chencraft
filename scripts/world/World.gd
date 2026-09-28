@@ -2073,6 +2073,9 @@ func start_hosting() -> void:
 	net_host.name = "NetHost"
 	net_host.world = self
 	add_child(net_host)
+	# You in the shirt the others see you in (the host is peer 1).
+	if player != null and player.avatar != null:
+		player.avatar.set_look("", Avatar.color_for(1))
 
 ## Closes it again: every guest goes.
 func stop_hosting() -> void:

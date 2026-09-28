@@ -17,7 +17,7 @@ extends Node3D
 const ORE_FEED := [&"ore_iron", &"ore_copper", &"ore_tin", &"ore_zinc", &"ore_magnetite",
 	&"ore_tungsten", &"ore_bismuth", &"ore_gold", &"ore_platinum", &"ore_starmetal"]
 const GEM_FEED := [&"gem_quartz", &"gem_obsidian", &"gem_jade", &"gem_amethyst",
-	&"gem_emerald", &"gem_ruby", &"gem_diamond"]
+	&"gem_emerald", &"gem_ruby", &"gem_diamond", &"gem_turquoise", &"gem_lapis", &"gem_black_opal"]
 ## Seconds between drops, and how long a finished piece stays on show.
 const DROP_EVERY := 4.0
 const SHOW_FOR := 25.0

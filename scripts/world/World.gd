@@ -801,6 +801,15 @@ func _build_forest() -> void:
 			"start": 0.6, "pitch": [0.8, 1.15], "length": [0.2, 0.3],
 			"foliage": 9.0, "crown": [8.0, 0.24], "style": &"canopy", "quota": 16},
 
+		# Ebony: a knee-high sapling of a tree, a handful scattered wide over
+		# the far country. The dearest wood if you can find it.
+		{"name": "Ebony", "near": 1500.0, "item": &"wood_ebony", "quota": 12,
+			"biomes": [Terrain.Biome.WOODLAND, Terrain.Biome.SWAMP, Terrain.Biome.MOUNTAIN],
+			"leaf": Color(0.10, 0.22, 0.10), "bark": Color(0.10, 0.08, 0.07), "work": 2000.0,
+			"radius": [0.12, 0.17], "height": [2.2, 3.2], "taper": 0.75, "branches": [2, 4],
+			"start": 0.55, "pitch": [0.7, 1.1], "length": [0.12, 0.2],
+			"foliage": 3.0, "crown": [2.0, 0.3], "style": &"ball"},
+
 		{"name": "Dead Snag", "item": &"wood_pine",
 			"biomes": [Terrain.Biome.MOUNTAIN, Terrain.Biome.DESERT, Terrain.Biome.SWAMP],
 			"leaf": Color(0.4, 0.4, 0.4), "bark": Color(0.52, 0.49, 0.45), "work": 400.0,
@@ -1139,6 +1148,10 @@ const WILD_ORE := [
 		"quota": 10, "volume": [0.15, 0.7], "embed": [0.50, 0.70], "near": 1785.0},
 	{"item": &"ore_sunstone", "biomes": [Terrain.Biome.DESERT],
 		"quota": 8, "volume": [0.15, 0.7], "embed": [0.50, 0.70], "near": 1785.0},
+	{"item": &"gem_turquoise", "biomes": [Terrain.Biome.DESERT, Terrain.Biome.MOUNTAIN],
+		"quota": 10, "volume": [0.15, 0.7], "embed": [0.50, 0.70], "near": 1575.0},
+	{"item": &"gem_lapis", "biomes": [Terrain.Biome.MOUNTAIN, Terrain.Biome.SNOW],
+		"quota": 6, "volume": [0.15, 0.6], "embed": [0.55, 0.70], "near": 1890.0},
 ]
 
 ## Underground, by how far out the cave is: the nearest are worked-over seams of
@@ -1146,10 +1159,11 @@ const WILD_ORE := [
 const CAVE_TIERS := [
 	[&"ore_copper", &"ore_iron", &"ore_tin", &"ore_zinc", &"gem_quartz", &"gem_amethyst"],
 	[&"ore_silver", &"ore_magnetite", &"ore_nickel", &"gem_jade", &"ore_cobalt", &"ore_gold"],
-	[&"ore_gold", &"gem_emerald", &"gem_ruby", &"ore_platinum", &"ore_tungsten", &"ore_sunstone"],
+	[&"ore_gold", &"gem_emerald", &"gem_ruby", &"ore_platinum", &"ore_tungsten", &"ore_sunstone",
+		&"gem_turquoise", &"gem_lapis", &"gem_black_opal"],
 ]
 ## The farthest cave of all: diamonds, and nowhere else.
-const DEEPEST_CAVE := [&"gem_diamond", &"gem_diamond", &"gem_emerald", &"ore_platinum", &"gem_diamond"]
+const DEEPEST_CAVE := [&"gem_diamond", &"gem_diamond", &"gem_black_opal", &"ore_platinum", &"gem_diamond"]
 
 ## The quarry works the same way: a patch per ore, stocked to a quota.
 func _build_quarry() -> void:

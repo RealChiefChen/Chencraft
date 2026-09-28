@@ -932,6 +932,44 @@
       "volatility": 0.3
     },
     {
+      "id": "wood_ebony",
+      "display_name": "Ebony Wood",
+      "category": "wood",
+      "shape": "cylinder",
+      "variable": true,
+      "radius": 0.17,
+      "length": 1.4,
+      "taper": 0.9,
+      "density": 310,
+      "value_per_m3": 260,
+      "color": [
+        0.1,
+        0.08,
+        0.07
+      ],
+      "volatility": 0.3
+    },
+    {
+      "id": "lumber_ebony",
+      "display_name": "Ebony Lumber",
+      "category": "lumber",
+      "shape": "box",
+      "variable": true,
+      "cross_section": [
+        0.3,
+        0.3
+      ],
+      "length": 1.6,
+      "density": 290,
+      "value_per_m3": 1000,
+      "color": [
+        0.14,
+        0.11,
+        0.1
+      ],
+      "volatility": 0.3
+    },
+    {
       "id": "ore_nickel",
       "display_name": "Nickel Ore",
       "category": "ore",
@@ -1474,6 +1512,120 @@
       "volatility": 0.35
     },
     {
+      "id": "gem_turquoise",
+      "display_name": "Rough Turquoise",
+      "category": "gem",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.24,
+        0.2,
+        0.22
+      ],
+      "density": 820,
+      "value_per_m3": 1000,
+      "color": [
+        0.25,
+        0.8,
+        0.76
+      ],
+      "volatility": 0.35
+    },
+    {
+      "id": "jewel_turquoise",
+      "display_name": "Cut Turquoise",
+      "category": "jewel",
+      "shape": "cylinder",
+      "variable": true,
+      "radius": 0.186,
+      "length": 0.167,
+      "taper": 0.5,
+      "density": 820,
+      "value_per_m3": 2000,
+      "color": [
+        0.3,
+        0.88,
+        0.82
+      ],
+      "volatility": 0.35
+    },
+    {
+      "id": "gem_black_opal",
+      "display_name": "Rough Black Opal",
+      "category": "gem",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.24,
+        0.2,
+        0.22
+      ],
+      "density": 700,
+      "value_per_m3": 1000,
+      "color": [
+        0.14,
+        0.12,
+        0.22
+      ],
+      "volatility": 0.35
+    },
+    {
+      "id": "jewel_black_opal",
+      "display_name": "Cut Black Opal",
+      "category": "jewel",
+      "shape": "cylinder",
+      "variable": true,
+      "radius": 0.186,
+      "length": 0.167,
+      "taper": 0.5,
+      "density": 700,
+      "value_per_m3": 2000,
+      "color": [
+        0.22,
+        0.2,
+        0.4
+      ],
+      "volatility": 0.35
+    },
+    {
+      "id": "gem_lapis",
+      "display_name": "Rough Lapis Lazuli",
+      "category": "gem",
+      "shape": "box",
+      "variable": false,
+      "size": [
+        0.24,
+        0.2,
+        0.22
+      ],
+      "density": 900,
+      "value_per_m3": 1000,
+      "color": [
+        0.12,
+        0.2,
+        0.62
+      ],
+      "volatility": 0.35
+    },
+    {
+      "id": "jewel_lapis",
+      "display_name": "Cut Lapis Lazuli",
+      "category": "jewel",
+      "shape": "cylinder",
+      "variable": true,
+      "radius": 0.186,
+      "length": 0.167,
+      "taper": 0.5,
+      "density": 900,
+      "value_per_m3": 2000,
+      "color": [
+        0.16,
+        0.28,
+        0.78
+      ],
+      "volatility": 0.35
+    },
+    {
       "id": "crate",
       "display_name": "Shipping Crate",
       "category": "goods",
@@ -1516,6 +1668,39 @@
   ],
   "_materials_note": "Every material's worth along its processing path, in $ per cubic metre of the RAW material: raw as found, pre after the first step (sanded log, smelted bar, polished stone), final after the whole path (sanded plank, refined bar, cut jewel). Item prices and finish bonuses are derived from this at load, allowing for what each machine keeps of the volume.",
   "materials": [
+    {
+      "id": "turquoise",
+      "level": 2,
+      "path": "gem",
+      "raw_item": "gem_turquoise",
+      "final_item": "jewel_turquoise",
+      "raw": 2600,
+      "pre": 6000,
+      "final": 4200,
+      "note": "Worth more polished than cut"
+    },
+    {
+      "id": "black_opal",
+      "level": 3,
+      "path": "gem",
+      "raw_item": "gem_black_opal",
+      "final_item": "jewel_black_opal",
+      "raw": 3000,
+      "pre": 9000,
+      "final": 13400,
+      "note": "Magma caves and the abyss only"
+    },
+    {
+      "id": "lapis",
+      "level": 3,
+      "path": "gem",
+      "raw_item": "gem_lapis",
+      "final_item": "jewel_lapis",
+      "raw": 4200,
+      "pre": 11100,
+      "final": 7200,
+      "note": "Polish it: cutting wastes the gold flecks"
+    },
     {
       "id": "pine",
       "level": 1,
@@ -1662,6 +1847,17 @@
       "pre": 2700,
       "final": 5300,
       "note": "Grows in one hidden valley"
+    },
+    {
+      "id": "ebony",
+      "level": 3,
+      "path": "wood",
+      "raw_item": "wood_ebony",
+      "final_item": "lumber_ebony",
+      "raw": 2100,
+      "pre": 3000,
+      "final": 6000,
+      "note": "Trees are very small and hard to find"
     },
     {
       "id": "ember",

@@ -179,6 +179,7 @@ func _run_all() -> void:
 	await _test(&"the lumberjack is posed from what you do, and third person still aims true", test_avatar)
 	await _test(&"per-plot cap is enforced", test_cap)
 	await _test(&"shop stock stays on the shelf however busy the world gets", test_shop_stock_kept)
+	await _test(&"ore blocks are built to fit any box", test_ore_look_fits_any_box)
 	await _test(&"full automated base stays in budget", test_full_base)
 
 	_say("")
@@ -6962,4 +6963,30 @@ func test_climb() -> void:
 		await step(1)
 		best = maxf(best, truck.global_position.y)
 	check(best > 15.0, "a loaded log truck only got %.1f m up a 38-degree slope" % best)
+	done()
+
+## Ore blocks are built for the box they fill: any aspect ratio, cubes kept
+## (nearly) cubic, the rock filling the box and only glowing ore sticking out.
+func test_ore_look_fits_any_box() -> void:
+	for size: Vector3 in [Vector3(1, 1, 1), Vector3(2.4, 0.4, 0.9), Vector3(0.3, 1.6, 0.5), Vector3(0.12, 0.2, 0.15)]:
+		var n := OreLook.cells_for(size)
+		var cube := Vector3(size.x / n.x, size.y / n.y, size.z / n.z)
+		var ratio := maxf(cube.x, maxf(cube.y, cube.z)) / minf(cube.x, minf(cube.y, cube.z))
+		check(ratio < 1.35, "ore cubes stay near cubes in %s (ratio %.2f)" % [size, ratio])
+		for id: StringName in [&"ore_iron", &"ore_bismuth", &"ore_starmetal"]:
+			var parts := OreLook.rock(id, size, Vector3.ZERO, 0.0, 7)
+			check(parts.size() >= 1, "%s has a rock for %s" % [id, size])
+			if parts.is_empty():
+				continue
+			var box: AABB = parts[0].mesh.get_aabb()
+			for k in range(1, parts.size()):
+				box = box.merge(parts[k].mesh.get_aabb())
+			# Ore stands out of a face by under half a cube.
+			var slack := Vector3.ONE * (maxf(cube.x, maxf(cube.y, cube.z)) * 0.9 + 0.001)
+			check(box.size.x >= size.x * 0.99 and box.size.x <= size.x + slack.x
+				and box.size.y >= size.y * 0.99 and box.size.y <= size.y + slack.y
+				and box.size.z >= size.z * 0.99 and box.size.z <= size.z + slack.z,
+				"%s rock fills %s (got %s)" % [id, size, box.size])
+			for p in parts:
+				p.free()
 	done()

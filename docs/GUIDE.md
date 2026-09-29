@@ -670,14 +670,16 @@ Nearly every mesh is built in code from primitives. The one exception is you.
   catches the light - sunk into the ground by however much is buried, and
   drawn from the ore left in them, so hammering a piece off visibly shrinks the
   rock. Open cracks are dark seams that lengthen as they deepen.
-  Each ore's chunk is a perfect cube of its rock built out of cubes, with
-  the ore sticking out of its faces and glowing, each cube its own colour (`assets/models/ores.glb`, source in `source/ores.blend`): the
-  rock's cubes sit a little in or out, and the ore's cubes stand proud, split
-  into smaller cubes of ore and rock. Used for the chunk in the ground and the
-  pieces mined from it, always scaled evenly so the cubes stay cubes - banded
-  iron, copper in green patina, a gold-in-quartz vein, silver, cobalt in pink
-  bloom, sunstone, tin, zinc, magnetite, nickel, rainbow bismuth, tungsten,
-  platinum in olivine, and a starmetal meteorite with glowing cracks.
+  Each ore's chunk is a block of its rock built out of cubes, Minecraft-style,
+  with the ore sticking out of its faces as cubes that glow, each in its own
+  colour. The block is built in the game (`scripts/world/OreLook.gd`) for the
+  exact box it fills - any size and aspect ratio, a long slab just gets more
+  cubes along its length - for the chunk in the ground and every piece mined
+  from it. Every ore has its own pattern: banded iron, copper in green patina,
+  a gold-in-quartz vein, silver, cobalt in pink bloom, sunstone, tin, zinc,
+  magnetite, nickel, rainbow bismuth, tungsten blades, platinum in olivine,
+  and a starmetal meteorite with glowing cracks. The design was worked out in
+  Blender (`assets/models/source/ores.blend`).
 * **Machines** are tunnels over a belt, dressed like a curing oven: steel side
   panels with ribs and a bolted access panel, a dark inside the belt vanishes
   into, a bulkhead at each end with the mouth cut out of it, hazard stripes

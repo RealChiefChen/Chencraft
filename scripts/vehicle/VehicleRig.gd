@@ -219,10 +219,13 @@ func fairlead() -> Vector3:
 
 # --- The rope --------------------------------------------------------------------
 
-## A rope between two points. Slack, it does nothing; drawn tight past its
-## length it pulls the two ends together with a spring and damper sized to the
-## masses on it, capped at `most` newtons. Returns the tension it pulled with.
+## A rope between two points. Slack, it does nothing; drawn tight it holds its
+## length - no give in it at all - pulling the two ends together as hard as it
+## takes, capped at `most` newtons. Returns the tension it pulled with.
 ## `a` and `b` are the bodies (null for something fixed).
+## Of any stretch, the share taken back up each physics step.
+const TAKE_UP := 0.5
+
 static func pull(a: RigidBody3D, pa: Vector3, b: RigidBody3D, pb: Vector3, length: float,
 		most: float, extra_mass_b: float = 0.0) -> float:
 	var span := pb - pa
@@ -247,11 +250,13 @@ static func pull(a: RigidBody3D, pa: Vector3, b: RigidBody3D, pb: Vector3, lengt
 		if body != null and body.sleeping:
 			body.sleeping = false
 	var m_eff := 1.0 / inv
-	var omega := 16.0
 	var stretch := dist - length
 	var separating := (vb - va).dot(n)
-	var tension := clampf(m_eff * (stretch * omega * omega + separating * 1.6 * omega), 0.0, most)
 	var dt := 1.0 / float(Engine.physics_ticks_per_second)
+	# A steel line, not a bungee: whatever pull it takes, up to `most`, to
+	# stop the ends parting this step and take up what they already have -
+	# so it holds its length rather than stretching and springing back.
+	var tension := clampf(m_eff * (separating + stretch * TAKE_UP / dt) / dt, 0.0, most)
 	if a != null and not a.freeze:
 		a.apply_impulse(n * tension * dt, pa - a.global_position)
 	if b != null and not b.freeze:

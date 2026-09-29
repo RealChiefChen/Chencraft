@@ -5125,9 +5125,14 @@ func test_vehicle_rig() -> void:
 	reticle.show_for(rig, {"position": log_piece.global_position, "normal": Vector3.UP})
 	check(not reticle.visible, "the winch reticle stays up with the hook already on")
 	var start := log_piece.global_position.distance_to(rig.fairlead())
+	var stretched := 0.0
 	for i in 240:
 		rig.reel(1.0 / 60.0)
 		await step(1)
+		if rig.winch_tension > 0.0:
+			stretched = maxf(stretched, rig.anchor_point.distance_to(rig.fairlead()) - rig.line_length)
+	# A steel line: pulling the log along, it does not stretch.
+	check(stretched < 0.08, "the winch line stretched %.2f m under load" % stretched)
 	var now := log_piece.global_position.distance_to(rig.fairlead())
 	check(now < start - 3.0, "reeling in moved the log %.1f m" % (start - now))
 	check(rig.winch_load_kg() < rig.winch_power_kg, "a light log stalled the winch")

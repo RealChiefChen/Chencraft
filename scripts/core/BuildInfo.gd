@@ -6,5 +6,5 @@ extends RefCounted
 ## stamped). Change the first two numbers here by hand for a bigger release.
 ## Do not edit the lines below otherwise: the hook rewrites them.
 
-const NUMBER := "0.2.48"
-const RELEASED := "2026-09-28 19:58 EDT"
+const NUMBER := "0.2.49"
+const RELEASED := "2026-09-28 20:02 EDT"

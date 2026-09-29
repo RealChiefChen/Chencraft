@@ -982,3 +982,39 @@ func shot_joinsin() -> void:
 		world.player.global_position = eye
 		await look(eye, Vector3(o.x, fy + 1.8, o.z) - out * 8.0)
 		await snap("ji_%d_%d" % pair)
+
+## One chunk of every ore in the ground, with a mined piece of it in front.
+func shot_ore_looks() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var ores := ["ore_iron", "ore_copper", "ore_gold", "ore_silver", "ore_cobalt", "ore_sunstone", "ore_tin",
+		"ore_zinc", "ore_magnetite", "ore_nickel", "ore_bismuth", "ore_tungsten", "ore_platinum", "ore_starmetal"]
+	var base := world.plot.global_position + Vector3(-16, 0, 26)
+	for i in ores.size():
+		var at := base + Vector3(float(i % 7) * 4.5, 0, float(i / 7) * 6.0)
+		at.y = world.terrain.height_at(at.x, at.z)
+		var rock := OreRock.new()
+		rock.manager = world.manager
+		rock.ore_item = StringName(ores[i])
+		rock.seed_form(100 + i)
+		rock.embed = 0.35
+		rock.volume = 1.6
+		world.add_child(rock)
+		rock.global_position = at
+		var piece := world.manager.spawn(StringName(ores[i]), Transform3D(Basis(), at + Vector3(0, 0.6, 2.2)), 0, Vector3.ZERO, Solid.chunk(0.45))
+		if piece != null:
+			piece.freeze = true
+	for i in 30:
+		await get_tree().physics_frame
+	var mid := base + Vector3(13.5, 0, 3)
+	mid.y = world.terrain.height_at(mid.x, mid.z)
+	await look(mid + Vector3(0, 9, 17), mid + Vector3(0, 0.5, 0))
+	await snap("ores_all")
+	var near := base + Vector3(0, 0, 0)
+	near.y = world.terrain.height_at(near.x, near.z)
+	await look(near + Vector3(5, 3.2, 6), near + Vector3(4.5, 0.6, 0.8))
+	await snap("ores_close")
+	near = base + Vector3(0, 0, 6)
+	near.y = world.terrain.height_at(near.x, near.z)
+	await look(near + Vector3(9, 3.2, 6), near + Vector3(9, 0.6, 0.8))
+	await snap("ores_close2")

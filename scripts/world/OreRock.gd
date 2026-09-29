@@ -305,6 +305,15 @@ func _rebuild() -> void:
 		_shape.shape = box
 		_shape.transform = Transform3D(yaw, centre)
 		var body := Transform3D(yaw, centre)
+		# An ore with a look of its own (OreLook) is that rock, whole, filling
+		# the block: the ore in veins and chunks set into its surface.
+		if OreLook.has_look(ore_item):
+			for part in OreLook.rock(ore_item, size, centre, yaw.get_euler().y):
+				part.visibility_range_end = 260.0
+				add_child(part)
+				_parts.append(part)
+			_refresh_cracks()
+			return
 		g.box(size, body, stone)
 		# Building stone is all one rock: laid down in beds, lighter and
 		# darker, and nothing else in it.

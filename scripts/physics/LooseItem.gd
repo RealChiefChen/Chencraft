@@ -100,6 +100,9 @@ func _build_mesh(color: Color) -> void:
 	if _mesh == null:
 		_mesh = MeshInstance3D.new()
 		add_child(_mesh)
+	# A lump of ore's rock is fitted with its own transform; everything else
+	# is drawn as built.
+	_mesh.transform = Transform3D.IDENTITY
 	if is_rough_stone():
 		_build_rock_mesh(color)
 		return
@@ -160,6 +163,17 @@ func is_rough_stone() -> bool:
 ## ores that do. The collider stays the plain box.
 func _build_rock_mesh(color: Color) -> void:
 	var size: Vector3 = dims.size
+	# An ore with a look of its own is a lump of that ore's rock, filling the
+	# piece's box (the collider stays the box).
+	if OreLook.has_look(item_id):
+		var parts := OreLook.rock(item_id, size, Vector3.ZERO, float(hash([item_id, size.snapped(Vector3.ONE * 0.001)]) % 628) * 0.01)
+		_mesh.mesh = parts[0].mesh
+		_mesh.transform = parts[0].transform
+		_mesh.material_override = parts[0].material_override
+		parts[0].free()
+		for k in range(1, parts.size()):
+			add_extra_node(parts[k])
+		return
 	var stone: Color = OreRock.HOST_STONE.get(item_id, Color(0.47, 0.45, 0.42))
 	var glint := OreRock.GLOWING_ORES.has(item_id) or category == &"gem"
 	var form := RandomNumberGenerator.new()
@@ -172,8 +186,8 @@ func _build_rock_mesh(color: Color) -> void:
 		var at := Vector3(form.randf_range(-0.4, 0.4) * size.x, form.randf_range(-0.3, 0.45) * size.y,
 			form.randf_range(-0.4, 0.4) * size.z)
 		g.box(s, Transform3D(Basis(Vector3.UP, form.randf() * PI), at), stone.lightened(form.randf_range(0.02, 0.1)))
-	# Flecks of ore on the faces: more on a bigger lump, never many.
 	var smallest := minf(size.x, minf(size.y, size.z))
+	# Flecks of ore on the faces: more on a bigger lump, never many.
 	var area := 2.0 * (size.x * size.y + size.y * size.z + size.x * size.z)
 	var flecks := clampi(int(area / maxf(smallest * smallest, 0.0001) * 1.5), 8, 22)
 	for i in flecks:

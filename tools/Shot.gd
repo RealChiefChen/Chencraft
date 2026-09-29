@@ -905,3 +905,80 @@ func shot_join() -> void:
 	world.player.global_position = eye
 	await look(eye, o + Vector3(0, 3.0, 0))
 	await snap("join")
+
+## Every tunnel mouth into an Abyss cavern, from in the tunnel and from the
+## cavern: for hunting joins that do not meet.
+func shot_abyssjoins() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var net: CaveNetwork = world.network
+	var lamp := OmniLight3D.new()
+	lamp.omni_range = 120.0
+	lamp.light_energy = 2.5
+	lamp.omni_attenuation = 0.5
+	world.player.camera.add_child(lamp)
+	var n := 0
+	for ti in net.tunnels.size():
+		var t: Dictionary = net.tunnels[ti]
+		for ri in [int(t.a), int(t.b)]:
+			if int(net.rooms[ri].kind) != CaveNetwork.Kind.ABYSS and int(net.rooms[int(t.a)].kind) != CaveNetwork.Kind.ABYSS \
+					and int(net.rooms[int(t.b)].kind) != CaveNetwork.Kind.ABYSS:
+				continue
+			var e := net._tube_end(ti, ri)
+			var o: Vector3 = e.origin
+			var out: Vector3 = e.out
+			var r := float(t.get("ra", t.radius)) if ri == int(t.a) else float(t.get("rb", t.radius))
+			var floor_y := o.y - r * CaveNetwork.FLOOR_CUT
+			var inside := o + out * 12.0
+			inside.y = floor_y + 2.0
+			world.player.global_position = inside
+			await look(inside, Vector3(o.x, floor_y + 2.0, o.z) - out * 6.0)
+			await snap("aj_%d_%d_in" % [ti, ri])
+			var room_side := o - out * 14.0
+			room_side.y = floor_y + 3.0
+			world.player.global_position = room_side
+			await look(room_side, Vector3(o.x, floor_y + 2.0, o.z))
+			await snap("aj_%d_%d_out" % [ti, ri])
+			n += 1
+	print("ABYSS JOINS ", n)
+
+## From partway down each cave's way in, looking on into its first cavern.
+func shot_entryviews() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var lamp := OmniLight3D.new()
+	lamp.omni_range = 120.0
+	lamp.light_energy = 2.5
+	lamp.omni_attenuation = 0.5
+	world.player.camera.add_child(lamp)
+	for i in world.caves.size():
+		var cave: Cave = world.caves[i]
+		var z := Cave.SHAFT_LENGTH + Cave.TUNNEL_LENGTH - 8.0
+		var eye := cave.to_global(Vector3(0, Cave.floor_at(z) + 1.8, z))
+		var at := cave.to_global(Vector3(0, -Cave.CHAMBER_DROP + 1.5, z + 20.0))
+		world.player.global_position = eye
+		await look(eye, at)
+		await snap("ev_%02d" % i)
+
+## From inside the tunnel, looking into the cavern, at the joins listed.
+func shot_joinsin() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var net: CaveNetwork = world.network
+	var lamp := OmniLight3D.new()
+	lamp.omni_range = 120.0
+	lamp.light_energy = 2.5
+	lamp.omni_attenuation = 0.5
+	world.player.camera.add_child(lamp)
+	for pair in [[48, 54], [49, 55], [50, 57], [51, 59], [55, 61], [46, 52], [48, 56], [52, 60], [10, 25], [16, 36], [53, 60]]:
+		var e := net._tube_end(pair[0], pair[1])
+		var o: Vector3 = e.origin
+		var out: Vector3 = e.out
+		var t: Dictionary = net.tunnels[pair[0]]
+		var r := float(t.get("ra", t.radius)) if pair[1] == int(t.a) else float(t.get("rb", t.radius))
+		var fy := o.y - r * CaveNetwork.FLOOR_CUT
+		var eye := o + out * 10.0
+		eye.y = fy + 1.8
+		world.player.global_position = eye
+		await look(eye, Vector3(o.x, fy + 1.8, o.z) - out * 8.0)
+		await snap("ji_%d_%d" % pair)

@@ -1019,7 +1019,10 @@ func _room_mesh(ri: int) -> Buf:
 		var poly: PackedVector2Array = mouth.outline
 		# Only the near side of the cavern: the wall the tunnel goes through,
 		# and the roof just in front of it where the tube is taller.
-		var behind := -minf(14.0, Vector2(o.x - c.x, o.z - c.z).length() * 0.5)
+		# Far enough back to take in a wall that bulges out past the mouth
+		# lower down - left standing, it fences off the bottom of the tunnel -
+		# and never so far as the cavern's far side.
+		var behind := -minf(40.0, Vector2(o.x - c.x, o.z - c.z).length() * 0.6)
 		for i in pts.size():
 			# The floor stays as it is: the tube's floor carries on from it.
 			if on_floor[i]:

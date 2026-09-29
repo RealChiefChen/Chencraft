@@ -456,6 +456,32 @@ Quotas follow how much country each species actually has, so a seed that grows
 little swamp gets a few willows rather than an empty field grinding away at a
 region that is not there.
 
+## Mayhem
+
+* **TNT** is sold by the stick at the hardware store (EXPLOSIVES, $50 each,
+  always back on the shelf). Open the box, **[E]** on the stick lights a
+  four-second fuse, then pick it up and throw it. A blast (`scripts/world/Blast.gd`)
+  throws players flying, blows loose things about, sets off other sticks nearby
+  and cracks ore apart: easy ores (tier 1) come to pieces, tier 2 ores take 30%
+  of it, and the top ores and finest gems (tier 3) only 3% - barely a mark.
+  Loose ore chunks in the blast crack in two the same way. The knobs are in the
+  `explosives` section of `balance.json`.
+* **Getting knocked flying.** A long drop (landing faster than 16 m/s, about
+  twelve metres), a truck driving into you or a blast turns you into a ragdoll:
+  the body tumbles as a physics body with the lumberjack flopping about on it,
+  the camera stands off and watches (the mouse swings it round), and once you
+  have come to rest you get up where you lie. Whatever was on the rack goes
+  everywhere.
+* **Cranes pick up players.** Close the grapple (or drop the claw) on someone
+  and they come too, dangling by the shirt. Hold **jump** for a second to
+  wriggle free; otherwise they drop when the crane lets go.
+* **The crusher crushes players.** Fall (or be dropped) into its hopper and you
+  go through: the camera watches the machine for a few seconds while ten Meat
+  Bits come out of the far end (worth $2 each at the yard), then you are back
+  at base.
+* In co-op the host works out who gets hit and the guest's own game acts it
+  out (`knock` and `crush` messages).
+
 ## Co-op
 
 One player hosts their own game; friends join it. Everything is shared: one

@@ -1040,3 +1040,123 @@ func shot_ore_looks() -> void:
 	near.y = world.terrain.height_at(near.x, near.z)
 	await look(near + Vector3(9, 3.2, 6), near + Vector3(9, 0.6, 0.8))
 	await snap("ores_close2")
+
+## The friends' list: a player blown up by TNT, ore going up, a player on a
+## crane, and the crusher.
+func shot_slop() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var p: Player = world.player
+	var base := world.plot.global_position + Vector3(-14, 0, 24)
+	base.y = world.terrain.height_at(base.x, base.z)
+	# TNT among ore, the camera well back.
+	for i in 3:
+		var rock := OreRock.new()
+		rock.manager = world.manager
+		rock.ore_item = [&"ore_iron", &"ore_copper", &"ore_platinum"][i]
+		rock.seed_form(300 + i)
+		rock.embed = 0.35
+		rock.volume = 1.2
+		world.add_child(rock)
+		var at := base + Vector3(float(i - 1) * 2.6, 0, 0)
+		at.y = world.terrain.height_at(at.x, at.z)
+		rock.global_position = at
+	p.global_position = base + Vector3(0, 0, 30)
+	await _frames(20)
+	var stick := world.manager.spawn(&"tnt_stick", Transform3D(Basis(), base + Vector3(0, 0.8, 1.2)), 0)
+	await _frames(20)
+	await look(base + Vector3(6, 4, 10), base + Vector3(0, 0.8, 0))
+	await snap("slop_tnt_lit")
+	Blast.light(stick, world.manager, 0.05)
+	await _frames(12)
+	await snap("slop_tnt_boom")
+	await _frames(60)
+	await snap("slop_tnt_after")
+	# The player blown sky high.
+	var cam := p.camera
+	cam.top_level = false
+	p.global_position = base + Vector3(10, 0.2, 6)
+	await _frames(30)
+	var stick2 := world.manager.spawn(&"tnt_stick", Transform3D(Basis(), p.global_position + Vector3(0.8, 0.3, 0.5)), 0)
+	Blast.light(stick2, world.manager, 0.05)
+	await _frames(24)
+	await snap("slop_launched")
+	for i in 60 * 10:
+		await get_tree().physics_frame
+		if not p.knocked():
+			break
+	# Hanging from a crane.
+	var truck := Hauler.new()
+	truck.setup(world.manager, 0, &"crane_truck")
+	world.add_child(truck)
+	var tpos := base + Vector3(-12, 0, 12)
+	tpos.y = world.terrain.height_at(tpos.x, tpos.z) + truck.spawn_height()
+	truck.global_position = tpos
+	await _frames(60)
+	truck.rig.set_operating(true)
+	var frame := truck.global_transform
+	p.global_position = frame * Vector3(3.6, 0.0, 1.0)
+	await _frames(20)
+	truck.rig._take_player(p)
+	truck.rig.target = truck.rig.clamp_target(truck.rig.target + Vector3(0, 2.5, 0))
+	for i in 150:
+		await get_tree().physics_frame
+	await _frames(10)
+	await snap("slop_crane")
+	truck.rig.drop()
+	for i in 60 * 12:
+		await get_tree().physics_frame
+		if not p.knocked():
+			break
+
+## A blast close up, for judging the fireball.
+func shot_blastfx() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var at := world.plot.global_position + Vector3(-10, 0, 20)
+	at.y = world.terrain.height_at(at.x, at.z) + 0.3
+	world.player.global_position = at + Vector3(0, 0, 40)
+	await look(at + Vector3(0, 2.5, 7), at + Vector3(0, 1, 0))
+	Blast._effects(get_tree().current_scene, at)
+	for k in [2, 6, 14, 40]:
+		await _frames(k)
+		await snap("blast_%d" % k)
+
+## A player going through the crusher, and what comes out.
+func shot_crush() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var p: Player = world.player
+	var base := world.plot.global_position + Vector3(-14, 0, 24)
+	base.y = world.terrain.height_at(base.x, base.z)
+	# Into the crusher.
+	var m := InlineMachine.new()
+	m.setup_machine(world.manager, PlayerState.def_at_tier(&"crusher", 1), 0)
+	var mpos := base + Vector3(14, 0, 16)
+	mpos.y = world.terrain.height_at(mpos.x, mpos.z) + 0.05
+	m.position = mpos
+	world.add_child(m)
+	await _frames(20)
+	p.global_position = m.global_transform * Vector3(0, InlineMachine.DECK_THICKNESS + m.canopy_height() + InlineMachine.HOPPER_DEPTH + 0.8, 0)
+	for i in 60 * 3:
+		await get_tree().physics_frame
+		if p.crushed() and i > 140:
+			break
+	await _frames(5)
+	await snap("slop_crusher")
+
+## The TNT on the hardware store's shelf.
+func shot_tntshelf() -> void:
+	var s: Store = world.store
+	for i in 120:
+		await get_tree().process_frame
+	for slot in s.slots:
+		if slot.target == &"tnt_stick" and slot.item != null:
+			var at: Vector3 = (slot.item as Node3D).global_position
+			var out: Vector3 = (slot.item as Node3D).global_transform.basis.z
+			await look(at + out * 2.2 + Vector3(0.6, 0.6, 0), at)
+			await snap("tnt_shelf")
+			await look(at + out * 5.5 + Vector3(2.0, 1.2, 0), at)
+			await snap("tnt_shelf_wide")
+			return
+	print("no TNT on the shelf")

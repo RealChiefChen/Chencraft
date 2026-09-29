@@ -2183,6 +2183,8 @@ func return_to_base(p: Player = null) -> void:
 	if p == player and Net.is_client():
 		Net.client_side.call("send_event", {"t": "base"})
 		return
+	# Lying in a heap somewhere: up first.
+	p.stand_up()
 	if p.driving():
 		var riding := p.vehicle as Hauler
 		p.exit_vehicle()

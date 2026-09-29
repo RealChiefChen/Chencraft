@@ -116,6 +116,25 @@ func _make_all() -> void:
 			return _voice(t, n, v), true), true)
 	_sounds[&"hum"] = _wav(_synth(1.0, _hum, true), true)
 	_sounds[&"grind"] = _wav(_synth(0.6, _grind, true))
+	_sounds[&"boom"] = _wav(_synth(1.8, _boom, true))
+	_sounds[&"squish"] = _wav(_synth(0.45, _squish, true))
+	_sounds[&"fuse"] = _wav(_synth(0.5, _fuse), true)
+
+## A stick of TNT going off: a hard crack, a deep thump, a rolling rumble.
+static func _boom(t: float, n: float) -> float:
+	var crack := n * exp(-t * 30.0) * 1.0
+	var thump := sin(TAU * lerpf(70.0, 32.0, clampf(t / 0.4, 0.0, 1.0)) * t) * exp(-t * 5.0) * 0.9
+	var rumble := n * exp(-t * 2.2) * 0.45 * (0.7 + 0.3 * sin(TAU * 9.0 * t))
+	return clampf(crack + thump + rumble, -1.0, 1.0)
+
+## Something soft going through the crusher.
+static func _squish(t: float, n: float) -> float:
+	var wet := n * exp(-t * 9.0) * (0.5 + 0.5 * sin(TAU * 23.0 * t))
+	return wet * 0.7 + sin(TAU * lerpf(140.0, 60.0, t / 0.45) * t) * exp(-t * 7.0) * 0.5
+
+## A lit fuse fizzing (a loop).
+static func _fuse(t: float, n: float) -> float:
+	return n * (0.25 + 0.1 * sin(TAU * 30.0 * t))
 
 ## An axe biting wood: a knock and a short dull thud under it.
 static func _chop(t: float, n: float) -> float:

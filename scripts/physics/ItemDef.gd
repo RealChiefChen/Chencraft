@@ -22,6 +22,8 @@ extends Resource
 ## Whether picking this up is enough to own it. False for store stock, which
 ## has to go over the counter first.
 @export var must_buy: bool = false
+## What one costs in a shop, for things sold as themselves (TNT).
+@export var cost: int = 0
 @export var color: Color = Color(0.47, 0.32, 0.19)
 ## This material's own price multiplier per finish (sanded, polished, refined),
 ## set from the materials table at load. Anything missing uses Solid's default.
@@ -66,6 +68,7 @@ static func from_dict(d: Dictionary) -> ItemDef:
 	def.volatility = float(d.get("volatility", 0.25))
 	def.sellable = bool(d.get("sellable", true))
 	def.must_buy = bool(d.get("must_buy", false))
+	def.cost = int(d.get("cost", 0))
 	var c: Array = d.get("color", [0.6, 0.6, 0.6])
 	def.color = Color(c[0], c[1], c[2])
 	if d.has("size"):

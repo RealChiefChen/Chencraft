@@ -106,6 +106,9 @@ func price_of(slot: Dictionary) -> int:
 			return cost
 		&"part":
 			return int(GameData.upgrade_level(target, int(slot.get("level", 2))).get("cost", -1))
+		&"item":
+			var def := GameData.item(target)
+			return def.cost if def != null and def.cost > 0 else -1
 		&"tier":
 			var tier: int = int(slot.tier)
 			if tier <= 1:
@@ -305,6 +308,15 @@ func open_box(item: LooseItem, kit: Object = null) -> String:
 	var target: StringName = slot.target
 	var what := ""
 	match slot.kind:
+		&"item":
+			# The box holds one of the thing itself (a stick of TNT), set down
+			# where the box was, yours.
+			var inside := manager.spawn(target, item.global_transform, item.plot_id, Vector3.ZERO, {}, true)
+			if inside == null:
+				return "no room to unpack it"
+			inside.owned = true
+			what = "%s unpacked%s" % [GameData.item_name(target),
+				" - [E] on it lights the fuse, then throw it" if target == &"tnt_stick" else ""]
 		&"tool":
 			if not kit.give_tool(target):
 				return "you already have a %s" % GameData.tool_name(target)

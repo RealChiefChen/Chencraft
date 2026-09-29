@@ -204,7 +204,7 @@ func _build_hopper(outer: float, run: float, h: float) -> void:
 	# What falls into it is taken.
 	_hopper_area = Area3D.new()
 	_hopper_area.collision_layer = Layers.TRIGGER
-	_hopper_area.collision_mask = Layers.LOOSE
+	_hopper_area.collision_mask = Layers.LOOSE | Layers.PLAYER
 	_hopper_shape = CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	# From down inside the machine to well over the rims, so a piece too
@@ -221,12 +221,36 @@ func _feed_hopper() -> void:
 	if _hopper_area == null:
 		return
 	for body in Trigger.bodies_inside(_hopper_area, _hopper_shape, 0.05):
+		if machine_def.mode == MachineDef.MODE_CRUSH:
+			var who: Variant = (body as Node).get_meta("player") if (body as Node).has_meta("player") else body
+			if who is Player:
+				crush_player(who as Player)
+				continue
 		var item := body as LooseItem
 		if item == null or item.state != LooseItem.State.FREE:
 			continue
 		if not GameData.machine_accepts(machine_def.id, item.item_id):
 			continue
 		take(item)
+
+## How many pieces of meat a player comes out as.
+const MEAT_PIECES := 10
+
+## Someone fell (or was dropped) into the crusher. He goes through; what
+## comes out the far end is meat.
+func crush_player(who: Player) -> void:
+	if who.crushed() or who.driving():
+		return
+	who.crush(global_position + Vector3.UP * 1.5)
+	var ready := _clock + canopy_length() / maxf(0.5, speed)
+	for i in MEAT_PIECES:
+		var size := Vector3(0.16, 0.12, 0.14) * randf_range(0.7, 1.25)
+		queue.append({"id": &"meat_bits", "dims": Solid.box(size), "owned": false,
+			"plot": plot_id, "changed": false, "ready": ready + 0.12 * float(i)})
+	if _burst != null:
+		_burst.restart()
+	Sfx.play(&"squish", global_position, 2.0)
+	Sfx.play(&"grind", global_position, 0.0, 0.8)
 
 func _solid(size: Vector3, pos: Vector3) -> void:
 	var cs := CollisionShape3D.new()

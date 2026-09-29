@@ -204,6 +204,13 @@ const PLAY_OF_COLOUR := {
 	&"gem_black_opal": [Color(0.15, 0.95, 0.45), Color(0.2, 0.55, 1.0), Color(1.0, 0.5, 0.1),
 		Color(1.0, 0.3, 0.7), Color(0.2, 0.95, 0.95), Color(0.75, 0.3, 1.0)],
 }
+## How each ore shows in its rock: 0 bands wrapped round it, 1 nuggets
+## clustered on it, 2 spikes of crystal - spread so neighbours differ.
+const VEIN_STYLE := {
+	&"ore_iron": 0, &"ore_tin": 0, &"ore_silver": 0, &"ore_magnetite": 0, &"ore_tungsten": 0,
+	&"ore_copper": 1, &"ore_gold": 1, &"ore_nickel": 1, &"ore_platinum": 1, &"ore_zinc": 1,
+	&"ore_cobalt": 2, &"ore_bismuth": 2, &"ore_sunstone": 2, &"ore_starmetal": 2,
+}
 const HOST_STONE := {
 	&"ore_copper": Color(0.55, 0.46, 0.38), &"ore_silver": Color(0.56, 0.58, 0.62),
 	&"ore_cobalt": Color(0.28, 0.30, 0.34), &"ore_sunstone": Color(0.78, 0.64, 0.44),
@@ -253,9 +260,12 @@ func _rebuild() -> void:
 	var ore_def := GameData.item(ore_item)
 	var plain := ore_def != null and ore_def.category == &"stone"
 	var stone: Color = HOST_STONE.get(ore_item, ore_def.color if plain else Color(0.47, 0.45, 0.42))
-	var seam: Color = _vivid(ore_def.color if ore_def != null else Color(0.5, 0.5, 0.5))
+	# Each ore and stone has its own deep colour (items.json), used as it is.
+	var seam: Color = ore_def.color if ore_def != null else Color(0.5, 0.5, 0.5)
 	# The rock takes a stain of what is in it.
-	stone = stone.lightened(0.08).lerp(seam, 0.0 if plain else 0.22)
+	# Ore rock is stained deep with what is in it, and the seams through it
+	# are the colour at full strength: each ore reads from across a valley.
+	stone = stone if plain else stone.darkened(0.2).lerp(seam.darkened(0.45), 0.65)
 	var gem := _is_gem()
 	var glint := GLOWING_ORES.has(ore_item) or gem
 	var centre := _centre()
@@ -280,7 +290,7 @@ func _rebuild() -> void:
 		_shape.transform = Transform3D(Basis(), centre)
 		var play: Array = PLAY_OF_COLOUR.get(ore_item, [])
 		# Black opal is black, with the play of colour breaking out of it.
-		g.dodecahedron(R, Transform3D(yaw, centre), ore_def.color if not play.is_empty() else seam.lerp(stone, 0.45))
+		g.dodecahedron(R, Transform3D(yaw, centre), ore_def.color if not play.is_empty() else seam.darkened(0.4))
 		for i in 6:
 			var dir := Vector3(form.randf_range(-1, 1), form.randf_range(0.1, 1.0), form.randf_range(-1, 1)).normalized()
 			var size := R * form.randf_range(0.28, 0.45)
@@ -298,7 +308,7 @@ func _rebuild() -> void:
 		g.box(size, body, stone)
 		# Building stone is all one rock: laid down in beds, lighter and
 		# darker, and nothing else in it.
-		var style := 3 if plain else absi(hash(String(ore_item))) % 3
+		var style := 3 if plain else int(VEIN_STYLE.get(ore_item, absi(hash(String(ore_item))) % 3))
 		# Each ore has its own look: bands of metal wrapped round the block,
 		# nuggets clustered on it, or spikes of crystal - picked by the ore.
 		match style:

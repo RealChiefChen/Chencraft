@@ -812,27 +812,25 @@ func shot_hollow() -> void:
 func shot_ores() -> void:
 	Settings.set_value(&"moving_sun", false, false)
 	world.hud.visible = false
-	var ids := [&"ore_iron", &"ore_copper", &"ore_gold", &"ore_cobalt", &"ore_starmetal",
-		&"gem_quartz", &"gem_ruby", &"gem_sapphire", &"gem_diamond", &"gem_black_opal"]
-	var base := Vector3(-16, World.PLOT_GROUND + 0.05, -14)
+	var ids := []
+	for id in GameData.items:
+		if String(id).begins_with("gem_") or String(id).begins_with("ore_"):
+			ids.append(id)
+	var base := Vector3(-24, World.PLOT_GROUND + 0.05, -20)
 	for i in ids.size():
 		var rock := OreRock.new()
 		rock.manager = world.manager
 		rock.ore_item = ids[i]
 		rock.seed_form(1000 + i)
-		rock.embed = 0.3
-		rock.volume = 1.2
-		rock.position = base + Vector3(float(i % 5) * 4.0, 0, float(i / 5) * 5.0)
+		rock.embed = 0.25
+		rock.volume = 0.9
+		rock.position = base + Vector3(float(i % 7) * 3.4, 0, float(i / 7) * 4.0)
 		world.add_child(rock)
-	world.player.global_position = base + Vector3(8, 0, 16)
+	world.player.global_position = base + Vector3(10, 0, 22)
 	await _frames(30)
-	for c in world.get_children():
-		if c is OreRock:
-			print("ORE ", c.ore_item, " ", c.global_position, " parts ", c.get_child_count())
-	await look(base + Vector3(8, 4.5, 12), base + Vector3(8, 0, 2.5))
+	await look(base + Vector3(10.2, 9.0, 20.0), base + Vector3(10.2, 0, 5.5))
 	await snap("ores")
 
-## The filter belt, raised over another, and its rules panel.
 func shot_filter() -> void:
 	Settings.set_value(&"moving_sun", false, false)
 	Economy.from_dict({"money": 90000, "day": 1})

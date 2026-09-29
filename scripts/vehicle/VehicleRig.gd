@@ -223,6 +223,9 @@ func fairlead() -> Vector3:
 ## length - no give in it at all - pulling the two ends together as hard as it
 ## takes, capped at `most` newtons. Returns the tension it pulled with.
 ## `a` and `b` are the bodies (null for something fixed).
+## How many times the winch's rating the line holds before it gives - in
+## practice, never.
+const LINE_HOLDS := 1000.0
 ## Of any stretch, the share taken back up each physics step.
 const TAKE_UP := 0.5
 
@@ -345,7 +348,9 @@ func _work_winch() -> void:
 	anchor_point = _anchor_world()
 	var most := winch_power_kg * 9.8
 	_wake(body)
-	winch_tension = pull(vehicle, fairlead(), body, anchor_point, line_length, most * 1.25)
+	# The line itself never gives: the rating is what the drum can reel in
+	# against, not what the line will hold.
+	winch_tension = pull(vehicle, fairlead(), body, anchor_point, line_length, most * LINE_HOLDS)
 	# Hooked on ore still in the ground: pulled hard enough, it comes out,
 	# and the line stays on the chunk.
 	if anchor_rock != null:
@@ -364,9 +369,6 @@ func _work_winch() -> void:
 				freed.owned = true
 				anchor_body = freed
 				anchor_local = Vector3.ZERO
-	# Dragged on harder than the drum holds, it slips and pays out.
-	if winch_tension > most:
-		line_length = minf(reach, line_length + (winch_tension - most) / most * 0.02)
 	if fairlead().distance_to(anchor_point) > reach + 3.0:
 		release_winch()
 	_reeling = maxi(0, _reeling - 1)

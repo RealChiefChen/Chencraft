@@ -5151,6 +5151,16 @@ func test_vehicle_rig() -> void:
 	check(heavy.global_position.distance_to(stood) < 0.6,
 		"a %.0f kg winch dragged a %.0f kg log %.1f m" % [rig.winch_power_kg, heavy.mass, heavy.global_position.distance_to(stood)])
 	check(rig.winch_stalled(), "an over-rated pull did not stall the winch")
+	# Stalled, the line still gives nothing: dragged on harder than the
+	# winch is rated for, it neither pays out nor stretches.
+	var held := rig.line_length
+	var worst := 0.0
+	for i in 90:
+		heavy.apply_central_force((heavy.global_position - rig.fairlead()).normalized() * heavy.mass * 30.0)
+		await step(1)
+		worst = maxf(worst, rig.anchor_point.distance_to(rig.fairlead()) - rig.line_length)
+	check_near(rig.line_length, held, 0.001, "the stalled winch let line slip out")
+	check(worst < 0.1, "the stalled line stretched %.2f m" % worst)
 	rig.release_winch()
 
 	# Hooked to something fixed, it drags the truck instead (brakes off).

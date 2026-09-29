@@ -26,19 +26,36 @@ No asset files: everything you see is built in code from primitives.
 
 ## Install and play
 
-1. Download **Godot 4.4.1** (standard build, not .NET) from
-   <https://godotengine.org/download/archive/4.4.1-stable/>.
+1. Install **Godot 4.4 or later** (standard build, not .NET).
+   - Windows/macOS: download from <https://godotengine.org/download/>.
+   - NixOS: `nix profile install nixpkgs#godot` (installs 4.6 or whatever is current).
 2. Get the game:
    ```bash
    git clone https://github.com/dell1388/pinecraft.git
    ```
-3. Run it - either open the Godot project manager, **Import** the `pinecraft`
-   folder and press **Play**, or from a terminal:
+3. On first run, rebuild the class cache (required after a fresh clone or any
+   pull that adds new scripts):
+   ```bash
+   godot --headless --editor --quit --path pinecraft
+   ```
+4. Run it:
    ```bash
    godot --path pinecraft
    ```
-   The first launch builds the world and caches it, so it takes a little longer
-   than later ones.
+   Or use the included helper which pulls, rebuilds the cache when needed, and
+   launches in one step:
+   ```bash
+   bash pinecraft/run.sh           # normal
+   bash pinecraft/run.sh verbose   # verbose log to /tmp/pinecraft.log
+   ```
+
+**First launch** compiles shaders and builds the world — expect 1–3 minutes
+before the title screen appears. Later launches are fast.
+
+**Known issue — Godot 4.6 + AMD Zen 5 (Ryzen 9000 series):** the engine's
+occlusion culling hits a crash in its bundled `libembree4` AVX-512 path.
+Pinecraft disables occlusion culling to work around this (`project.godot` +
+`_build_occluders` skipped in `Terrain.gd`). No action needed on your part.
 
 Controls are on the title screen's Controls page and in the in-game journal
 (**F1**). The essentials: **WASD** to move, **left mouse** on something with an

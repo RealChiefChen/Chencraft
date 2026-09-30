@@ -129,7 +129,10 @@ func _ground_for_items(p: Vector3) -> float:
 		return -INF
 	if absf(p.x) > MAP_HALF or absf(p.z) > MAP_HALF:
 		return -INF
-	return terrain.height_at(p.x, p.z)
+	var ground := terrain.height_at(p.x, p.z)
+	if p.y < ground - 1.0 and _on_cave_rock(p):
+		return -INF
+	return ground
 
 ## Places out on the map, found for their country by the terrain rather than
 ## put at fixed spots, so each sits on a level patch of the right ground.
@@ -2157,6 +2160,19 @@ func _rescue_fallen() -> void:
 		if under != -INF and pp.y < under - UNDER_GROUND:
 			p.global_position = Vector3(pp.x, under + 1.0, pp.z)
 			p.velocity = Vector3.ZERO
+
+## Standing on the caves' own rock: somewhere under the land that the cave
+## shapes' sums miss (the edge of a cavern floor, where its wall was drawn out
+## to a tunnel mouth) is still a cave, not a fall through the ground.
+func _on_cave_rock(p: Vector3) -> bool:
+	if network == null:
+		return false
+	var q := PhysicsRayQueryParameters3D.create(p + Vector3.UP, p + Vector3.DOWN * 4.0, Layers.WORLD)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	var body := hit.collider as Node
+	return body != null and (network.is_ancestor_of(body) or body.get_parent() is Cave)
 
 ## Back to where the game starts, by the plot: for when you are stuck out
 ## somewhere, or have fallen through the world. The truck stays where it is.

@@ -448,6 +448,7 @@ func _report() -> void:
 	_check_quarry()
 	_check_cave_ways()
 	_check_cave_joins()
+	_check_cave_floors()
 	_check_hollow()
 	print("\n--- world smoke test ---")
 	print("frames            %d" % frames)
@@ -473,6 +474,38 @@ func _report() -> void:
 ## Every tunnel ends on its cavern's wall: no ring of the tube left standing
 ## inside the cavern, and none hanging out past the wall with no cavern
 ## behind it.
+## Anywhere you can stand in a cave must count as cave to the fall rescue,
+## or it takes you for fallen through the land and puts you up top. The edge
+## of an abyss cavern's floor in the desert did that once.
+func _check_cave_floors() -> void:
+	var net: CaveNetwork = world.network
+	var space := world.get_world_3d().direct_space_state
+	var starts: Array[Vector3] = []
+	for t in net.tunnels:
+		starts.append_array(t.points as PackedVector3Array)
+	for room in net.rooms:
+		for gx in range(-8, 9):
+			for gz in range(-8, 9):
+				var local := Vector3(gx / 8.0 * float(room.rx), 0, gz / 8.0 * float(room.rz))
+				var p: Vector3 = room.centre + local.rotated(Vector3.UP, float(room.yaw))
+				p.y = float(room.floor) + float(room.ry) * 0.5
+				starts.append(p)
+	var checked := 0
+	var wrong: Array[String] = []
+	for from in starts:
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, from - Vector3(0, 60, 0), Layers.WORLD))
+		if hit.is_empty():
+			continue
+		var feet: Vector3 = hit.position + Vector3(0, 0.05, 0)
+		if not net.contains(feet + Vector3(0, 0.9, 0), 1.0):
+			continue
+		checked += 1
+		var ground := world._ground_for_items(feet)
+		if feet.y < World.FELL_OUT_Y or (ground != -INF and feet.y < ground - World.UNDER_GROUND):
+			wrong.append("%.0f,%.0f,%.0f" % [feet.x, feet.y, feet.z])
+	print("cave floors: %d of %d spots taken for a fall" % [wrong.size(), checked])
+	_require(checked > 1000 and wrong.is_empty(), "cave floor spots taken for a fall: " + ", ".join(wrong.slice(0, 8)))
+
 func _check_cave_joins() -> void:
 	var net: CaveNetwork = world.network
 	var bad := 0

@@ -146,6 +146,7 @@ func _run_all() -> void:
 	await _test(&"winch and crane respect their power ratings", test_vehicle_rig)
 	await _test(&"a driven truck's settled load is fixed as it lies", test_load_fixed_while_driven)
 	await _test(&"trucks tow trailers on a hitch", test_trailers)
+	await _test(&"the pickup pulls the utility trailer and lighter, not the big ones", test_pickup_tow_limit)
 	await _test(&"trailers chain behind one another", test_trailer_train)
 	await _test(&"the driving camera looks past its own truck, trailer and load", test_chase_camera_clear)
 	await _test(&"the front loader drives up onto the low-loader and rides on it", test_low_loader)
@@ -6061,7 +6062,8 @@ func test_trailer_train() -> void:
 	done()
 
 func test_trailers() -> void:
-	for pair in [[&"hauler", &"trailer"], [&"log_truck", &"log_trailer"], [&"dump_truck", &"dump_trailer"]]:
+	for pair in [[&"hauler", &"trailer"], [&"log_truck", &"log_trailer"], [&"dump_truck", &"dump_trailer"],
+			[&"pickup", &"trailer"], [&"pickup", &"mower_trailer"]]:
 		_setup(false)
 		var truck := Hauler.new()
 		truck.setup(manager, 0, pair[0])
@@ -6107,6 +6109,63 @@ func test_trailers() -> void:
 		await step(90)
 		check(trailer.parked() and absf(trailer.global_transform.basis.z.y) < 0.25,
 			"the let-go %s is not standing on its leg" % pair[1])
+	done()
+
+## The pickup pulls the utility trailer and anything lighter; the logging and
+## dump trailers and the low-loader are too heavy for it, and it says so. A
+## trailer hitched on the back of the pickup's trailer counts the same.
+## Bigger trucks pull anything.
+func test_pickup_tow_limit() -> void:
+	for id in [&"trailer", &"mower_trailer", &"log_trailer", &"dump_trailer", &"low_loader"]:
+		_setup(false)
+		var truck := Hauler.new()
+		truck.setup(manager, 0, &"pickup")
+		world.add_child(truck)
+		truck.global_position = Vector3(0, truck.spawn_height(), 0)
+		var trailer := Hauler.new()
+		trailer.setup(manager, 0, id)
+		world.add_child(trailer)
+		await step(2)
+		var behind := truck.hitch_point() + Vector3(0.2, 0, 0.6) - trailer.tongue_offset
+		trailer.global_position = Vector3(behind.x, trailer.spawn_height(), behind.z)
+		await step(60)
+		var said := truck.hitch(trailer)
+		var light := float(GameData.vehicle(id).get("mass", 0)) <= 400.0
+		if light:
+			check_eq(said, "", "the pickup would not pull the %s" % id)
+			check(truck.towing == trailer, "the pickup is not towing the %s" % id)
+		else:
+			check(said.contains("too heavy for the pickup") and said.contains("utility trailer"),
+				"the pickup took on the %s (said '%s')" % [id, said])
+			check(truck.towing == null and trailer.towed_by == null, "the %s was hitched to the pickup anyway" % id)
+	# A heavy trailer on the back of the pickup's own trailer is refused too.
+	_setup(false)
+	var pickup := Hauler.new()
+	pickup.setup(manager, 0, &"pickup")
+	world.add_child(pickup)
+	pickup.global_position = Vector3(0, pickup.spawn_height(), 0)
+	var mower := Hauler.new()
+	mower.setup(manager, 0, &"mower_trailer")
+	world.add_child(mower)
+	var dump := Hauler.new()
+	dump.setup(manager, 0, &"dump_trailer")
+	world.add_child(dump)
+	await step(2)
+	# Light enough to roll: set down just behind, and hitched as soon as it
+	# has settled.
+	var at := pickup.hitch_point() + Vector3(0, 0, 0.4) - mower.tongue_offset
+	mower.global_position = Vector3(at.x, mower.spawn_height(), at.z)
+	await step(15)
+	check_eq(pickup.hitch(mower), "", "the pickup would not pull the lawnmower trailer")
+	await step(20)
+	at = mower.hitch_point() + Vector3(0, 0, 0.6) - dump.tongue_offset
+	dump.global_position = Vector3(at.x, dump.spawn_height(), at.z)
+	await step(60)
+	check(mower.hitch(dump).contains("too heavy for the pickup"), "a dump trailer went on behind the pickup's trailer")
+	check(mower.towing == null, "the dump trailer is on the pickup's train")
+	# The bigger trucks have no such limit.
+	for id in [&"hauler", &"log_truck", &"dump_truck", &"crane_truck"]:
+		check_eq(float(GameData.vehicle(id).get("tow_limit", 0.0)), 0.0, "the %s has a towing limit" % id)
 	done()
 
 func _haulers_in(node: Node) -> int:

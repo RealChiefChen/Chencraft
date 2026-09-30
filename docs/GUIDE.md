@@ -756,6 +756,13 @@ store's Gear bay: a tuned engine, a turbo diesel and a big block (more pull,
 a little more top speed), and all-terrain, mud-terrain and lugged tyres with
 chains (more grip).
 
+**Towing.** Trucks with a hitch pull trailers [T] (and trailers with a hitch
+of their own make a train). The pickup has a `tow_limit` in vehicles.json:
+it pulls the utility trailer and anything lighter (the lawnmower trailer),
+counted by each trailer's empty weight, anywhere in its train; the logging and
+dump trailers and the low-loader are too heavy for it, and it says so. The
+hauler, log truck, dump truck and crane truck pull anything.
+
 **Recovering** a vehicle (C) sets it back on its wheels, at most once a second
 and not while it is down on its outriggers.
 

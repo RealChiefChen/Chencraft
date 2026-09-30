@@ -1334,3 +1334,75 @@ func shot_treecount() -> void:
 			if String(e.what).begins_with("wood_") and Vector2(p.x - at.x, p.z - at.z).length() < 120.0:
 				near += 1
 		print("at %s: %d trees built, %d standing within 120 m, fps %d" % [at, built, near, Engine.get_frames_per_second()])
+
+## Ostars' traders and shops (run with --map=ostars): each place from the
+## front, an order carried out to the bay, and Old Bjorn's tree felled.
+func shot_traders() -> void:
+	Economy.add_money(5000)
+	for tp in world.trade_posts:
+		var front := tp.global_transform * Vector3(4.0, 9.0, 30.0)
+		world.player.global_position = tp.global_transform * Vector3(0, 1.0, 14.0)
+		for i in 30:
+			await get_tree().process_frame
+		await look(front, tp.global_transform * Vector3(2.0, 1.5, 0.0))
+		for i in 20:
+			await get_tree().process_frame
+		await snap("place_%s" % String(TradePost.Kind.keys()[tp.kind]).to_lower())
+	# Close up on each trader.
+	for tp in world.trade_posts:
+		var k := tp.keeper
+		world.player.global_position = k.global_transform * Vector3(0, 1.0, -5.0)
+		for i in 40:
+			await get_tree().process_frame
+		await look(k.global_transform * Vector3(1.6, 1.7, -3.2), k.global_transform * Vector3(0, 1.0, 0))
+		await snap("trader_%s" % String(TradePost.Kind.keys()[tp.kind]).to_lower())
+	# An order at Bjorn's, carried out to the bay floor.
+	var lumber: TradePost = world.trade_posts[0]
+	print("order: ", lumber.counter.order(&"lumber_pine", 6))
+	world.player.global_position = lumber.global_transform * Vector3(15.0, 1.0, 14.0)
+	await look(lumber.global_transform * Vector3(6.0, 6.0, 16.0), lumber.global_transform * Vector3(14.0, 0.5, 0.0))
+	var t := 0.0
+	while lumber.queued() > 0 and t < 60.0:
+		await get_tree().process_frame
+		t += get_process_delta_time()
+		if int(t * 10.0) % 40 == 0:
+			pass
+	for i in 60:
+		await get_tree().process_frame
+	await snap("order_delivered")
+	var in_bay := 0
+	for item in world.manager.owned_items():
+		var local := lumber.to_local(item.global_position) - TradePost.BAY_CENTRE
+		if absf(local.x) < 4.0 and absf(local.z) < 6.0:
+			in_bay += 1
+	print("delivered to the bay: %d (queue %d, took %.0f s)" % [in_bay, lumber.queued(), t])
+	# Fell Bjorn's tree.
+	if lumber.tree != null:
+		world.player.global_position = lumber.global_transform * Vector3(-10.0, 1.0, 4.0)
+		lumber.tree.fell(world.player.global_position)
+		for i in 30:
+			await get_tree().process_frame
+		await look(lumber.keeper.global_transform * Vector3(2.5, 2.0, -4.0), lumber.keeper.global_transform * Vector3(0, 1.3, 0))
+		await snap("bjorn_angry")
+		print("bjorn: ", lumber.keeper.state, " says '", lumber.keeper.saying(), "'")
+
+## The isles' yard hand and the trading posts' traders.
+func shot_yardkeep() -> void:
+	var k: NpcFigure = world.depot.npc
+	world.player.global_position = k.global_transform * Vector3(0, 1.0, -4.0)
+	for i in 40:
+		await get_tree().process_frame
+	await look(k.global_transform * Vector3(1.4, 1.6, -3.4), k.global_transform * Vector3(0, 0.9, 0))
+	await snap("yardkeep")
+	var n := 0
+	for o in world.outposts:
+		if o.yard == null or o.yard.npc == null:
+			continue
+		var t: NpcFigure = o.yard.npc
+		world.player.global_position = t.global_transform * Vector3(0, 1.0, -5.0)
+		for i in 40:
+			await get_tree().process_frame
+		await look(t.global_transform * Vector3(1.6, 1.8, -3.8), t.global_transform * Vector3(0, 0.9, 0))
+		await snap("outpost_trader_%d" % n)
+		print("outpost ", o.place_name, ": ", t.display_name)
+		n += 1

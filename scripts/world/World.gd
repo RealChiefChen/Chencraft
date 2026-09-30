@@ -303,8 +303,10 @@ func _ready() -> void:
 	await _build_caves()
 	_lap("cave fields")
 	await _stage(LOAD_STAGES[4][0], LOAD_STAGES[4][1])
-	# Ostars has no buildings at all: no shops, no yard, no outposts.
-	if not WorldMap.is_ostars():
+	if WorldMap.is_ostars():
+		await _detail("Opening the shops, and the traders' yards: Old Bjorn, Dusty and Granny Opal")
+		_build_ostars_places()
+	else:
 		await _detail("Building the outposts, trading posts and miners' camps")
 		_build_outposts()
 		await _detail("Opening the sell depot")
@@ -317,6 +319,8 @@ func _ready() -> void:
 
 	player = _make_player()
 	add_child(player)
+	# The traders look at you and talk to you.
+	NpcFigure.default_watch = func(): return player
 	# Fields keep their churn and spawning away from wherever the player is.
 	for field in tree_fields + rock_fields:
 		field.focus = player
@@ -376,8 +380,6 @@ func _ready() -> void:
 	tutorial = Tutorial.new()
 	tutorial.name = "Tutorial"
 	tutorial.setup(player, plot, store, build_system, quests, tree_fields)
-	if WorldMap.is_ostars():
-		tutorial.skip([&"sell", &"store", &"order"])
 	add_child(tutorial)
 	tutorial.evaluate()
 	hud.bind_tutorial(tutorial)
@@ -695,6 +697,9 @@ func _build_ostars_terrain() -> void:
 	ostars.configure(terrain)
 	terrain.reserve_site(Vector3(0, PLOT_GROUND, 0), 56.0)
 	terrain.reserve_clear_square(Vector3(0, PLOT_GROUND, 0), 50.0, PLOT_GROUND, 10.0)
+	# The shops and the traders' yards, each levelled to the lie of its land.
+	for key in Ostars.SITES:
+		terrain.reserve_site(_ostars_site_centre(key), float(Ostars.SITES[key][2]))
 	terrain.cave_count = 12
 	for zone in Ostars.CAVE_ZONES:
 		terrain.cave_zones.append({"centre": zone.centre, "radius": zone.radius * 0.92, "count": zone.mouths})
@@ -1391,6 +1396,9 @@ func _build_quarry() -> void:
 		rock_fields.append(field)
 
 	var step := 3 if MAP_HALF <= 400.0 else 4
+	if WorldMap.is_ostars():
+		await _build_ostars_ore(step)
+		return
 	for kind in WILD_ORE:
 		var biomes: Array = kind.biomes.duplicate()
 		# Ostars' volcano is mountain country for what turns up in it.
@@ -1448,6 +1456,89 @@ func _build_crater() -> void:
 		add_child(opal)
 		opal.prefill()
 		rock_fields.append(opal)
+
+## Ostars' ore and gems, placed by the Prospector: each in its own country,
+## the better ones in the harder country - higher, steeper, further out.
+func _build_ostars_ore(step: int) -> void:
+	await _detail("Prospecting Ostars: ore and gems by how hard the country is")
+	var sizes := {}
+	for kind in WILD_ORE:
+		sizes[kind.item] = kind
+	var prospector := Prospector.new(terrain, ostars)
+	var found := prospector.survey(step)
+	_lap("prospect")
+	for entry in found:
+		var id: StringName = entry[0]
+		var spots: PackedVector3Array = entry[1]
+		var weights: PackedFloat32Array = entry[2]
+		if spots.is_empty():
+			continue
+		var like: Dictionary = sizes.get(id, {"volume": [0.25, 1.4], "embed": [0.4, 0.65]})
+		var field := ResourceField.new()
+		field.name = "Wild_%s" % id
+		field.quota = int(entry[3])
+		field.min_spacing = 14.0
+		field.refill_seconds = 20.0
+		field.churn_seconds = 60.0
+		field.wake_distance = 320.0
+		field.setup([{"item": id, "volume": like.volume, "embed": like.embed}], _build_rock,
+			Prospector.weighted(spots, weights, terrain), _rng.randi())
+		add_child(field)
+		field.prefill()
+		rock_fields.append(field)
+
+## The traders' places on Ostars (and on nothing else, yet).
+var trade_posts: Array[TradePost] = []
+
+## Where a place on Ostars is levelled round: a trader's whole footprint, or a
+## shop's lot. Its height is left to the lie of the land (NAN).
+func _ostars_site_centre(key: String) -> Vector3:
+	var at: Array = Ostars.SITES[key]
+	var c := Vector3(float(at[0]), NAN, float(at[1]))
+	if key in ["lumber", "metal", "gems"]:
+		var off := Basis(Vector3.UP, Ostars.facing(c.x, c.z)) * TradePost.FOOTPRINT_CENTRE
+		c.x += off.x
+		c.z += off.z
+	return c
+
+## Ostars' shops and traders: the town by home, Summit Outfitters on the
+## tundra, and Old Bjorn's, Dusty's and Granny Opal's. Bjorn's yard is the
+## one the checklist and the compass call the sell yard.
+func _build_ostars_places() -> void:
+	store = _ostars_shop("Store", &"general", "store")
+	dealer_store = _ostars_shop("Dealer", &"dealer", "dealer")
+	works_store = _ostars_shop("Works", &"works", "works")
+	summit_store = _ostars_shop("SummitStore", &"summit", "summit")
+	var pine: Dictionary = {}
+	for kind in SPECIES:
+		if kind.name == "Pine":
+			pine = kind
+	for pair in [["lumber", TradePost.Kind.LUMBER], ["metal", TradePost.Kind.METAL], ["gems", TradePost.Kind.GEMS]]:
+		var at: Array = Ostars.SITES[pair[0]]
+		var tp := TradePost.new()
+		tp.setup(pair[1], manager, quests)
+		tp.ground = func(x: float, z: float) -> float: return terrain.height_at(x, z)
+		tp.watch = func(): return player
+		tp.vehicles = func(): return vehicles()
+		if pair[1] == TradePost.Kind.LUMBER and not pine.is_empty():
+			tp.tree_builder = func(form_seed: int) -> Node3D: return _build_tree(pine, form_seed)
+		tp.position = terrain.place(Vector3(float(at[0]), 0.0, float(at[1])))
+		tp.rotation.y = Ostars.facing(float(at[0]), float(at[1]))
+		add_child(tp)
+		trade_posts.append(tp)
+	depot = trade_posts[0].yard
+
+func _ostars_shop(node_name: String, id: StringName, key: String) -> Store:
+	var at: Array = Ostars.SITES[key]
+	var shop := Store.new()
+	shop.name = node_name
+	shop.setup(manager, plot, 0, id)
+	shop.position = terrain.place(Vector3(float(at[0]), 0.0, float(at[1])))
+	shop.rotation.y = Ostars.facing(float(at[0]), float(at[1]))
+	add_child(shop)
+	if Settings.flag(&"show_labels"):
+		Nameplate.landmark(shop, shop.store_name, 6.0)
+	return shop
 
 ## Ostars: starmetal lies in the Meteor Crater of Kael where it fell, and
 ## black opal on the Dragon's Tooth Isle, nowhere else.
@@ -1634,6 +1725,10 @@ func _facing(place: String, at: Vector3) -> float:
 ## Everything worth marking on the map and the compass.
 func points_of_interest() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
+	# The traders are known from the start: the compass always points to them.
+	for tp in trade_posts:
+		out.append({"name": tp.title().capitalize(), "kind": "trade", "pos": tp.global_position, "reach": 45.0,
+			"color": Color(0.98, 0.72, 0.35), "known": true})
 	if WorldMap.is_ostars():
 		# The places on the owner's map: found by going there (each has its
 		# own reach - a forest is found at its edge, not its middle).
@@ -1704,6 +1799,10 @@ func _build_depot() -> void:
 	depot.name = "SellYard"
 	depot.setup(manager, quests)
 	depot.extents = Vector3(18.0, 4.0, 18.0)
+	# The yard hand: behind the counter, waving you in.
+	depot.npc = NpcFigure.new(NpcFigure.Role.SHOPKEEP, "Shopkeep")
+	depot.npc.position = Vector3(0, 0, -depot.extents.z * 0.5 + 1.4)
+	depot.npc.rotation.y = PI
 	# On the highest ground under the pad, so no corner of the land comes up
 	# through it.
 	var top := -INF
@@ -1937,7 +2036,7 @@ func compass_markers() -> Array[Dictionary]:
 	var base: Array[Dictionary] = [
 		{"name": "Plot", "color": Color(0.55, 0.85, 0.50), "where": func(): return plot.global_position},
 		{"name": "Sell Yard", "color": Color(0.98, 0.80, 0.30), "where": func():
-			return depot.global_position if depot != null else null},
+			return depot.global_position if depot != null and trade_posts.is_empty() else null},
 		{"name": "Hardware Store", "color": Color(0.55, 0.78, 1.0), "where": func():
 			return store.global_position if store != null else null},
 		{"name": "Vehicle Dealer", "color": Color(0.45, 0.9, 0.95), "where": func():
@@ -1969,9 +2068,10 @@ func compass_markers() -> Array[Dictionary]:
 	for poi in points_of_interest():
 		var poi_name: String = poi.name
 		var pos: Vector3 = poi.pos
-		markers.append({"name": func(): return poi_name if discovered(poi_name) else "?",
+		var known: bool = poi.get("known", false)
+		markers.append({"name": func(): return poi_name if known or discovered(poi_name) else "?",
 			"color": poi.color, "where": func():
-				if discovered(poi_name) or player.global_position.distance_to(pos) < 220.0:
+				if known or discovered(poi_name) or player.global_position.distance_to(pos) < 220.0:
 					return pos
 				return null})
 	return markers

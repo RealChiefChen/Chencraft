@@ -57,6 +57,11 @@ func _run_all() -> void:
 	await _test(&"ostars: the continent is where the map puts it", test_ostars_land)
 	await _test(&"ostars: forests grow in stands, on dry land, apart", test_ostars_forest)
 	await _test(&"ostars: each save remembers its map", test_ostars_save_map)
+	await _test(&"ostars: ore by hardness, the best in the hardest country", test_ostars_ore)
+	await _test(&"traders: each has a model, a tool or a chair, and pivots", test_trader_models)
+	await _test(&"traders: each yard buys only its own goods", test_trader_yards)
+	await _test(&"traders: an order is loaded into the truck in the bay", test_trader_order)
+	await _test(&"traders: fell Old Bjorn's tree and he lets you know", test_bjorns_tree)
 	await _test(&"roads are routed over the land, graded, with no tight bends", test_road_routing)
 	await _test(&"cave networks: joined up, below sea level, with open mouths", test_cave_network)
 	await _test(&"belted lines of machines keep flowing without jamming", test_machine_lines)
@@ -7414,4 +7419,165 @@ func test_ostars_save_map() -> void:
 	for step_def in t.steps:
 		check(not [&"sell", &"store", &"order"].has(step_def.id), "%s is still on the list" % step_def.id)
 	t.free()
+	done()
+
+func test_ostars_ore() -> void:
+	_setup(false)
+	var land := _ostars_patch(420.0)
+	world.add_child(land)
+	await step(2)
+	var pro := Prospector.new(land, land.shaper)
+	check(pro.hardness(0.0, 60.0) < 1.0, "home is hard country (%.2f)" % pro.hardness(0.0, 60.0))
+	var found := {}
+	for entry in pro.survey(4):
+		found[entry[0]] = (entry[1] as PackedVector3Array).size()
+	check(int(found.get(&"ore_tin", 0)) > 20, "no tin round home")
+	check(int(found.get(&"gem_quartz", 0)) > 20, "no quartz round home")
+	check(int(found.get(&"ore_gold", 0)) == 0, "gold in the easy country round home")
+	check(int(found.get(&"ore_platinum", 0)) == 0, "platinum round home")
+	# Up Orodruin the country is as hard as it gets.
+	var o: Ostars = land.shaper
+	check(o.sample(-1060.0, -1000.0)[1] > 150.0, "Orodruin is not up there")
+	done()
+
+func test_trader_models() -> void:
+	_setup(false)
+	for role in [NpcFigure.Role.LUMBERMAN, NpcFigure.Role.MINER, NpcFigure.Role.GRANNY, NpcFigure.Role.HELPER]:
+		var f := NpcFigure.new(role, "x")
+		world.add_child(f)
+		await step(2)
+		var who := String(NpcFigure.Role.keys()[role])
+		check(f.model != null, "%s has no model" % who)
+		for n in [&"Torso", &"Head", &"Hand_R", &"Knee_L", &"Finger_R2"]:
+			check(f._part.has(n), "%s has no %s" % [who, n])
+		if role == NpcFigure.Role.MINER or role == NpcFigure.Role.LUMBERMAN:
+			check(f._tool != null and f._tool.get_parent() == f._part[&"Hand_R"], "%s's tool is not in his hand" % who)
+		if role == NpcFigure.Role.GRANNY:
+			check(f._chair != null, "Granny has no rocking chair")
+			check(f.state == &"rock", "Granny is not rocking")
+		check(f.body != null, "%s has nothing to aim at" % who)
+	# The miner's day: work, then pace or rest, and back to work.
+	var m := NpcFigure.new(NpcFigure.Role.MINER, "Dusty")
+	m.post = Vector3(5, 0, 0)
+	m.position = m.post
+	m.work_at = Vector3(5, 0, -1.2)
+	m.pace_to = Vector3(5, 0, 5)
+	world.add_child(m)
+	var hits := [0]
+	m.struck.connect(func(_at: Vector3): hits[0] += 1)
+	var seen := {}
+	for i in 60 * 40:
+		await get_tree().process_frame
+		seen[m.state] = true
+		if seen.has(&"rest") and seen.has(&"pace") and hits[0] > 3:
+			break
+	check(hits[0] > 3, "the miner never struck his rock")
+	check(seen.has(&"rest") or seen.has(&"pace"), "the miner never took a break (%s)" % [seen.keys()])
+	done()
+
+func test_trader_yards() -> void:
+	_setup(false)
+	var yard := SellYard.new()
+	yard.setup(manager)
+	yard.accepts = [&"gem", &"jewel"]
+	yard.keeper = "Granny Opal"
+	yard.npc = NpcFigure.new(NpcFigure.Role.GRANNY, "Granny Opal")
+	world.add_child(yard)
+	await step(2)
+	var gem := spawn(&"gem_quartz", Vector3(1, 1, 1))
+	var log := spawn(&"wood_pine", Vector3(-2, 1, 1))
+	for item in [gem, log]:
+		item.owned = true
+	await step(30)
+	check(yard.stock().has(gem), "Granny does not want the quartz")
+	check(not yard.stock().has(log), "Granny wants the log")
+	var money := Economy.money
+	var sold := yard.sell_all()
+	check_eq(int(sold.count), 1, "Granny bought the wrong things")
+	check(Economy.money > money, "Granny did not pay")
+	check(is_instance_valid(log) and log.state != LooseItem.State.POOLED, "the log was taken")
+	check(yard.npc.saying() != "", "Granny said nothing as she paid")
+	done()
+
+func _post(kind: TradePost.Kind) -> TradePost:
+	var tp := TradePost.new()
+	tp.setup(kind, manager)
+	tp.ground = func(_x: float, _z: float) -> float: return 0.0
+	return tp
+
+func test_trader_order() -> void:
+	_setup(false)
+	manager.per_plot_cap = 800
+	var tp := _post(TradePost.Kind.METAL)
+	world.add_child(tp)
+	await step(5)
+	check(tp.counter != null and tp.helper != null, "the assay office has no counter or no helper")
+	# A truck backed into the bay.
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"pickup")
+	world.add_child(truck)
+	truck.global_position = tp.to_global(TradePost.BAY_CENTRE) + Vector3(0, truck.spawn_height(), 0)
+	await step(30)
+	Economy.from_dict({"money": 100000, "day": 1})
+	var price := tp.counter.price_of(&"ingot_iron")
+	check(price > Economy.price_of(&"ingot_iron"), "buying is no dearer than selling")
+	var msg := tp.counter.order(&"ingot_iron", 8)
+	check(msg.begins_with("ordered"), "the order was refused: %s" % msg)
+	check_eq(Economy.money, 100000 - price * 8, "the order was not paid for")
+	check_eq(tp.queued(), 8, "the order is not waiting to go out")
+	var frames := 0
+	while tp.queued() > 0 and frames < 60 * 60:
+		await get_tree().process_frame
+		frames += 1
+	await step(60)
+	check_eq(tp.queued(), 0, "the helper never finished loading")
+	var in_bed := 0
+	for item in manager.owned_items():
+		if item.item_id != &"ingot_iron":
+			continue
+		var local := truck.to_local(item.global_position)
+		if absf(local.x) < truck.bed_half_width + 0.3 and local.z > truck.bed_front - 0.3 and local.z < truck.bed_back + 0.3:
+			in_bed += 1
+	check_eq(in_bed, 8, "not everything went into the truck")
+	# No truck: onto the bay floor. And too dear: refused, nothing taken.
+	truck.queue_free()
+	await step(10)
+	Economy.from_dict({"money": 5, "day": 1})
+	check(not tp.counter.order(&"ingot_gold", 25).begins_with("ordered"), "an order it could not pay for went through")
+	check_eq(Economy.money, 5, "money went on an order that was refused")
+	done()
+
+func test_bjorns_tree() -> void:
+	_setup(false)
+	var tp := _post(TradePost.Kind.LUMBER)
+	var pine: Dictionary = {}
+	for kind in World.SPECIES:
+		if kind.name == "Pine":
+			pine = kind
+	tp.tree_builder = func(form_seed: int) -> Node3D:
+		var t := ChoppableTree.new()
+		t.manager = manager
+		t.wood_item = pine.item
+		t.species = "Pine"
+		t.seed_form(form_seed)
+		t.trunk_height = 8.0
+		t.trunk_radius = 0.3
+		return t
+	world.add_child(tp)
+	await step(10)
+	check(tp.tree != null, "Old Bjorn has no tree")
+	check(tp.keeper.state == &"work", "Old Bjorn is not working (%s)" % tp.keeper.state)
+	tp.tree.fell(Vector3(10, 0, 0))
+	await step(5)
+	check(tp.keeper.state == &"angry", "Old Bjorn does not mind his tree being felled (%s)" % tp.keeper.state)
+	check(NpcFigure.GRUMBLES.has(tp.keeper.saying()), "Old Bjorn said nothing (%s)" % tp.keeper.saying())
+	# It grows back, and he gets back to it.
+	tp._regrow = 0.05
+	await step(20)
+	check(tp.tree != null and is_instance_valid(tp.tree) and tp.tree.standing(), "his tree did not grow back")
+	for i in 60 * 6:
+		await get_tree().process_frame
+		if tp.keeper.state == &"work":
+			break
+	check(tp.keeper.state == &"work", "Old Bjorn did not go back to work (%s)" % tp.keeper.state)
 	done()

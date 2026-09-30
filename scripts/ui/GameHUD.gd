@@ -69,6 +69,7 @@ var _banner: Label
 var journal: Journal
 var inventory: InventoryPanel
 var machine_config: MachineConfigPanel
+var order_panel: OrderPanel
 var sign_panel: SignPanel
 var pad_panel: PadPanel
 var filter_panel: FilterPanel
@@ -182,6 +183,11 @@ func _ready() -> void:
 	_root.add_child(sign_panel)
 	sign_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	player.sign_edit_requested.connect(func(s: Schematic): sign_panel.open(s))
+	order_panel = OrderPanel.new()
+	order_panel.player = player
+	_root.add_child(order_panel)
+	order_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	player.order_requested.connect(func(c: Node): order_panel.open(c as TradeCounter))
 	_build_menu_holder = CenterContainer.new()
 	UIKit.fill(_build_menu_holder)
 	_build_menu_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE

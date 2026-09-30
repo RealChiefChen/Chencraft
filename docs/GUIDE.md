@@ -240,8 +240,9 @@ and a co-op guest builds whichever the host is playing.
 - **Pinecraft Isles** - the home island and five more, with the town, the
   sell yard, the quarry, outposts, roads and bridges. Everything below
   [Ostars](#ostars) describes this one.
-- **Ostars, the Known Continent** - drawn after the owner's map, with no
-  buildings at all.
+- **Ostars, the Known Continent** - drawn after the owner's map, with its own
+  forests, ore by how hard the country is, and three traders instead of one
+  sell yard.
 
 ### Ostars
 
@@ -261,15 +262,33 @@ Terrain carves the rivers, the crater and the caves into that as usual). Home
 | East | The other **Whispering Woods**, the **Ostar River** past **Ostaros City** to the **Bay of the Wyrm**, **Sylvanwood** (maples and cherries, a little mahogany), the two **Mor'uk Bogs**, and the **Veiled Archipelago** off the coast |
 | South-east | The **Dragon's Teeth** - fangs of rock over 200 m - running out to their own island (black opal) |
 
-The towns on the owner's map (Halyon Port, Ostaros City) are empty sites:
-nothing is built anywhere - no shops, sell yard, outposts, quarry, roads or
-bridges - so on Ostars there is nothing to buy or sell yet, and the checklist
-leaves those steps out. Every named place is on the journal's map as a "?"
-until you go there. Wild ore is spread by country and distance from home as on
-the islands (the volcano counts as mountains), there are caves (a big network
-under the continent with a cave biome under each kind of country, and a small
-one under the Whispering Woods), rock outcrops, and the map caches to
-`user://terrain_cache_ostars.bin`.
+**What is built** (`Ostars.SITES`, each levelled and facing home; no roads,
+bridges, outposts or quarry): the town by home - the hardware store, the
+vehicle dealer and the machine works - Summit Outfitters up on the tundra past
+the Avalanche pass, and the three traders (see [Traders](#traders)): Old
+Bjorn's lumber yard at the edge of the meadows 270 m from home, Dusty's assay
+office up in the Avalanche foothills, and Granny Opal's by the sea at Halyon
+Port. The compass and the map always show the traders; every other named
+place is a "?" until you go there. Ostaros City's site is still empty.
+
+**Ore and gems by how hard the country is** (`scripts/world/Prospector.gd`).
+Every spot's hardness is its region's (meadows 0, forests 0.5, dunes 1,
+shattered desert 1.3, bogs 1.5, badlands 1.9, tundra 2.2, Orodruin 2.4, the
+Wilds and the Dragon's Teeth 2.6) plus one for every 70 m of height (up to
+2.5) plus a little for steepness. Each ore has its country and a band of
+hardness, and is thickest at the hard end of it:
+
+| Where | What |
+|---|---|
+| Round home (easy) | tin, quartz, limestone, iron |
+| The desert, the foothills, the bogs | zinc, copper, sandstone, slate, magnetite, amethyst, jade, cobalt |
+| Up the mountains and far out | silver, nickel, granite, obsidian, basalt, bismuth, marble, turquoise |
+| Only the hardest country | emerald, tungsten, gold, ruby, sunstone, platinum, lapis |
+
+Starmetal lies in the Meteor Crater of Kael, black opal on the Dragon's Tooth
+Isle, and the caves (a big network under the continent with a cave biome
+under each kind of country, and a small one under the Whispering Woods) have
+their own. The map caches to `user://terrain_cache_ostars.bin`.
 
 **The forests are grown, not scattered** (`scripts/world/Forester.gd`):
 
@@ -298,6 +317,32 @@ regrows on the rest. Ostars has three trees of its own, each cutting into a
 wood the game already has: **Whisperbark** (tall, pale, a blue-green head;
 birch), **Bog Cypress** (a fat trunk standing in the bog water; willow) and
 **Charred Snag** (burnt black on Orodruin; pine).
+
+### Traders
+
+Each place you sell at has its own trader, built in Blender like the
+lumberjack (`source/npc_build.py`, `assets/models/npc_*.glb`) and posed in code
+(`NpcFigure`). Talk to them wherever they are to sell what is in their yard;
+each buys only its own goods and leaves the rest on your rack.
+
+| Trader | Buys | What they do all day |
+|---|---|---|
+| **Old Bjorn** (lumber yard) | wood, lumber, goods | Chops at his own pine beside the yard, paces about, leans on his axe for a breather and wipes his brow. Fell his tree and he stamps and shakes his fists ("Oi! I didn't need your help!"), sulks with his arms folded, and is back at it when it grows again (45 s). You keep the log. |
+| **Dusty McGrath** (assay office) | ore, metal, stone, glass | Swings his pick at his great lump of ore (sparks fly), paces, leans on the pick. |
+| **Granny Opal** (gems) | gems, cut jewels | Rocks in her rocking chair on the porch all day, knitting; nods off now and then ("Zzz..."), looks up and says hello when you come by. |
+
+The lumber yard and the assay office also **sell** - Bjorn lumber, Dusty
+refined metal - at a shop counter beside the yard. [E] at the counter opens
+the order sheet: a price a piece for each (half as much again as it sells
+for), and 1, 5, 10 or 25 at a time, paid on the spot. Their helper (Pip at
+Bjorn's, Nugget at Dusty's - short, hi-vis vest, cap) carries the order out
+in armfuls to the **loading bay**: park your truck in the bay and it goes in
+the back, rows along the bed; no truck, and it is stacked on the bay floor.
+
+On the islands the Sell Yard's hand (the helper's model) waves you in and
+cheers a sale, and the trading posts have traders too: Granny Pearl at the
+Mire Gem Exchange, Stoney Pete (a miner) at the Frostline Post and Old Hal (a
+lumberman) at the Dune Trading Post - leaning on their tools at the counter.
 
 ## The isles
 
@@ -706,6 +751,12 @@ catch is drawn only from the driver's seat.
 
 Nearly every mesh is built in code from primitives. The one exception is you.
 
+* **The traders** (`assets/models/npc_lumberman.glb`, `npc_miner.glb`,
+  `npc_granny.glb`, `npc_helper.glb`) are built by `source/npc_build.py` the
+  same way and with the same pivots, so `NpcFigure` poses them as the player
+  is posed. Each file has its props beside the person: the miner's pickaxe
+  and the lumberman's felling axe (put in the right hand in code, or stood on
+  their heads to lean on), Granny's rocking chair (she rocks with it).
 * **The player** is a barrel-shaped lumberjack with a huge ginger beard lying on
   his belly (its strands carved into it), a red plaid shirt, braces, green work
   gloves, domed work boots with laces and brass eyelets, and a yellow knit

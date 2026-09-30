@@ -21,6 +21,8 @@ signal pad_config_requested(pad: VehiclePad)
 signal filter_config_requested(filter: Filter)
 ## [E] at a finished sign: the HUD opens a box to write on it.
 signal sign_edit_requested(sign: Schematic)
+## At a trader's counter: the order sheet (OrderPanel) for it.
+signal order_requested(counter: Node)
 ## Co-op, on the host: a guest's player was moved here rather than by the
 ## guest (back to base, out of a truck), so the guest must be told.
 signal warped()
@@ -1627,13 +1629,17 @@ func _interact() -> void:
 	if target is SellYard:
 		var yard := target as SellYard
 		# Whatever is on the rack goes over the counter with the rest, so the
-		# player does not have to put it down first.
-		var carried := held.duplicate()
-		held.clear()
-		for item in carried:
-			item.owned = true
-			item.set_state(LooseItem.State.FREE)
-		carry_changed.emit(0, capacity_m3())
+		# player does not have to put it down first - what this yard buys,
+		# anyway; the rest stays on the rack.
+		var carried: Array[LooseItem] = []
+		for i in range(held.size() - 1, -1, -1):
+			var item: LooseItem = held[i]
+			if is_instance_valid(item) and yard.takes(item):
+				held.remove_at(i)
+				item.owned = true
+				item.set_state(LooseItem.State.FREE)
+				carried.append(item)
+		carry_changed.emit(held.size(), capacity_m3())
 		yard.sell_all(carried)
 		interacted.emit(yard.last_receipt)
 		return

@@ -90,7 +90,8 @@ func _draw() -> void:
 	# A map with no buildings (Ostars) has none of the rest.
 	if not WorldMap.is_ostars():
 		fixed.append(["Quarry", World.QUARRY_CENTRE, Color(0.80, 0.70, 0.62)])
-	for extra in [["Sell Yard", world.get("depot"), Color(0.98, 0.80, 0.30)],
+	# On Ostars the yards are the traders' (points of interest, below).
+	for extra in [["Sell Yard", null if WorldMap.is_ostars() else world.get("depot"), Color(0.98, 0.80, 0.30)],
 			["Hardware Store", world.get("store"), Color(0.55, 0.78, 1.0)],
 			["Vehicle Dealer", world.get("dealer_store"), Color(0.45, 0.9, 0.95)],
 			["Machine Works", world.get("works_store"), Color(0.95, 0.6, 0.35)]]:
@@ -102,7 +103,7 @@ func _draw() -> void:
 	for f in fixed:
 		_marker(_to_map(f[1], rect), f[0], f[2], 6.0)
 	for poi in world.call("points_of_interest"):
-		var found: bool = world.call("discovered", poi.name)
+		var found: bool = poi.get("known", false) or world.call("discovered", poi.name)
 		var at := _to_map(poi.pos, rect)
 		if found:
 			_marker(at, poi.name, poi.color, 6.0)

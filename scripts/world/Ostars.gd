@@ -230,6 +230,26 @@ const PLACES := [
 	["Veiled Archipelago", 2120, -820, 260.0],
 ]
 
+## Where the places are built, each levelled and facing home: the town by
+## home (the hardware store, the vehicle dealer, the machine works), the three
+## traders (TradePost: Old Bjorn's lumber yard at the edge of the meadows,
+## Dusty's assay office up in the Avalanche foothills, Granny Opal's by the
+## sea at Halyon Port), and Summit Outfitters up on the tundra past the pass.
+## [x, z, how much ground it needs levelled round it].
+const SITES := {
+	"lumber": [-230.0, 140.0, 27.0],
+	"metal": [300.0, -780.0, 27.0],
+	"gems": [-1250.0, 470.0, 27.0],
+	"store": [185.0, 52.0, 20.0],
+	"dealer": [125.0, 105.0, 17.0],
+	"works": [232.0, 100.0, 17.0],
+	"summit": [650.0, -1520.0, 18.0],
+}
+
+## Which way a place at (x, z) turns its front (local +Z): toward home.
+static func facing(x: float, z: float) -> float:
+	return atan2(-x, -z)
+
 ## The cave networks: one under the continent, a cave biome under each kind of
 ## country, and a small one under the Whispering Woods. (See CaveNetwork.)
 const CAVE_ZONES := [

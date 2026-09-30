@@ -1745,8 +1745,8 @@ func exit_vehicle() -> void:
 #
 # A long fall, a truck, a blast or a crane's grapple and he goes limp: he
 # becomes a ragdoll (Ragdoll: body, head, arms and legs each a physics body,
-# jointed), the camera pulls back to watch - shaking as he hits the ground, in
-# slow motion for a moment on a big hit - his hat flies off, and once he has
+# jointed), the camera pulls back to watch - shaking as he hits the ground -
+# his hat flies off on a big hit, and once he has
 # come to rest he gets up where he lies. The crusher is worse.
 
 ## Co-op, on the host: something happened to a guest's player that the
@@ -1766,7 +1766,7 @@ const CRUSHED_SECONDS := 4.5
 ## no model to make a ragdoll of); a ragdoll's body is held at the hips.
 const TUMBLE_HIPS := 0.9
 const RAGDOLL_HIPS := 0.62
-## A knock this hard (m/s) is worth slow motion and his hat.
+## A knock this hard (m/s) knocks his hat off.
 const BIG_KNOCK := 13.0
 
 ## The body he is tumbling as, while knocked flying: the ragdoll's body, or a
@@ -1813,7 +1813,7 @@ func knock(push: Vector3) -> void:
 	_release_dragged()
 	# Whatever was on the rack goes everywhere.
 	for item in held:
-		if is_instance_valid(item):
+		if is_instance_valid(item) and item.state != LooseItem.State.POOLED:
 			item.set_state(LooseItem.State.FREE)
 			item.linear_velocity = velocity + push * 0.6 + Vector3(randf_range(-2, 2), randf_range(1, 3), randf_range(-2, 2))
 	if not held.is_empty():
@@ -1867,22 +1867,12 @@ func _capsule_body(push: Vector3) -> RigidBody3D:
 	body.angular_velocity = _spin_for(push)
 	return body
 
-## The show: the camera shakes, a big hit knocks his hat off and slows the
-## world down for a moment (only playing alone - it would slow everyone).
+## The show: the camera shakes, and a big hit knocks his hat off.
 func _drama(push: Vector3) -> void:
 	var hard := push.length()
 	_shake = maxf(_shake, clampf(hard / 18.0, 0.25, 1.0))
-	if hard < BIG_KNOCK:
-		return
-	if avatar != null:
+	if hard >= BIG_KNOCK and avatar != null:
 		avatar.lose_hat(tumble.linear_velocity + push * 0.4 + Vector3.UP * 3.0)
-	if input.remote or net_view or Net.online() or DisplayServer.get_name() == "headless":
-		return
-	Engine.time_scale = 0.3
-	get_tree().create_timer(0.55, true, false, true).timeout.connect(func() -> void:
-		Engine.time_scale = 0.65
-		get_tree().create_timer(0.25, true, false, true).timeout.connect(func() -> void:
-			Engine.time_scale = 1.0))
 
 ## Hitting the ground: a thud, a puff of dust, the camera shaken.
 func _impact(at: Vector3, strength: float) -> void:

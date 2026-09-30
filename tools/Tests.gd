@@ -185,6 +185,7 @@ func _run_all() -> void:
 	await _test(&"a crane's grapple picks a player up", test_crane_lifts_player)
 	await _test(&"the crusher crushes a player into meat", test_crusher_crushes_player)
 	await _test(&"TNT: $50 a stick, blows players about, cracks easy ore, not the best", test_tnt)
+	await _test(&"one stick of TNT sets off the rest, and throws you far", test_tnt_chain)
 	await _test(&"full automated base stays in budget", test_full_base)
 
 	_say("")
@@ -7212,5 +7213,34 @@ func test_tnt() -> void:
 	if p.knocked():
 		check(p.tumble.linear_velocity.length() > 4.0 or p.global_position.distance_to(Vector3(-27, 1, 28)) > 1.0,
 			"the blast barely moved the player")
+	p.free_tumble_for_test()
+	done()
+
+## One stick sets off the rest: loose, boxed, or on someone's rack - and he
+## goes a long way.
+func test_tnt_chain() -> void:
+	_setup()
+	var a := spawn(&"tnt_stick", Vector3(20, 0.5, -20))
+	var b := spawn(&"tnt_stick", Vector3(23, 0.5, -20))
+	var boxed := spawn(&"box_tnt_stick", Vector3(20, 0.5, -15))
+	var p := _standing_player(Vector3(18, 1.0, -22))
+	await step(20)
+	var carried := spawn(&"tnt_stick", p.global_position + Vector3(0, 1.2, 0))
+	await step(2)
+	check(p.pick_up(carried), "could not pick a stick of TNT up onto the rack")
+	await step(5)
+	check(Blast.light(a, manager, 0.1), "the first stick would not light")
+	var fastest := 0.0
+	for i in 90:
+		await step(1)
+		if p.knocked():
+			fastest = maxf(fastest, p.tumble.linear_velocity.length())
+	var left := 0
+	for item in manager.free_items():
+		if Blast.explosive(item):
+			left += 1
+	check_eq(left, 0, "not every stick went up in the chain")
+	check(not p.held.has(carried), "the stick on his rack did not go off")
+	check(fastest > 18.0, "the blast only threw him at %.1f m/s" % fastest)
 	p.free_tumble_for_test()
 	done()

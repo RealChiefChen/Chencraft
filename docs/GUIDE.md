@@ -461,8 +461,10 @@ region that is not there.
 * **TNT** is sold by the stick at the hardware store (EXPLOSIVES, $50 each,
   always back on the shelf). Open the box, **[E]** on the stick lights a
   four-second fuse, then pick it up and throw it. A blast (`scripts/world/Blast.gd`)
-  throws players flying, blows loose things about, sets off other sticks nearby
-  and cracks ore apart: easy ores (tier 1) come to pieces, tier 2 ores take 30%
+  throws players a long way (38 m/s at its heart), blows loose things about,
+  sets off every other stick or box of TNT within 8 m a split second later -
+  lying about, on someone's rack or in their hand, so a pile goes up in a
+  ripple - and cracks ore apart: easy ores (tier 1) come to pieces, tier 2 ores take 30%
   of it, and the top ores and finest gems (tier 3) only 3% - barely a mark.
   Loose ore chunks in the blast crack in two the same way. The knobs are in the
   `explosives` section of `balance.json`.
@@ -473,8 +475,7 @@ region that is not there.
   and knees within a person's range, so every limb flails and flops on its
   own. The camera stands off and follows (the mouse swings it round, it pulls
   back the faster you go and shakes as you hit things), each hit on the ground
-  is a thud and a puff of dust, a big knock sends your beanie flying and -
-  playing alone - drops the world into slow motion for a moment. Once you have
+  is a thud and a puff of dust, and a big knock sends your beanie flying. Once you have
   lain still a second or two you pick yourself up where you are, hat back on.
   Whatever was on the rack goes everywhere.
 * **Cranes pick up players.** Close the grapple (or drop the claw) on someone

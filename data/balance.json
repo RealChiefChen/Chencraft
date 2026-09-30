@@ -16,9 +16,10 @@
   },
 
   "explosives": {
-    "_about": "TNT. radius: how far a blast reaches (m). launch: how hard it throws a player at its heart (m/s). ore_hit_kg: the hammer-head weight it hits ore with at its heart (tier 2 ores take 30% of it, tier 3 3%). fuse_seconds: how long a lit fuse burns. The price is the TNT stick's cost in items.json.",
+    "_about": "TNT. radius: how far a blast reaches (m). launch: how hard it throws a player at its heart (m/s). chain_radius: how far it sets off other TNT (m). ore_hit_kg: the hammer-head weight it hits ore with at its heart (tier 2 ores take 30% of it, tier 3 3%). fuse_seconds: how long a lit fuse burns. The price is the TNT stick's cost in items.json.",
     "radius": 6.0,
-    "launch": 22.0,
+    "launch": 38.0,
+    "chain_radius": 8.0,
     "ore_hit_kg": 60.0,
     "fuse_seconds": 4.0
   },

@@ -1248,3 +1248,22 @@ func shot_gait() -> void:
 			await snap("gait_run_%d" % i)
 	Input.action_release("sprint")
 	Input.action_release("move_forward")
+
+## A line of TNT going up one after another.
+func shot_chain() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var base := world.plot.global_position + Vector3(-14, 0, 24)
+	base.y = world.terrain.height_at(base.x, base.z)
+	world.player.global_position = base + Vector3(0, 0, 40)
+	var sticks: Array = []
+	for i in 6:
+		var at := base + Vector3(float(i) * 3.5, 0.6, 0)
+		at.y = world.terrain.height_at(at.x, at.z) + 0.3
+		sticks.append(world.manager.spawn(&"tnt_stick", Transform3D(Basis(), at), 0))
+	await _frames(30)
+	await look(base + Vector3(9, 6, 16), base + Vector3(9, 0.5, 0))
+	Blast.light(sticks[0], world.manager, 0.05)
+	for k in 6:
+		await get_tree().create_timer(0.12).timeout
+		await snap("chain_%d" % k)

@@ -338,6 +338,9 @@ static func size_limits(def: BuildingDef) -> Array:
 			if def.belt == &"align":
 				return [Vector3i(1, b.y, 2), Vector3i(1, b.y, 16)]
 			return [Vector3i(1, b.y, 2), Vector3i(3, b.y, 16)]
+		&"filter":
+			# A straight belt with a grate in it: stretches and widens the same.
+			return [Vector3i(1, b.y, 2), Vector3i(3, b.y, 16)]
 		&"schematic":
 			return [Vector3i(1, 1, 1), Vector3i(8, 8, 8)]
 		&"doodad":

@@ -54,7 +54,9 @@ func _ready() -> void:
 func _build() -> void:
 	super()
 	var run := sqrt(length * length + rise * rise)
-	_hole = clampf(run * 0.5, 0.6, 1.6)
+	# Half the belt, so a longer one sorts more at a time; a solid strip at
+	# each end to load on and run off.
+	_hole = clampf(run * 0.5, 0.6, run - 1.0)
 	var deck_shape: CollisionShape3D = null
 	for c in _deck.get_children():
 		if c is CollisionShape3D:

@@ -2667,43 +2667,11 @@ func test_splitter() -> void:
 
 func test_filter() -> void:
 	_setup()
-	var filter := Filter.new()
-	var def := GameData.building(&"filter")
-	filter.setup(def)
-	filter.length = def.extent().z
-	filter.width = def.extent().x * 0.9
-	# Planks drop through; everything else rides on.
-	filter.set_rules([{"type": "wood", "let": true}], false)
-	filter.position = Vector3(0, 1.5, 0)
-	world.add_child(filter)
-	await step(2)
-	var entry := filter.length * 0.5 - 0.35
-	for i in 3:
-		spawn(&"lumber_pine", Vector3(0, 1.9, entry), Solid.box(Vector3(0.3, 0.4, 0.1)))
-		await step(40)
-		spawn(&"ore_iron", Vector3(0, 1.9, entry), Solid.chunk(0.02))
-		await step(40)
-	await step(120)
-	var dropped_planks := 0
-	var carried_ore := 0
-	var wrong := 0
-	for item in manager.free_items():
-		var local: Vector3 = filter.global_transform.affine_inverse() * item.global_position
-		var fell := local.y < -0.5 and absf(local.z) < filter.length * 0.5
-		var rode_off := local.z < -filter.length * 0.5
-		if item.item_id == &"lumber_pine":
-			if fell:
-				dropped_planks += 1
-			elif rode_off:
-				wrong += 1
-		else:
-			if rode_off:
-				carried_ore += 1
-			elif fell:
-				wrong += 1
-	check(dropped_planks >= 2, "only %d of 3 planks dropped through the grate" % dropped_planks)
-	check(carried_ore >= 2, "only %d of 3 ore lumps rode over the grate" % carried_ore)
-	check_eq(wrong, 0, "the filter sent pieces the wrong way")
+	await _filter_run(GameData.building(&"filter"), 0.0, "")
+	# Turned a quarter round, and stretched long and narrow: it sorts the same.
+	var long := Plot.resized(GameData.building(&"filter"), Vector3i(1, 1, 8))
+	check(not Plot.size_limits(GameData.building(&"filter")).is_empty(), "the filter cannot be resized")
+	await _filter_run(long, PI * 0.5, "turned, stretched: ", Vector3(14, 0, 0))
 
 	# The rules themselves: first match wins, then the default.
 	var f2 := Filter.new()
@@ -2728,6 +2696,49 @@ func test_filter() -> void:
 	f2.free()
 	back.free()
 	done()
+
+## Planks and ore lumps down a filter set to drop wood: planks fall through,
+## ore rides over. Checks run for any size and heading.
+func _filter_run(def: BuildingDef, yaw: float, tag: String, at := Vector3.ZERO) -> void:
+	var filter := Filter.new()
+	filter.setup(def)
+	filter.length = def.extent().z
+	filter.width = def.extent().x * 0.9
+	filter.set_rules([{"type": "wood", "let": true}], false)
+	filter.position = at + Vector3(0, 1.5, 0)
+	filter.rotation.y = yaw
+	world.add_child(filter)
+	await step(2)
+	var entry: Vector3 = filter.global_transform * Vector3(0, 0.4, filter.length * 0.5 - 0.35)
+	var mine: Array[LooseItem] = []
+	for i in 3:
+		mine.append(spawn(&"lumber_pine", entry, Solid.box(Vector3(0.3, 0.4, 0.1))))
+		await step(40)
+		mine.append(spawn(&"ore_iron", entry, Solid.chunk(0.02)))
+		await step(40)
+	await step(120 + int(filter.length * 30.0))
+	var dropped_planks := 0
+	var carried_ore := 0
+	var wrong := 0
+	for item in mine:
+		if not is_instance_valid(item):
+			continue
+		var local: Vector3 = filter.global_transform.affine_inverse() * item.global_position
+		var fell := local.y < -0.5 and absf(local.z) < filter.length * 0.5
+		var rode_off := local.z < -filter.length * 0.5
+		if item.item_id == &"lumber_pine":
+			if fell:
+				dropped_planks += 1
+			elif rode_off:
+				wrong += 1
+		else:
+			if rode_off:
+				carried_ore += 1
+			elif fell:
+				wrong += 1
+	check(dropped_planks >= 2, tag + "only %d of 3 planks dropped through the grate" % dropped_planks)
+	check(carried_ore >= 2, tag + "only %d of 3 ore lumps rode over the grate" % carried_ore)
+	check_eq(wrong, 0, tag + "the filter sent pieces the wrong way")
 
 func test_building() -> void:
 	_setup()

@@ -48,6 +48,7 @@ func _init(p_terrain: Terrain) -> void:
 ## the tree (loading behind the boot screen), both run while frames go by, so
 ## the screen keeps drawing (see Workers).
 func build(tree: SceneTree = null) -> void:
+	_find_rims()
 	var cells := terrain._cells
 	tiles_x = int(ceil(float(cells) / float(TILE)))
 	var count := tiles_x * tiles_x
@@ -146,6 +147,8 @@ func _split(t: TileBuf, x: int, z: int, size: int, points: Dictionary) -> void:
 ## to the cell - so every plate under a road lies on its flat bed and none
 ## pokes up through it - and the water's edge to two.
 func _needs(x0: int, z0: int, x1: int, z1: int, size: int) -> int:
+	if _on_rim(x0, z0, x1, z1):
+		return 1
 	var stride := maxi(1, size / 8)
 	var wet := false
 	var dry := false
@@ -166,6 +169,68 @@ func _needs(x0: int, z0: int, x1: int, z1: int, size: int) -> int:
 	if wet and dry:
 		return 2
 	return 0
+
+# --- Levelled ground -------------------------------------------------------------
+
+## Where the land was levelled for something built on it - the player's plot
+## (a square) and every build site (a disc: the shops, the traders' yards,
+## the outposts, the cave mouths) - the plates follow the grid cell by cell
+## round the edge of the level, from a little inside it out to where it has
+## eased back into the country. Otherwise a big plate reaching from the level
+## out over the rising ground round it lies across the level at a slant and
+## comes up through the plot's concrete, or through a shop's floor.
+## Made once, before the tiles, as plain numbers the worker threads only read:
+## squares [centre x, z, from, to] in distance out from the centre along
+## either axis; discs [centre x, z, from, to] in distance from the centre.
+var _rim_squares := PackedFloat32Array()
+var _rim_discs := PackedFloat32Array()
+## How far inside the level the cell-by-cell band starts, in cells.
+const RIM_INSIDE := 2
+
+func _find_rims() -> void:
+	_rim_squares = PackedFloat32Array()
+	_rim_discs = PackedFloat32Array()
+	var inside := float(RIM_INSIDE) * Terrain.CELL
+	for zone in terrain.clear_zones:
+		var c: Vector3 = zone.centre
+		var half := float(zone.half)
+		_rim_squares.append_array(PackedFloat32Array([c.x, c.z, maxf(0.0, half - inside),
+			half + float(zone.margin) + Terrain.CELL]))
+	for site in terrain.build_sites:
+		var c: Vector3 = site.centre
+		var r := float(site.radius)
+		# Levelled out to the radius, eased back over nearly half as far again
+		# (Terrain._flatten_sites).
+		_rim_discs.append_array(PackedFloat32Array([c.x, c.z, maxf(0.0, r - inside), r * 1.45 + Terrain.CELL]))
+
+## Does the square of grid cells cross the edge of any levelled ground?
+func _on_rim(x0: int, z0: int, x1: int, z1: int) -> bool:
+	if _rim_squares.is_empty() and _rim_discs.is_empty():
+		return false
+	var ax := -terrain.half_extent + float(x0) * Terrain.CELL
+	var bx := -terrain.half_extent + float(x1) * Terrain.CELL
+	var az := -terrain.half_extent + float(z0) * Terrain.CELL
+	var bz := -terrain.half_extent + float(z1) * Terrain.CELL
+	for i in range(0, _rim_squares.size(), 4):
+		var cx := _rim_squares[i]
+		var cz := _rim_squares[i + 1]
+		# Nearest and farthest the square gets from the centre, counted the
+		# way a square is: the bigger of the two axes.
+		var near := maxf(maxf(0.0, maxf(ax - cx, cx - bx)), maxf(0.0, maxf(az - cz, cz - bz)))
+		var far := maxf(maxf(absf(ax - cx), absf(bx - cx)), maxf(absf(az - cz), absf(bz - cz)))
+		if near <= _rim_squares[i + 3] and far >= _rim_squares[i + 2]:
+			return true
+	for i in range(0, _rim_discs.size(), 4):
+		var cx := _rim_discs[i]
+		var cz := _rim_discs[i + 1]
+		var dx_near := maxf(0.0, maxf(ax - cx, cx - bx))
+		var dz_near := maxf(0.0, maxf(az - cz, cz - bz))
+		var dx_far := maxf(absf(ax - cx), absf(bx - cx))
+		var dz_far := maxf(absf(az - cz), absf(bz - cz))
+		if dx_near * dx_near + dz_near * dz_near <= _rim_discs[i + 3] * _rim_discs[i + 3] \
+				and dx_far * dx_far + dz_far * dz_far >= _rim_discs[i + 2] * _rim_discs[i + 2]:
+			return true
+	return false
 
 ## How far the ground strays from a flat plate across the square's corners.
 func _error(x0: int, z0: int, x1: int, z1: int) -> float:

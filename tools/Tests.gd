@@ -56,6 +56,7 @@ func _run_all() -> void:
 	await _test(&"big consolidated biome regions with real relief", test_regions)
 	await _test(&"ostars: the continent is where the map puts it", test_ostars_land)
 	await _test(&"ostars: forests grow in stands, on dry land, apart", test_ostars_forest)
+	await _test(&"ostars: the plot and the build sites lie level, no plate across them", test_ostars_level_ground)
 	await _test(&"ostars: each save remembers its map", test_ostars_save_map)
 	await _test(&"ostars: ore by hardness, the best in the hardest country", test_ostars_ore)
 	await _test(&"traders: each has a model, a tool or a chair, and pivots", test_trader_models)
@@ -7475,6 +7476,46 @@ func _ostars_patch(half: float) -> Terrain:
 	land.reserve_site(Vector3(0, World.PLOT_GROUND, 0), 56.0)
 	land.reserve_clear_square(Vector3(0, World.PLOT_GROUND, 0), 50.0, World.PLOT_GROUND, 10.0)
 	return land
+
+## The land round the plot is levelled, and the plates that draw the land
+## have to follow it: none reaching in over the plot from the rising ground
+## round it (which used to lay a slanted plate across half the concrete), and
+## none across a levelled build site either.
+func test_ostars_level_ground() -> void:
+	_setup(false)
+	var land := _ostars_patch(420.0)
+	land.reserve_site(Vector3(160, NAN, -140), 20.0)
+	world.add_child(land)
+	await step(2)
+	check(land.facets != null, "Ostars is not drawn in plates")
+	var highest := -INF
+	var lowest := INF
+	# The plot at its biggest, and a little past its kerb.
+	for x in range(-50, 51, 2):
+		for z in range(-50, 51, 2):
+			var h := land.height_at(float(x), float(z))
+			highest = maxf(highest, h)
+			lowest = minf(lowest, h)
+	check(highest <= World.PLOT_GROUND + 0.01, "the land comes up to %.2f m over the plot (level %.2f)" % [highest, World.PLOT_GROUND])
+	check(lowest >= World.PLOT_GROUND - 0.1, "the land dips to %.2f m under the plot" % lowest)
+	# A levelled site: dead level over most of it; toward its edge the grid
+	# cells there reach out onto the eased ground, a few centimetres, no more.
+	var site: Dictionary = land.build_sites[land.build_sites.size() - 1]
+	var c: Vector3 = site.centre
+	var inner := 0.0
+	var edge := 0.0
+	for k in 400:
+		var a := float(k) * 2.39996
+		var f := sqrt(float(k) / 400.0) * 0.9
+		var d := f * float(site.radius)
+		var off := absf(land.height_at(c.x + cos(a) * d, c.z + sin(a) * d) - c.y)
+		if f <= 0.7:
+			inner = maxf(inner, off)
+		else:
+			edge = maxf(edge, off)
+	check(inner < 0.02, "the ground strays %.2f m off the level inside a build site" % inner)
+	check(edge < 0.25, "the ground strays %.2f m off the level near a build site's edge" % edge)
+	done()
 
 func test_ostars_forest() -> void:
 	_setup(false)

@@ -194,6 +194,7 @@ func _run_all() -> void:
 	await _test(&"ore blocks are built to fit any box", test_ore_look_fits_any_box)
 	await _test(&"a knock throws the player limp, and he gets back up", test_knocked_flying)
 	await _test(&"a truck driving into a player sends him flying", test_truck_knocks_player)
+	await _test(&"running into a parked truck does not knock him over", test_run_into_parked_truck)
 	await _test(&"a crane's grapple picks a player up", test_crane_lifts_player)
 	await _test(&"the crusher crushes a player into meat", test_crusher_crushes_player)
 	await _test(&"TNT: $50 a stick, blows players about, cracks easy ore, not the best", test_tnt)
@@ -7253,6 +7254,36 @@ func test_truck_knocks_player() -> void:
 	if hit:
 		check(p.tumble.linear_velocity.dot(toward) > 3.0, "he did not go the way the truck was going")
 	p.free_tumble_for_test()
+	done()
+
+## Only a vehicle coming at him knocks him flying. Sprinting flat out into a
+## parked one (faster than the knock speed) just stops him against it; so
+## does riding along on a moving one.
+func test_run_into_parked_truck() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"pickup")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), -7)
+	await step(40)
+	var p := _standing_player(Vector3(0, 1.0, 0))
+	await step(20)
+	p.rotation.y = 0.0
+	Input.action_press("move_forward")
+	Input.action_press("sprint")
+	var fastest := 0.0
+	var knocked := false
+	for i in 150:
+		await step(1)
+		fastest = maxf(fastest, Vector2(p.velocity.x, p.velocity.z).length())
+		knocked = knocked or p.knocked()
+	Input.action_release("move_forward")
+	Input.action_release("sprint")
+	check(fastest > Player.CAR_KNOCK_SPEED, "he never ran faster than the knock speed (%.1f m/s)" % fastest)
+	check(p.global_position.z < -3.0, "he did not get to the truck (z %.1f)" % p.global_position.z)
+	check(not knocked, "running into a parked truck knocked him flying")
+	if p.knocked():
+		p.free_tumble_for_test()
 	done()
 
 func test_crane_lifts_player() -> void:

@@ -2,7 +2,7 @@
   "_note": "Balance knobs: speeds, prices, strengths and the rest of the game's feel in one place. Change a number, restart the game. Anything left out uses the value the game was tuned with. Per-item values, machine rates and vehicle stats live in their own tables (items.json, buildings.json, vehicles.json, upgrades.json); the multipliers here scale all of them at once. Your own settings and keys are not here - they are in your personal config file (Settings > Game > Open folder).",
 
   "player": {
-    "_about": "Moving and handling. walk_multiplier scales walking and sprinting on top of the boots. reach: how far you can use things (m). drag_strength_kg: how hard your hand pulls a dragged piece. drag_turn_rate: Shift+WASDQE turn speed (rad/s). throw_impulse: how hard RMB throws. swim_speed_factor: speed in deep water as a share of walking. fall_knock_speed: landing faster than this (m/s) knocks you over (about a 12 m drop). car_knock_speed: a vehicle closing on you faster than this (m/s) sends you flying.",
+    "_about": "Moving and handling. walk_multiplier scales walking and sprinting on top of the boots. reach: how far you can use things (m). drag_strength_kg: how hard your hand pulls a dragged piece. drag_turn_rate: Shift+WASDQE turn speed (rad/s). throw_impulse: how hard RMB throws. swim_speed_factor: speed in deep water as a share of walking. fall_knock_speed: landing faster than this (m/s) knocks you over (about a 12 m drop). car_knock_speed: a vehicle coming at you faster than this (m/s), under its own speed, sends you flying; running into a parked one does not.",
     "walk_multiplier": 1.0,
     "jump_velocity": 6.5,
     "reach": 4.5,

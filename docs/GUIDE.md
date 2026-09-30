@@ -604,7 +604,9 @@ region that is not there.
   Loose ore chunks in the blast crack in two the same way. The knobs are in the
   `explosives` section of `balance.json`.
 * **Getting knocked flying.** A long drop (landing faster than 16 m/s, about
-  twelve metres), a truck driving into you or a blast turns you into a ragdoll
+  twelve metres), a truck driving into you (faster than 5 m/s under its own
+  speed - running into a parked one, or one creeping along, just stops you
+  against it) or a blast turns you into a ragdoll
   (`scripts/player/Ragdoll.gd`): body, head, upper arms, forearms, thighs and
   shins are each a physics body, jointed at the neck, shoulders, elbows, hips
   and knees within a person's range, so every limb flails and flops on its

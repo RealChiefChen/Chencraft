@@ -1761,7 +1761,8 @@ signal net_event(entry: Dictionary)
 
 ## Landing faster than this (m/s) knocks him over: about a twelve metre drop.
 static var FALL_KNOCK_SPEED: float = Balance.num("player.fall_knock_speed", 16.0)
-## A vehicle coming at him faster than this (m/s) sends him flying.
+## A vehicle coming at him faster than this (m/s) sends him flying - its own
+## speed at him; running into a parked one does nothing.
 static var CAR_KNOCK_SPEED: float = Balance.num("player.car_knock_speed", 5.0)
 ## Seconds lying still before he gets up; the longest he stays down.
 const TUMBLE_REST := 1.6
@@ -2043,7 +2044,12 @@ func _check_vehicles() -> void:
 			continue
 		var rel := car.linear_velocity - velocity
 		var closing := rel.dot(to_me.normalized())
-		if closing > CAR_KNOCK_SPEED:
+		# The car has to be the one doing the hitting: coming at him fast
+		# itself, not him running into it standing still (or rolling along
+		# slower than he runs). And the two have to be closing, so riding on
+		# a moving truck's bed is not being run over by it.
+		var driving_at := car.linear_velocity.dot(to_me.normalized())
+		if closing > CAR_KNOCK_SPEED and driving_at > CAR_KNOCK_SPEED:
 			knock(rel * 1.1 + to_me.normalized() * 2.0 + Vector3.UP * (3.0 + closing * 0.35))
 			return
 

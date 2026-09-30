@@ -733,10 +733,32 @@ func shot_bike() -> void:
 
 ## One of each of the main species, photographed where it grows.
 func shot_trees() -> void:
+	await _tree_shots(["Pine", "Oak", "Birch", "Maple", "Palm", "Ironwood"])
+
+func shot_ebony() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	# Far off, it sleeps as a note until someone comes near: go to one first.
+	for field in world.tree_fields:
+		if String(field.species[0].name) != "Ebony":
+			continue
+		for key in field._tiles:
+			for d in field._tiles[key]:
+				world.player.global_position = field.to_global(d.position) + Vector3(0, 2, 0)
+				break
+			break
+		for key in field.alive:
+			world.player.global_position = (key as Node3D).global_position + Vector3(0, 2, 0)
+			break
+	for i in 900:
+		if world.trees().any(func(t): return t.species == "Ebony"):
+			break
+		await get_tree().physics_frame
+	await _tree_shots(["Ebony"])
+
+func _tree_shots(want: Array) -> void:
 	world.hud.visible = false
 	for i in 60:
 		await get_tree().physics_frame
-	var want := ["Pine", "Oak", "Birch", "Maple", "Palm", "Ironwood"]
 	var cam := world.player.camera
 	cam.top_level = true
 	for species in want:
@@ -749,7 +771,7 @@ func shot_trees() -> void:
 			continue
 		var at := best.global_position
 		var h := best.trunk_height
-		var back := Vector3(0.6, 0, 1).normalized() * (h * 1.5 + 6.0)
+		var back := Vector3(0.6, 0, 1).normalized() * (h * 1.5 + (1.5 if h < 4.0 else 6.0))
 		var eye := at + back
 		eye.y = maxf(world.terrain.height_at(eye.x, eye.z) + 1.7, at.y + 1.7)
 		world.player.global_position = at + back * 0.5

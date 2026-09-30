@@ -39,4 +39,9 @@ func _process(_d: float) -> void:
 			print("boot: world up in %.1f s, %d frames drawn, longest without one %d ms (at %.1f s), %d threads, %d used for big jobs" % [
 				float(now - start) / 1000.0, frames, worst, worst_at, OS.get_processor_count(),
 				preload("res://scripts/core/Workers.gd").tasks()])
+			var win := get_window()
+			print("boot: window %s at %s, %s; screen %d is %s at %s" % [
+				["windowed", "minimized", "maximized", "fullscreen", "exclusive fullscreen"][win.mode],
+				win.position, win.size, win.current_screen,
+				DisplayServer.screen_get_size(win.current_screen), DisplayServer.screen_get_position(win.current_screen)])
 			get_tree().quit()

@@ -45,6 +45,9 @@ const DEFAULTS := {
 	&"bloom": true,
 	&"view_distance": 600.0,
 	&"moving_sun": true,
+	&"shaders": true,         ## swaying grass and trees, leafy trees, grassy ground
+	&"grass": 2,              ## 0 off, 1 short range, 2 far
+	&"birds": true,
 	# Interface
 	&"ui_scale": 1.0,
 	&"show_hints": true,
@@ -89,6 +92,9 @@ const NOTES := {
 	&"bloom": "Glow round bright things",
 	&"view_distance": "How far you can see, in metres (150 to 1200)",
 	&"moving_sun": "false keeps it mid-morning all day",
+	&"shaders": "true: grass and trees sway in the wind, leaves look leafy, the ground looks grassy. false: plain and flat (a little quicker)",
+	&"grass": "Grass and flowers over the ground round you: 0 off, 1 short range, 2 far",
+	&"birds": "Birds in the sky",
 	&"ui_scale": "Interface size, 0.75 to 1.5",
 	&"show_hints": "Key hints in the bottom-right corner",
 	&"show_rig_banner": "The crane / winch / loader controls banner while driving",
@@ -109,11 +115,15 @@ const NOTES := {
 ## The graphics presets: what each sets. Low is for integrated graphics and
 ## older cards; High is everything on.
 const PRESETS := [
-	{&"shadows": 1, &"ambient_occlusion": false, &"bloom": false, &"anti_aliasing": 1, &"render_scale": 0.8, &"view_distance": 400.0},
-	{&"shadows": 1, &"ambient_occlusion": false, &"bloom": true, &"anti_aliasing": 1, &"render_scale": 1.0, &"view_distance": 500.0},
-	{&"shadows": 2, &"ambient_occlusion": true, &"bloom": true, &"anti_aliasing": 2, &"render_scale": 1.0, &"view_distance": 600.0},
+	{&"shadows": 1, &"ambient_occlusion": false, &"bloom": false, &"anti_aliasing": 1, &"render_scale": 0.8, &"view_distance": 400.0,
+		&"shaders": false, &"grass": 1},
+	{&"shadows": 1, &"ambient_occlusion": false, &"bloom": true, &"anti_aliasing": 1, &"render_scale": 1.0, &"view_distance": 500.0,
+		&"shaders": true, &"grass": 1},
+	{&"shadows": 2, &"ambient_occlusion": true, &"bloom": true, &"anti_aliasing": 2, &"render_scale": 1.0, &"view_distance": 600.0,
+		&"shaders": true, &"grass": 2},
 ]
-const PRESET_KEYS := [&"shadows", &"ambient_occlusion", &"bloom", &"anti_aliasing", &"render_scale", &"view_distance"]
+const PRESET_KEYS := [&"shadows", &"ambient_occlusion", &"bloom", &"anti_aliasing", &"render_scale", &"view_distance",
+	&"shaders", &"grass"]
 var _applying_preset: bool = false
 
 ## Sets every video setting from a preset (0 low, 1 medium, 2 high).

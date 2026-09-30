@@ -476,6 +476,70 @@ func height(x: float, z: float) -> float:
 				return y
 	return NAN
 
+## The colour of the plate over a point (its own shade, as drawn), or a
+## colour with alpha 0 off the plates.
+func color_at(x: float, z: float) -> Color:
+	if tiles.is_empty():
+		return Color(0, 0, 0, 0)
+	var gx := int(floor((x + terrain.half_extent) / Terrain.CELL))
+	var gz := int(floor((z + terrain.half_extent) / Terrain.CELL))
+	var tx := clampi(gx / TILE, 0, tiles_x - 1)
+	var tz := clampi(gz / TILE, 0, tiles_x - 1)
+	for dz in [0, -1, 1]:
+		for dx in [0, -1, 1]:
+			var ux: int = tx + dx
+			var uz: int = tz + dz
+			if ux < 0 or uz < 0 or ux >= tiles_x or uz >= tiles_x:
+				continue
+			var t: TileBuf = tiles[uz * tiles_x + ux]
+			var k := _triangle_in(t, x, z)
+			if k >= 0 and t.colors.size() > k * 3:
+				return t.colors[k * 3]
+	return Color(0, 0, 0, 0)
+
+## The plate over a point: [height, colour], or empty off the plates.
+func plate_at(x: float, z: float) -> Array:
+	if tiles.is_empty():
+		return []
+	var gx := int(floor((x + terrain.half_extent) / Terrain.CELL))
+	var gz := int(floor((z + terrain.half_extent) / Terrain.CELL))
+	var tx := clampi(gx / TILE, 0, tiles_x - 1)
+	var tz := clampi(gz / TILE, 0, tiles_x - 1)
+	var p := Vector2(x, z)
+	for dz in [0, -1, 1]:
+		for dx in [0, -1, 1]:
+			var ux: int = tx + dx
+			var uz: int = tz + dz
+			if ux < 0 or uz < 0 or ux >= tiles_x or uz >= tiles_x:
+				continue
+			var t: TileBuf = tiles[uz * tiles_x + ux]
+			var key := Vector2i(int(floor(x / BUCKET)), int(floor(z / BUCKET)))
+			if not t.buckets.has(key):
+				continue
+			for k in (t.buckets[key] as PackedInt32Array):
+				var a := t.tris[k * 3]
+				var b := t.tris[k * 3 + 1]
+				var c := t.tris[k * 3 + 2]
+				var bc := _barycentric(p, Vector2(a.x, a.z), Vector2(b.x, b.z), Vector2(c.x, c.z))
+				if bc.x >= -0.0001 and bc.y >= -0.0001 and bc.z >= -0.0001:
+					return [a.y * bc.x + b.y * bc.y + c.y * bc.z, t.colors[k * 3] if t.colors.size() > k * 3 else Color(0.3, 0.5, 0.2)]
+	return []
+
+## The triangle of a tile over a point, or -1.
+func _triangle_in(t: TileBuf, x: float, z: float) -> int:
+	var key := Vector2i(int(floor(x / BUCKET)), int(floor(z / BUCKET)))
+	if not t.buckets.has(key):
+		return -1
+	var p := Vector2(x, z)
+	for k in (t.buckets[key] as PackedInt32Array):
+		var a := t.tris[k * 3]
+		var b := t.tris[k * 3 + 1]
+		var c := t.tris[k * 3 + 2]
+		var bc := _barycentric(p, Vector2(a.x, a.z), Vector2(b.x, b.z), Vector2(c.x, c.z))
+		if bc.x >= -0.0001 and bc.y >= -0.0001 and bc.z >= -0.0001:
+			return k
+	return -1
+
 func _height_in(t: TileBuf, x: float, z: float) -> float:
 	var key := Vector2i(int(floor(x / BUCKET)), int(floor(z / BUCKET)))
 	if not t.buckets.has(key):

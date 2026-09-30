@@ -1318,6 +1318,34 @@ func shot_ostars() -> void:
 			await get_tree().process_frame
 		await snap(v[0])
 
+## The look of the land: meadow and woods at eye level, the woods from a
+## way off, and from up high. Run with --map=ostars or isles; --view=<part of a
+## name> for one.
+func shot_scenery() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	var home_wood: Vector3 = world.starter_forest if world.starter_forest != Vector3.INF else Vector3(80, 0, 80)
+	var views := [
+		["scenery_meadow", Vector3(10, 1.7, 60), Vector3(-20, 1.0, -40)],
+		["scenery_wood_edge", home_wood + Vector3(26, 1.7, 26), home_wood],
+		["scenery_far_woods", Vector3(-380, 30, -60), Vector3(-700, 10, -260)],
+		["scenery_high", Vector3(60, 60, 160), Vector3(-40, 0, 0)],
+		["scenery_close", Vector3(4, 1.2, 30), Vector3(2, 0.2, 24)],
+	]
+	var only: String = args.get("view", "")
+	for v in views:
+		if only != "" and not String(v[0]).contains(only):
+			continue
+		var from: Vector3 = v[1]
+		var at: Vector3 = v[2]
+		world.player.global_position = world.terrain.place(Vector3(from.x, 0, from.z), 1.0)
+		for i in 60:
+			await get_tree().process_frame
+		var ground := world.terrain.height_at(from.x, from.z)
+		await look(from + Vector3(0, ground, 0), Vector3(at.x, world.terrain.height_at(at.x, at.z) + at.y, at.z))
+		for i in 30:
+			await get_tree().process_frame
+		await snap(v[0])
+
 ## How many trees are built (not stand-ins) round a few spots: the cost of a
 ## forest. Run with and without --map=ostars.
 func shot_treecount() -> void:

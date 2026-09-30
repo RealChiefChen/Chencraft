@@ -122,6 +122,10 @@ const REGIONS := [
 const HIDDEN_VALLEY := "Hidden Valley"
 const STAR_CRATER := "Star Crater"
 var decor: Decor
+## Grass and flowers round the camera (the Grass setting).
+var grass: GrassField
+## Birds in the sky (the Birds setting).
+var birds: Birds
 var _discover_timer: float = 0.0
 
 ## Where the land is under a loose item, for the manager's fall-through
@@ -270,6 +274,14 @@ func _ready() -> void:
 	decor.name = "Decor"
 	decor.setup(terrain, 7331)
 	add_child(decor)
+	grass = GrassField.new()
+	grass.name = "Grass"
+	grass.setup(terrain)
+	add_child(grass)
+	birds = Birds.new()
+	birds.name = "Birds"
+	birds.setup(terrain)
+	add_child(birds)
 
 	manager = LooseItemManager.new()
 	manager.name = "LooseItems"
@@ -333,6 +345,12 @@ func _ready() -> void:
 	for field in tree_fields + rock_fields:
 		field.focus = player
 	decor.focus = player
+	grass.pusher = player
+	_keep_grass_off_plot()
+	plot.expanded.connect(func(_t: int, _h: float):
+		_keep_grass_off_plot()
+		grass.refresh())
+	birds.focus = player
 	player.manager = manager
 	player.plot = plot
 	player.store = store
@@ -1235,37 +1253,9 @@ func _on_ground(sampler: Callable) -> Callable:
 ## drawn as stand-ins (see ResourceField.impostor).
 static var TREE_WAKE: float = Balance.num("world.tree_wake_distance", 230.0)
 
-## A species' stand-in for the far distance: a trunk and a crown of its own
-## colour and rough shape, a few dozen triangles.
+## A species' stand-in for the far distance (see ChoppableTree.stand_in).
 static func _tree_impostor(kind: Dictionary) -> Mesh:
-	var g := Greeble.new()
-	var h := (float(kind.height[0]) + float(kind.height[1])) * 0.5
-	var r := (float(kind.radius[0]) + float(kind.radius[1])) * 0.5
-	var bark: Color = kind.get("bark", Color(0, 0, 0, 0))
-	if bark.a <= 0.0:
-		bark = Color(0.40, 0.28, 0.18)
-	var leaf: Color = kind.leaf
-	var start := float(kind.start)
-	var style: StringName = kind.get("style", &"cone")
-	var crown := maxf(float(kind.crown[0]) * 0.45, float(kind.foliage) * 0.22)
-	crown = clampf(crown, r * 2.0, 5.0)
-	var trunk_h := h * (start if style != &"bare" else 1.0)
-	g.prism(5, r, r * float(kind.taper), trunk_h, Transform3D(), bark)
-	match style:
-		&"bare":
-			pass
-		&"ball", &"puff":
-			var y := h * start
-			var rr := crown
-			g.prism(7, rr * 0.55, rr, rr * 0.7, Transform3D(Basis(), Vector3(0, y, 0)), leaf)
-			g.prism(7, rr, rr * 0.5, rr * 0.8, Transform3D(Basis(), Vector3(0, y + rr * 0.7, 0)), leaf.lightened(0.05))
-		&"palm":
-			g.prism(6, crown, 0.2, 0.6, Transform3D(Basis(), Vector3(0, h - 0.3, 0)), leaf)
-		_:
-			# A spire: from low on the trunk to the top.
-			var y0 := h * start * 0.8
-			g.prism(6, crown * 0.75, 0.0, (h - y0) * 1.1, Transform3D(Basis(), Vector3(0, y0, 0)), leaf)
-	return g.commit()
+	return ChoppableTree.stand_in(kind)
 
 func _build_tree(kind: Dictionary, form_seed: int) -> Node3D:
 	var rng := RandomNumberGenerator.new()
@@ -2301,6 +2291,10 @@ func _notification(what: int) -> void:
 func _on_setting_changed(_key: StringName) -> void:
 	_apply_all_settings()
 
+## No grass through the plot's concrete, however big it has grown.
+func _keep_grass_off_plot() -> void:
+	grass.keep_off = [[plot.global_position, plot.half_extent + 0.6]]
+
 ## The demo lines come and go with their setting.
 func _apply_showcase() -> void:
 	# Not on Ostars: nothing is built there.
@@ -2342,6 +2336,11 @@ func _apply_all_settings() -> void:
 	sun.directional_shadow_max_distance = 160.0 if shadows >= 2 else 70.0
 	environment.ssao_enabled = Settings.flag(&"ambient_occlusion")
 	environment.glow_enabled = Settings.flag(&"bloom")
+	var fancy := Settings.flag(&"shaders")
+	grass.configure(int(Settings.value(&"grass")), fancy)
+	birds.set_enabled(Settings.flag(&"birds"))
+	terrain.set_fancy(fancy)
+	ChoppableTree.set_fancy(fancy)
 	if not Settings.flag(&"moving_sun"):
 		sun.rotation_degrees = Vector3(-52, -38, 0)
 		sun.light_color = Color(1.0, 0.95, 0.86)

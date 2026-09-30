@@ -57,6 +57,10 @@ func _run_all() -> void:
 	await _test(&"ostars: the continent is where the map puts it", test_ostars_land)
 	await _test(&"ostars: forests grow in stands, on dry land, apart", test_ostars_forest)
 	await _test(&"ostars: the plot and the build sites lie level, no plate across them", test_ostars_level_ground)
+	await _test(&"grass grows on the ground, on green land, not on roads, water or the plot", test_grass_field)
+	await _test(&"far trees are leaf clusters and tiers, not buns; leaves marked for the shader", test_tree_stand_ins)
+	await _test(&"shaders switch trees and ground between plain and fancy", test_shaders_switch)
+	await _test(&"birds fly round you, above the ground, and roost at night", test_birds)
 	await _test(&"ostars: each save remembers its map", test_ostars_save_map)
 	await _test(&"ostars: ore by hardness, the best in the hardest country", test_ostars_ore)
 	await _test(&"traders: each has a model, a tool or a chair, and pivots", test_trader_models)
@@ -7546,6 +7550,148 @@ func test_ostars_level_ground() -> void:
 			edge = maxf(edge, off)
 	check(inner < 0.02, "the ground strays %.2f m off the level inside a build site" % inner)
 	check(edge < 0.25, "the ground strays %.2f m off the level near a build site's edge" % edge)
+	done()
+
+## Grass stands on the ground (its lattice heights are the ground's), grows
+## where the ground is green, and not on the roads, the water or the plot's
+## concrete; it thins out and stops with distance.
+func test_grass_field() -> void:
+	_setup(false)
+	var land := _ostars_patch(420.0)
+	world.add_child(land)
+	await step(2)
+	var grass := GrassField.new()
+	grass.setup(land)
+	grass.keep_off = [[Vector3(0, 0, 0), 22.6]]
+	world.add_child(grass)
+	grass.configure(2, true)
+	var at := Vector3(70, land.height_at(70, 70), 70)
+	grass.build_around(at)
+	check(grass.chunk_count >= 20, "only %d chunks of grass round a point" % grass.chunk_count)
+	var grown := 0
+	var bad_height := 0
+	var on_plot := 0
+	var on_water := 0
+	var looked := 0
+	for key in grass._chunks:
+		var c: GrassField.Chunk = grass._chunks[key]
+		if c.empty:
+			continue
+		var img := c.ground.get_image()
+		for iz in GrassField.LATTICE + 1:
+			for ix in GrassField.LATTICE + 1:
+				var x := float(key.x) * GrassField.CHUNK + float(ix) * GrassField.CHUNK / float(GrassField.LATTICE)
+				var z := float(key.y) * GrassField.CHUNK + float(iz) * GrassField.CHUNK / float(GrassField.LATTICE)
+				var px := img.get_pixel(ix, iz)
+				looked += 1
+				if absf(px.r - land.height_at(x, z)) > 0.05:
+					bad_height += 1
+				if px.g > 0.0:
+					grown += 1
+					if absf(x) <= 22.6 and absf(z) <= 22.6:
+						on_plot += 1
+					if land.water_depth(x, z) > 0.0 or land.is_road(x, z):
+						on_water += 1
+	check(looked > 0 and grown * 3 > looked, "grass on only %d of %d points round home" % [grown, looked])
+	check_eq(bad_height, 0, "grass lattice points off the ground")
+	check_eq(on_plot, 0, "grass growing through the plot's concrete")
+	check_eq(on_water, 0, "grass growing in the water or on a road")
+	# Near, all of it; further, a half, then a quarter; past the reach, none.
+	check_near(grass.keep_at(5.0), 1.0, 0.001, "grass kept at 5 m")
+	check(grass.keep_at(35.0) < 0.6 and grass.keep_at(35.0) > 0.25, "grass kept at 35 m: %.2f" % grass.keep_at(35.0))
+	check_near(grass.keep_at(58.0), 0.25, 0.001, "grass kept far off")
+	# Off: nothing left.
+	grass.configure(0, true)
+	check_eq(grass.chunk_count, 0, "grass left with grass off")
+	done()
+
+## The far stand-ins are the tree's shape in a hundred-odd triangles - leaf
+## lumps round a middle for a broadleaf, stacked tiers for a conifer - not
+## two stacked prisms; leaves carry alpha 0 and bark 1, for the shader.
+func test_tree_stand_ins() -> void:
+	for kind in World.SPECIES:
+		var mesh := ChoppableTree.stand_in(kind)
+		var arrays := mesh.surface_get_arrays(0)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var cols: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		var idx = arrays[Mesh.ARRAY_INDEX]
+		var tris := (idx as PackedInt32Array).size() / 3 if idx != null and not (idx as PackedInt32Array).is_empty() else verts.size() / 3
+		var name := String(kind.get("name", "?"))
+		var style: StringName = kind.get("style", &"cone")
+		if style == &"bare":
+			continue
+		check(tris >= (30 if style == &"palm" else 50) and tris <= 260, "%s's stand-in is %d triangles" % [name, tris])
+		var leaves := 0
+		var wood := 0
+		for c in cols:
+			if c.a < 0.5:
+				leaves += 1
+			else:
+				wood += 1
+		check(leaves > 0 and wood > 0, "%s's stand-in has %d leaf and %d bark points" % [name, leaves, wood])
+		# As tall as the tree, give or take.
+		var top := -INF
+		for v in verts:
+			top = maxf(top, v.y)
+		var h := (float(kind.height[0]) + float(kind.height[1])) * 0.5
+		check(top > h * 0.8 and top < h * 1.6, "%s's stand-in is %.1f m tall for a %.1f m tree" % [name, top, h])
+	done()
+
+## Shaders on: the ground and every merged tree and stand-in drawn with the
+## shaders; off: the plain materials, as before.
+func test_shaders_switch() -> void:
+	_setup(false)
+	var land := _region_land()
+	world.add_child(land)
+	await step(2)
+	var tree := ChoppableTree.new()
+	tree.manager = manager
+	tree.trunk_height = 9.0
+	tree.foliage_style = &"ball"
+	world.add_child(tree)
+	await step(3)
+	tree._merge()
+	check(tree.is_merged(), "the test tree did not merge")
+	var land_mesh: MeshInstance3D = land._land_meshes[0]
+	land.set_fancy(true)
+	ChoppableTree.set_fancy(true)
+	check(land_mesh.material_override is ShaderMaterial, "the ground has no shader with shaders on")
+	check(tree._merged.material_override is ShaderMaterial, "the tree has no shader with shaders on")
+	land.set_fancy(false)
+	ChoppableTree.set_fancy(false)
+	check(land_mesh.material_override is StandardMaterial3D, "the ground kept its shader with shaders off")
+	check(tree._merged.material_override is StandardMaterial3D, "the tree kept its shader with shaders off")
+	ChoppableTree.set_fancy(true)
+	done()
+
+## Birds: up in the air over the ground, round whoever they follow, and put
+## away at night.
+func test_birds() -> void:
+	_setup(false)
+	var land := _region_land()
+	world.add_child(land)
+	await step(2)
+	var focus := Node3D.new()
+	world.add_child(focus)
+	focus.global_position = Vector3(-200, land.height_at(-200, 100) + 1.0, 100)
+	var birds := Birds.new()
+	birds.setup(land)
+	birds.focus = focus
+	world.add_child(birds)
+	for i in 240:
+		await get_tree().process_frame
+	var low := 0
+	var far := 0
+	for b: Birds.Bird in birds._birds:
+		if b.pos.y < land.height_at(b.pos.x, b.pos.z) + 3.0:
+			low += 1
+		if Vector2(b.pos.x - focus.global_position.x, b.pos.z - focus.global_position.z).length() > Birds.LEASH + 120.0:
+			far += 1
+	check(birds._birds.size() >= 20, "only %d birds" % birds._birds.size())
+	check_eq(low, 0, "birds flying into the ground")
+	check_eq(far, 0, "birds wandered off")
+	birds.set_enabled(false)
+	check(not birds._mmi.visible, "birds still shown with birds off")
 	done()
 
 func test_ostars_forest() -> void:

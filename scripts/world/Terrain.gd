@@ -337,6 +337,24 @@ func _hole_near(ix: int, iz: int) -> bool:
 				return true
 	return false
 
+## The ground at a point, in one look: [height (NAN over a hole), colour].
+func ground_sample(x: float, z: float) -> Array:
+	if facets != null:
+		var hit := facets.plate_at(x, z)
+		if not hit.is_empty():
+			return hit
+	var h := height_at(x, z)
+	return [h, BIOME_COLORS.get(biome_at(x, z), Color(0.34, 0.56, 0.23))]
+
+## The colour the ground is drawn at a point: its plate's, on the region
+## maps; otherwise its biome's grass.
+func ground_color(x: float, z: float) -> Color:
+	if facets != null:
+		var c := facets.color_at(x, z)
+		if c.a > 0.0:
+			return c
+	return BIOME_COLORS.get(biome_at(x, z), Color(0.34, 0.56, 0.23))
+
 func height_at_point(point: Vector3) -> float:
 	return height_at(point.x, point.z)
 
@@ -1798,6 +1816,87 @@ func _distance_to_path(point: Vector3, path: Array) -> Vector2:
 ## shape holds the whole country.
 const CHUNK := 32
 
+## The land's own meshes (not the water or the sea bed), and what they are
+## drawn with plain; with shaders on they get the ground shader instead.
+var _land_meshes: Array[MeshInstance3D] = []
+var _land_plain: Material
+var _land_fancy: ShaderMaterial
+var _fancy: bool = true
+
+## Shaders on or off for the ground.
+func set_fancy(on: bool) -> void:
+	_fancy = on
+	var mat: Material = _land_plain
+	if on and _land_plain != null:
+		if _land_fancy == null:
+			_land_fancy = _make_land_shader()
+		mat = _land_fancy
+	for mi in _land_meshes:
+		if is_instance_valid(mi):
+			mi.material_override = mat
+
+## The ground with shaders on: the plates' own colours and grain as before,
+## and where the ground is grass - green and facing up - drifts of lighter and
+## darker, yellower and bluer green across it at a few sizes, a fine speckle
+## like blades up close, and a soft sheen rather than the plates' shine.
+func _make_land_shader() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = LAND_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = shader
+	m.set_shader_parameter(&"grain", Textures.detail("grass"))
+	var noise := FastNoiseLite.new()
+	noise.seed = 57
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.frequency = 0.02
+	noise.fractal_octaves = 3
+	var img := noise.get_seamless_image(256, 256, false, false, 0.1, true)
+	img.generate_mipmaps()
+	m.set_shader_parameter(&"patches", ImageTexture.create_from_image(img))
+	var plated := _plated()
+	m.set_shader_parameter(&"plain_roughness", 0.62 if plated else 1.0)
+	m.set_shader_parameter(&"plain_specular", 0.6 if plated else 0.5)
+	return m
+
+const LAND_SHADER := """
+shader_type spatial;
+
+uniform sampler2D grain : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D patches : filter_linear_mipmap, repeat_enable;
+uniform float grain_metres = 6.0;
+uniform float plain_roughness = 0.62;
+uniform float plain_specular = 0.6;
+
+varying vec3 v_world;
+varying vec3 v_normal;
+
+void vertex() {
+	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_normal = normalize(mat3(MODEL_MATRIX) * NORMAL);
+}
+
+void fragment() {
+	vec3 base = COLOR.rgb;
+	vec3 w = abs(v_normal);
+	w /= (w.x + w.y + w.z);
+	vec3 p = v_world / grain_metres;
+	float g = texture(grain, p.zy).r * w.x + texture(grain, p.xz).r * w.y + texture(grain, p.xy).r * w.z;
+	vec3 c = base * g;
+	float green = smoothstep(0.015, 0.07, base.g - max(base.r, base.b)) * smoothstep(0.72, 0.9, v_normal.y);
+	float big = texture(patches, v_world.xz / 160.0).r;
+	float mid = texture(patches, v_world.xz / 41.0 + vec2(0.37, 0.71)).r;
+	float fine = texture(patches, v_world.xz / 2.3 + vec2(0.13, 0.29)).r;
+	vec3 meadow = c * mix(0.82, 1.12, big) * mix(0.92, 1.07, mid);
+	meadow = mix(meadow, meadow * vec3(1.12, 1.06, 0.74), smoothstep(0.58, 0.82, mid) * 0.5);
+	meadow = mix(meadow, meadow * vec3(0.84, 0.97, 0.92), smoothstep(0.62, 0.86, big) * 0.4);
+	meadow *= mix(0.9, 1.07, fine);
+	c = mix(c, meadow, green);
+	ALBEDO = c;
+	ROUGHNESS = mix(plain_roughness, 0.95, green);
+	SPECULAR = mix(plain_specular, 0.28, green);
+}
+"""
+
 func _build_mesh() -> void:
 	var mat: StandardMaterial3D
 	if not _plated():
@@ -1810,8 +1909,11 @@ func _build_mesh() -> void:
 		mat = Textures.material("grass", 6.0).duplicate()
 		mat.roughness = 0.62
 		mat.metallic_specular = 0.6
+	_land_plain = mat
 	if _plated():
 		await _build_plates(mat)
+		if _fancy:
+			set_fancy(true)
 		return
 	var chunks := int(ceil(float(_cells) / float(CHUNK)))
 	var bufs: Array = []
@@ -1844,12 +1946,15 @@ func _build_mesh() -> void:
 		mi.mesh = mesh
 		mi.material_override = mat
 		add_child(mi)
+		_land_meshes.append(mi)
 		var cs := CollisionShape3D.new()
 		var shape := ConcavePolygonShape3D.new()
 		shape.set_faces(buf.verts)
 		cs.shape = shape
 		add_child(cs)
 	_build_sheets(sea, water)
+	if _fancy:
+		set_fancy(true)
 
 ## Occluders: the ground as seen by the renderer's occlusion culling, so a
 ## wood behind a hill is not drawn at all. A coarse copy of the land, one
@@ -1930,6 +2035,7 @@ func _build_plates(mat: Material) -> void:
 		mi.mesh = mesh
 		mi.material_override = mat
 		add_child(mi)
+		_land_meshes.append(mi)
 		var cs := CollisionShape3D.new()
 		var shape := ConcavePolygonShape3D.new()
 		shape.set_faces(t.tris)

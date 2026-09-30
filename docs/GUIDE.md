@@ -778,6 +778,52 @@ ground, the log, chunk or tree nearest the line of sight within a metre and a
 half, so it does not take pixel-perfect aim. The ring showing where it will
 catch is drawn only from the driver's seat.
 
+## The look: grass, flowers, leaves and birds
+
+All of it is only the look - nothing collides with it or can be picked - and
+all of it is set in Settings > Video (and by the presets: Low has shaders off
+and short grass, Medium shaders on and short grass, High shaders on and far
+grass).
+
+* **Grass and flowers** (`scripts/world/GrassField.gd`, the *Grass* setting:
+  off, short range 32 m, far 60 m). The ground round the camera is cut into
+  16 m chunks. Every chunk draws the same 1,936 tufts of five blades and 169
+  flowers (one MultiMesh each, made once and shared) and has its own 9 x 9
+  lattice of the ground under it - height, how grassy, how flowery, and the
+  colour of the plate there - which the vertex shader reads to stand each
+  tuft on the ground in the ground's own colour, or fold it away where
+  nothing grows: roads, water, rock and sand (anything not green), snow and
+  desert, the plot's concrete (kept clear however big the plot grows - the
+  levelled lawn round it is grassed), the shops' and traders' yards, cave
+  mouths. Flowers (red, yellow, white, purple, blue) come in patches, most in
+  the woodland meadows. Further off a chunk draws a half, then a quarter of
+  its tufts (the shader thins smoothly in between, so nothing pops), and at
+  the edge of the range they shrink into the ground. Blades are single
+  triangles with their normals up, cast no shadow, sway in gusts of wind
+  (with shaders on) and bend away from your legs. A chunk's lattice is made
+  a few rows a frame, a millisecond or so at most.
+* **The ground** with shaders on: grassy plates (green and facing up) get
+  drifts of lighter and darker, yellower and bluer green at a few sizes, a
+  fine speckle up close and a soft sheen instead of the plates' shine; rock,
+  sand and snow are as before (`Terrain.LAND_SHADER`).
+* **Leaves** with shaders on (`ChoppableTree.FOLIAGE_SHADER`): the whole tree
+  leans with the wind, more the higher up and each at its own pace, the
+  leaves flutter, are dappled with small clusters of light and shade, and
+  glow a little with the sun behind them. Bark is left as it is (leaves are
+  told from bark by vertex alpha: 0 on the leaf pieces, 1 on wood).
+* **Far trees** (`ChoppableTree.stand_in`) are no longer two stacked prisms
+  (the "buns"): a broadleaf is a cluster of leaf lumps round a middle one, a
+  conifer its stacked tiers, a palm its fronds, about 120 triangles, in the
+  same colours as a built tree (they used to come out brighter). The middle
+  distance's leaf clumps are five lumps, not three.
+* **Birds** (`scripts/world/Birds.gd`, the *Birds* setting): three flocks of
+  small dark birds wheeling over the country round you, a pair of gulls that
+  keep to the water, and a hawk circling high up; flapping in bursts and
+  gliding (in the shader), all one draw, gone to roost at night.
+
+The perf harness (`scenes/perf.tscn`) prints the grass's and the birds' time a
+frame.
+
 ## Models
 
 Nearly every mesh is built in code from primitives. The one exception is you.

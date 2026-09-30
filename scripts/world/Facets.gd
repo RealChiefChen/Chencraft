@@ -16,6 +16,8 @@ extends RefCounted
 ## share the points along their edges exactly, so the panels meet without a
 ## crack.
 
+const Workers := preload("res://scripts/core/Workers.gd")
+
 const TILE := 64                 ## cells per tile side
 const MAX_LEAF := 32             ## the biggest plate, in cells
 const WELD_DEGREES := 9.0        ## neighbours flatter than this weld together
@@ -35,13 +37,17 @@ class TileBuf:
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
 	var buckets: Dictionary = {}              ## Vector2i -> PackedInt32Array of tri indices
+	var edge_keys := PackedInt64Array()       ## per triangle edge, for welding (see _edge_key)
 
 func _init(p_terrain: Terrain) -> void:
 	terrain = p_terrain
 
 # --- Building ----------------------------------------------------------------
 
-func build() -> void:
+## The tiles are built across the worker threads, then welded on one. Given
+## the tree (loading behind the boot screen), both run while frames go by, so
+## the screen keeps drawing (see Workers).
+func build(tree: SceneTree = null) -> void:
 	var cells := terrain._cells
 	tiles_x = int(ceil(float(cells) / float(TILE)))
 	var count := tiles_x * tiles_x
@@ -53,16 +59,26 @@ func build() -> void:
 		t.x1 = mini(cells, t.x0 + TILE)
 		t.z1 = mini(cells, t.z0 + TILE)
 		tiles.append(t)
-	var task := WorkerThreadPool.add_group_task(_build_tile, count, -1, true, "facets")
-	WorkerThreadPool.wait_for_group_task_completion(task)
+	await Workers.group(_build_tile, count, "facets", tree)
 	# Welded across the whole map at once, so a plate can run over a tile's
 	# edge like any other seam-free stretch.
-	_weld_all()
-	for t: TileBuf in tiles:
-		for k in t.tris.size() / 3:
-			_bucket(t, k, t.tris[k * 3], t.tris[k * 3 + 1], t.tris[k * 3 + 2])
+	await Workers.one(_weld_all, "facets weld", tree)
 
 func _build_tile(i: int) -> void:
+	_tile_triangles(i)
+	# Each tile's index for finding the triangle under a point: welding only
+	# changes normals and colours, so it can be made now, tile by tile.
+	var t: TileBuf = tiles[i]
+	for k in t.tris.size() / 3:
+		_bucket(t, k, t.tris[k * 3], t.tris[k * 3 + 1], t.tris[k * 3 + 2])
+	# And each edge's key for the welding, here where the tiles are done side
+	# by side rather than there, where the whole map is one after another.
+	t.edge_keys.resize(t.tris.size())
+	for k in t.tris.size() / 3:
+		for e in 3:
+			t.edge_keys[k * 3 + e] = _edge_key(t.tris[k * 3 + e], t.tris[k * 3 + (e + 1) % 3])
+
+func _tile_triangles(i: int) -> void:
 	var t: TileBuf = tiles[i]
 	var points := {}                           # Vector2i grid point -> leaf size
 	_split(t, t.x0, t.z0, maxi(t.x1 - t.x0, t.z1 - t.z0), points)
@@ -286,10 +302,7 @@ func _weld_all() -> void:
 			var g := offsets[ti] + k
 			normals[g] = t.face_n[k]
 			for e in 3:
-				var a := _key(t.tris[k * 3 + e])
-				var b := _key(t.tris[k * 3 + (e + 1) % 3])
-				var key := [a, b] if a < b else [b, a]
-				var h := hash(key)
+				var h := t.edge_keys[k * 3 + e]
 				if edges.has(h):
 					var j: int = edges[h]
 					if normals[g].dot(normals[j]) > limit:
@@ -339,11 +352,19 @@ func _weld_all() -> void:
 				t.normals[k * 3 + v] = nn
 				t.colors[k * 3 + v] = col
 	plates = sum_n.size()
+	for t: TileBuf in tiles:
+		t.edge_keys = PackedInt64Array()
 
 var plates: int = 0
 ## Plates bigger than this (in doubled square metres, as summed above) are
 ## coloured triangle by triangle.
 const BIG_PLATE := 300.0
+
+## An edge as a key, the same whichever way round it runs.
+static func _edge_key(p: Vector3, q: Vector3) -> int:
+	var a := _key(p)
+	var b := _key(q)
+	return hash([a, b] if a < b else [b, a])
 
 ## A vertex as a key: to the centimetre, so both tiles' copies of a shared
 ## edge point agree.

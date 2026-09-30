@@ -13,6 +13,8 @@ extends StaticBody3D
 ## face normal, which is what makes the hills read as facets rather than as a
 ## blurry blanket, and it is also what the doc asks for.
 
+const Workers := preload("res://scripts/core/Workers.gd")
+
 ## ICE and ASH only turn up on the maps that ask for them (the frozen lakes and
 ## the volcano's slopes on Ostars): nothing grows on ice, and ash is charred
 ## country.
@@ -219,6 +221,12 @@ signal finished_generating()
 func _pause(what: String) -> void:
 	if loading_hook.is_valid():
 		await loading_hook.call(what)
+
+## Behind the boot screen, the tree: the big jobs on the worker threads let
+## frames go by while they work, so the screen keeps drawing (see Workers).
+## Otherwise null, and they are simply waited for.
+func _loading_tree() -> SceneTree:
+	return get_tree() if loading_hook.is_valid() and is_inside_tree() else null
 
 func _road_km() -> float:
 	var metres := 0.0
@@ -514,7 +522,7 @@ func generate() -> void:
 			road_paths.size(), bridges.size(), caves.size()])
 	else:
 		await _pause("No map cache yet: shaping the hills, valleys and coasts, %s height points - the slow part, done once" % UIKit.money((_cells + 1) * (_cells + 1)).replace("$", ""))
-		_fill_heights()
+		await _fill_heights()
 		_lap("heights")
 		await _pause("Cutting %d rivers to the sea, with their fords" % rivers.size())
 		_holes.resize(_cells * _cells)
@@ -556,7 +564,7 @@ func generate() -> void:
 		_save_cache()
 	_block_bridges()
 	await _pause("Building the ground mesh and its collision (%d chunks)" % int(pow(ceil(float(_cells) / float(CHUNK)), 2.0)))
-	_build_mesh()
+	await _build_mesh()
 	_lap("mesh")
 	await _pause("Working out what hides what, so hidden land is not drawn")
 	_build_occluders()
@@ -574,8 +582,7 @@ func _fill_heights() -> void:
 	var bufs: Array = []
 	for i in rows:
 		bufs.append(RowBuf.new())
-	var task := WorkerThreadPool.add_group_task(_fill_row.bind(bufs), rows, -1, true, "terrain rows")
-	WorkerThreadPool.wait_for_group_task_completion(task)
+	await Workers.group(_fill_row.bind(bufs), rows, "terrain rows", _loading_tree())
 	_heights = PackedFloat32Array()
 	_biomes = PackedByteArray()
 	for buf: RowBuf in bufs:
@@ -638,6 +645,11 @@ func _save_cache() -> void:
 		"roads": roads, "road_ends": road_ends})
 
 var _key_at_start: String = ""
+
+## What this land was made from, as the map cache knows it: the same key, the
+## same land.
+func cache_key() -> String:
+	return _key_at_start
 
 var _lap_ms: int = 0
 
@@ -1799,7 +1811,7 @@ func _build_mesh() -> void:
 		mat.roughness = 0.62
 		mat.metallic_specular = 0.6
 	if _plated():
-		_build_plates(mat)
+		await _build_plates(mat)
 		return
 	var chunks := int(ceil(float(_cells) / float(CHUNK)))
 	var bufs: Array = []
@@ -1807,9 +1819,7 @@ func _build_mesh() -> void:
 		bufs.append(ChunkBuf.new())
 	# The triangles for each chunk are worked out across the worker threads;
 	# the meshes and shapes are made here, on the main one.
-	var task := WorkerThreadPool.add_group_task(_chunk_task.bind(bufs, chunks), chunks * chunks,
-		-1, true, "terrain chunks")
-	WorkerThreadPool.wait_for_group_task_completion(task)
+	await Workers.group(_chunk_task.bind(bufs, chunks), chunks * chunks, "terrain chunks", _loading_tree())
 	var sea := PackedVector3Array()
 	var water := PackedVector3Array()
 	for buf: ChunkBuf in bufs:
@@ -1904,7 +1914,7 @@ static func _all_below(verts: PackedVector3Array, y: float) -> bool:
 ## shape per tile, and the water over every wet cell.
 func _build_plates(mat: Material) -> void:
 	facets = Facets.new(self)
-	facets.build()
+	await facets.build(_loading_tree())
 	for t: Facets.TileBuf in facets.tiles:
 		if t.tris.is_empty():
 			continue

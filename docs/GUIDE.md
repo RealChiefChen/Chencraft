@@ -14,12 +14,32 @@ godot --path .                                               # play
 godot --headless --path . --fixed-fps 60 scenes/tests.tscn   # integration tests
 godot --headless --path . --fixed-fps 60 scenes/bench.tscn   # physics benchmark
 godot --headless --path . --fixed-fps 60 scenes/smoke_world.tscn  # boot the real world headless
+godot --path . scenes/boot_time.tscn -- --map=ostars         # time the loading screen
 godot --path . scenes/stress_test.tscn                       # physics playground
 ```
 
 If you add a new script with a `class_name`, run
 `godot --headless --editor --quit --path .` once so the global class cache picks
 it up; headless runs resolve class names from that cache.
+
+### Loading
+
+The world is built behind the loading screen (`scripts/ui/Boot.gd`), in
+stages. The slow sums - the land's heights, its plates and their welding, the
+forests' stands, the prospecting and the cave plan - run on worker threads
+(`scripts/core/Workers.gd`), split over every core but a quarter of them, so
+the rest of the computer stays usable; and the loading screen goes on drawing
+meanwhile (capped at 60 frames a second), so the window never locks up.
+
+Two things are kept between loads, per map: the land (heights, rivers, roads,
+cave mouths) in `user://terrain_cache*.bin`, and the cave plan (every cavern
+and tunnel) in `user://cave_plan*.bin`. The first load after the land or the
+game changes works them out again, which is the slow load; after that they
+are read back. The cave plan is keyed on the land, the game's version and
+CaveNetwork's own source, so a new build always plans afresh once. Set
+`PROFILE_LOAD=1` to print how long each stage takes; `scenes/boot_time.tscn`
+runs the real loading screen and says how long the world took and the longest
+the screen went without drawing.
 
 ### Controls
 
@@ -288,7 +308,8 @@ hardness, and is thickest at the hard end of it:
 Starmetal lies in the Meteor Crater of Kael, black opal on the Dragon's Tooth
 Isle, and the caves (a big network under the continent with a cave biome
 under each kind of country, and a small one under the Whispering Woods) have
-their own. The map caches to `user://terrain_cache_ostars.bin`.
+their own. The map caches to `user://terrain_cache_ostars.bin`, and the cave
+plan to `user://cave_plan_ostars.bin` (see Loading, below).
 
 **The forests are grown, not scattered** (`scripts/world/Forester.gd`):
 
@@ -359,7 +380,8 @@ lumberman) at the Dune Trading Post - leaning on their tools at the counter.
 > below sea level, all joined up - in seven cave biomes: river, desert,
 > crystal, ice (sapphires), fungal (glowcap mushrooms to fell), magma and the
 > abyss (diamonds). Generation is threaded and cached in
-> `user://terrain_cache.bin`; far trees and rocks stay dormant until you come
+> `user://terrain_cache.bin` (the cave plan in `user://cave_plan.bin`); far
+> trees and rocks stay dormant until you come
 > near, and decor streams in round you. Some of the detail below describes the
 > earlier, smaller map.
 

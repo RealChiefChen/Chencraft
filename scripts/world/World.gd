@@ -4,6 +4,8 @@ extends Node3D
 ## The game scene: terrain, forest, quarry, the player's plot, the sell depot,
 ## the player and the HUD, plus save/load and vehicle handling.
 
+const Workers := preload("res://scripts/core/Workers.gd")
+
 ## 4.8 km across: a big home island and five more round it, joined by bridges
 ## and a causeway - bar one, which only a tunnel under the sea reaches.
 const MAP_HALF := 2400.0
@@ -225,6 +227,12 @@ func _stage(next: String, fraction: float) -> void:
 	load_progress.emit(next, fraction)
 	await get_tree().process_frame
 	await get_tree().process_frame
+
+## Behind the boot screen, the tree: the slow sums in building the world run
+## on worker threads while frames go by here, so the screen goes on drawing
+## (see Workers). Otherwise null, and they just run.
+func _loading_tree() -> SceneTree:
+	return get_tree() if staged_load else null
 
 ## Inside a stage: says what it is doing now and, behind the boot screen,
 ## gives it a frame to show it. Off the boot screen it does nothing and
@@ -841,7 +849,10 @@ const OSTARS_STOOD := 0.85
 func _build_ostars_forest() -> void:
 	await _detail("Working out how wooded Ostars is, region by region, and where the stands are")
 	forester = Forester.new(terrain, ostars, SPECIES)
-	var grown := forester.grow(int(Balance.num("world.ostars_tree_count", 20000.0) / OSTARS_STOOD))
+	var target := int(Balance.num("world.ostars_tree_count", 20000.0) / OSTARS_STOOD)
+	var out := [0]
+	await Workers.one(func(): out[0] = forester.grow(target), "forester", _loading_tree())
+	var grown: int = out[0]
 	_lap("forester")
 	var census := forester.census()
 	await _detail("Grew %d trees of %d kinds in %d stands" % [grown, census.size(), forester.stands.size()])
@@ -1465,7 +1476,8 @@ func _build_ostars_ore(step: int) -> void:
 	for kind in WILD_ORE:
 		sizes[kind.item] = kind
 	var prospector := Prospector.new(terrain, ostars)
-	var found := prospector.survey(step)
+	var found: Array = []
+	await Workers.one(func(): found.append_array(prospector.survey(step)), "prospector", _loading_tree())
 	_lap("prospect")
 	for entry in found:
 		var id: StringName = entry[0]
@@ -1602,6 +1614,26 @@ func _build_diamond_cavern() -> void:
 	field.prefill()
 	rock_fields.append(field)
 
+## Bump to throw away every saved cave plan.
+const CAVE_PLAN_VERSION := 1
+const CAVE_SEED := 4242
+
+## Plans the cave networks - or, when the land, the zones and the game are
+## all as they were last time, reads that plan back from the file it was kept
+## in (see CaveNetwork.save_plan), which is most of the time the caves take
+## to build. Behind the boot screen the planning runs on a worker thread,
+## with the screen still drawing.
+func _plan_caves(zones: Array, links: Array) -> void:
+	var path := terrain.cache_path.replace("terrain_cache", "cave_plan") if terrain.cache_path != "" else ""
+	var source := (network.get_script() as Script).source_code
+	var key := str(hash(var_to_str([CAVE_PLAN_VERSION, BuildInfo.NUMBER, terrain.cache_key(), zones, links,
+		CAVE_SEED, source.hash()])))
+	if network.load_plan(terrain, path, key, CAVE_SEED):
+		await _detail("Read the cave plan back from last time - no need to work it out again")
+		return
+	await Workers.one(network.plan.bind(terrain, zones, links, CAVE_SEED), "cave plan", _loading_tree())
+	network.save_plan(path, key)
+
 ## The cavern the diamonds are in, by room index; -1 until the caves are built.
 var diamond_cavern: int = -1
 
@@ -1616,7 +1648,7 @@ func _build_caves() -> void:
 	var zones: Array = Ostars.CAVE_ZONES if WorldMap.is_ostars() else CAVE_ZONES
 	var links: Array = [] if WorldMap.is_ostars() else CAVE_LINKS
 	await _detail("Planning %d cave networks under the land, and the deep passages between them" % zones.size())
-	network.plan(terrain, zones, links, 4242)
+	await _plan_caves(zones, links)
 	_lap("cave plan")
 	var net_summary: Dictionary = network.summary()
 	await _detail("Hollowing out %d caverns and %.1f km of tunnel, %d of them below the sea" % [

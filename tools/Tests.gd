@@ -64,6 +64,8 @@ func _run_all() -> void:
 	await _test(&"traders: fell Old Bjorn's tree and he lets you know", test_bjorns_tree)
 	await _test(&"roads are routed over the land, graded, with no tight bends", test_road_routing)
 	await _test(&"cave networks: joined up, below sea level, with open mouths", test_cave_network)
+	await _test(&"a cave plan read back from its file is the plan as made", test_cave_plan_kept)
+	await _test(&"loading work on the worker threads leaves cores free and misses nothing", test_load_workers)
 	await _test(&"belted lines of machines keep flowing without jamming", test_machine_lines)
 	await _test(&"a tunnel mouth is a real opening", test_tunnel_mouth)
 	await _test(&"logs never stick inside a tunnel", test_tunnel_flow)
@@ -1671,6 +1673,107 @@ func test_road_routing() -> void:
 		along2 += 2.7
 	check(tried > 50, "only %d points tried on the road" % tried)
 	check(poked * 50 <= tried, "the ground pokes through the road at %d of %d points" % [poked, tried])
+	done()
+
+## Planning the caves is the slow part of building them, so the plan is kept
+## in a file and read back on the next load: what comes back must be exactly
+## the plan as it was made, entrances and all, and only for the same key. And
+## the quicker bend relaxing must move the same points as looking at every
+## point every time round did.
+func test_cave_plan_kept() -> void:
+	_setup(false)
+	var land := _region_land()
+	land.cave_count = 3
+	land.cave_zones = [{"centre": Vector2(0, 0), "radius": 520.0, "count": 3}]
+	world.add_child(land)
+	await step(2)
+	var zones := [{"name": "Test", "centre": Vector2(0, 0), "radius": 520.0, "rooms": 10,
+		"kinds": [[CaveNetwork.Kind.RIVER, Vector2(-220, 120)], [CaveNetwork.Kind.CRYSTAL, Vector2(260, -160)]]}]
+	var made := CaveNetwork.new()
+	made.plan(land, zones, [], 11)
+	check(made.rooms.size() > 3 and made.tunnels.size() > 2, "too small a plan to test: %d caverns, %d tunnels" % [
+		made.rooms.size(), made.tunnels.size()])
+	var path := "user://test_cave_plan.bin"
+	made.save_plan(path, "key-a")
+	var read := CaveNetwork.new()
+	check(not read.load_plan(land, path, "key-b", 11), "a plan was read back for another key")
+	check(read.rooms.is_empty(), "a refused plan left caverns behind")
+	check(read.load_plan(land, path, "key-a", 11), "the plan was not read back")
+	check_eq(read.rooms.size(), made.rooms.size(), "caverns read back")
+	check_eq(read.tunnels.size(), made.tunnels.size(), "tunnels read back")
+	check_eq(var_to_str(read.tunnels), var_to_str(made.tunnels), "tunnels as made")
+	var entrances := 0
+	for i in mini(read.rooms.size(), made.rooms.size()):
+		var a: Dictionary = made.rooms[i]
+		var b: Dictionary = read.rooms[i]
+		for k in ["centre", "rx", "ry", "rz", "floor", "yaw", "kind", "zone", "links", "index"]:
+			check_eq(b[k], a[k], "cavern %d's %s" % [i, k])
+		check(is_same(b.entrance, a.entrance), "cavern %d's entrance is not the terrain's own cave plan" % i)
+		entrances += int(b.entrance != null)
+	check(entrances > 0, "no cavern read back with its entrance")
+	# The same queries answer the same way.
+	for t: Dictionary in made.tunnels:
+		var mid: Vector3 = (t.points as PackedVector3Array)[(t.points as PackedVector3Array).size() / 2]
+		check(read.contains(mid), "a point in a tunnel is not in the read-back plan's caves")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	made.free()
+	read.free()
+	# Bend relaxing, against the plain way of doing it.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	for trial in 40:
+		var pts := PackedVector3Array()
+		var p := Vector3.ZERO
+		var heading := 0.0
+		for i in rng.randi_range(8, 70):
+			heading += rng.randf_range(-1.4, 1.4)
+			p += Vector3(cos(heading), rng.randf_range(-0.4, 0.4), sin(heading)) * 2.5
+			pts.append(p)
+		var r := rng.randf_range(3.0, 8.0)
+		check_eq(CaveNetwork._relax_bends(pts, r), _relax_plain(pts, r), "relaxed bends, trial %d" % trial)
+	done()
+
+## Bend relaxing as it was first written: every point, every time round.
+func _relax_plain(pts: PackedVector3Array, r: float) -> PackedVector3Array:
+	var tightest := CaveNetwork.min_bend(r) * 1.05
+	var out := pts.duplicate()
+	var keep := 2
+	for it in 120:
+		var moved := false
+		for i in range(keep, out.size() - keep):
+			if CaveNetwork.bend_radius(out, i) >= tightest:
+				continue
+			for j in [i - 1, i, i + 1]:
+				if j < keep or j >= out.size() - keep:
+					continue
+				var mid := (out[j - 1] + out[j + 1]) * 0.5
+				out[j] = out[j].lerp(mid, 0.5)
+			moved = true
+		if not moved:
+			break
+	return out
+
+## The big jobs of loading are split over the worker threads: every piece
+## done once, with or without frames going by meanwhile, and some cores left
+## for the rest of the computer.
+func test_load_workers() -> void:
+	const Workers := preload("res://scripts/core/Workers.gd")
+	var n := OS.get_processor_count()
+	check(Workers.tasks() >= 1, "no threads at all")
+	if n > 2:
+		check(Workers.tasks() < n, "every core used: %d of %d" % [Workers.tasks(), n])
+	for tree in [null, get_tree()]:
+		var hits: Array = []
+		hits.resize(500)
+		hits.fill(0)
+		await Workers.group(func(i: int): hits[i] = int(hits[i]) + 1, 500, "test", tree)
+		var wrong := 0
+		for h in hits:
+			wrong += int(h != 1)
+		check_eq(wrong, 0, "pieces not done exactly once (%s)" % ("with frames" if tree != null else "waited"))
+		var out := [0]
+		await Workers.one(func(): out[0] = 42, "test", tree)
+		check_eq(out[0], 42, "a single job's result (%s)" % ("with frames" if tree != null else "waited"))
 	done()
 
 ## Spec: caves much more extensive and interconnected, below sea level, big and

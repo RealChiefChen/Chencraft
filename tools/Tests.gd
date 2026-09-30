@@ -6853,7 +6853,7 @@ func test_avatar() -> void:
 		player.queue_free()
 		done()
 		return
-	check_eq(av._part.size(), 6, "the model should have six pivots")
+	check_eq(av._part.size(), PlayerAvatar.PARTS.size(), "the model is missing pivots (elbows, knees, fingers...)")
 	player.third_person = false
 	await step(2)
 	check_eq(av._meshes[0].cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY,
@@ -7020,17 +7020,29 @@ func test_knocked_flying() -> void:
 	check(p.knocked(), "a knock did not throw him limp")
 	await step(10)
 	check_eq(p.avatar.mode(), &"ragdoll", "the lumberjack does not go limp when thrown")
+	check(p.ragdoll != null, "he went limp as one lump, not a ragdoll with arms and legs")
 	var went := false
+	var worst_gap := 0.0
 	for i in 60 * 14:
 		await step(1)
 		if p.global_position.x > 3.0:
 			went = true
+		if p.ragdoll != null and is_instance_valid(p.ragdoll):
+			# Every limb stays on at its joint, however he lands.
+			for pair in [[&"arm_r", &"fore_r", 0.24], [&"thigh_l", &"shin_l", 0.28], [&"torso", &"head", 0.0]]:
+				var a: RigidBody3D = p.ragdoll.bodies[pair[0]]
+				var b: RigidBody3D = p.ragdoll.bodies[pair[1]]
+				var joint: Vector3 = a.global_transform * (Vector3.DOWN * float(pair[2])) if float(pair[2]) > 0.0 else b.global_position
+				worst_gap = maxf(worst_gap, joint.distance_to(b.global_position))
 		if not p.knocked():
 			break
+	check(worst_gap < 0.2, "a limb came off at the joint (%.2f m)" % worst_gap)
 	check(went, "the knock did not send him flying")
 	check(not p.knocked(), "he never got back up")
 	check_eq(p.collision_layer, Layers.PLAYER, "standing up did not give him his body back")
 	check(not p.camera.top_level, "the camera stayed off watching after he got up")
+	check(p.avatar.part(&"Torso").position.distance_to(Vector3(0, 0.62, 0)) < 0.01, "his body did not go back on his hips after getting up")
+	check(not p.avatar.hat_off(), "his hat is still off after getting up")
 	# A long drop lands him in a heap too.
 	p.global_position = Vector3(0, 40, 0)
 	p.velocity = Vector3.ZERO

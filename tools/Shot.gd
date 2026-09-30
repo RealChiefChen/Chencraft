@@ -1160,3 +1160,91 @@ func shot_tntshelf() -> void:
 			await snap("tnt_shelf_wide")
 			return
 	print("no TNT on the shelf")
+
+## The ragdoll: a big knock filmed from a fixed camera, frame by frame, then
+## him dangling from a crane.
+func shot_ragdoll() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var p: Player = world.player
+	var base := world.plot.global_position + Vector3(-10, 0, 22)
+	base.y = world.terrain.height_at(base.x, base.z)
+	p.global_position = base + Vector3(0, 0.2, 0)
+	p.rotation.y = 0.0
+	await _frames(40)
+	var cam := Camera3D.new()
+	world.add_child(cam)
+	cam.global_position = base + Vector3(9.0, 3.2, 7.5)
+	cam.look_at(base + Vector3(3.5, 1.4, 0), Vector3.UP)
+	cam.current = true
+	await _frames(5)
+	await snap("rd_0")
+	p.knock(Vector3(11, 12, -2))
+	var marks := [6, 14, 24, 36, 55, 90]
+	var n := 0
+	var follow := p.global_position
+	for i in 600:
+		await get_tree().process_frame
+		if p.knocked():
+			follow = follow.lerp(p.tumble.global_position, 0.25)
+		cam.global_position = follow + Vector3(4.5, 1.8, 4.0)
+		cam.look_at(follow + Vector3(0, 0.3, 0), Vector3.UP)
+		if n < marks.size() and i == marks[n]:
+			await snap("rd_%d" % (n + 1))
+			n += 1
+		if n >= marks.size() and not p.knocked():
+			break
+	for i in 90:
+		await get_tree().process_frame
+	await snap("rd_up")
+	# Dangling from a crane, arms and legs hanging.
+	var truck := Hauler.new()
+	truck.setup(world.manager, 0, &"crane_truck")
+	world.add_child(truck)
+	var tpos := base + Vector3(-10, 0, 10)
+	tpos.y = world.terrain.height_at(tpos.x, tpos.z) + truck.spawn_height()
+	truck.global_position = tpos
+	await _frames(60)
+	truck.rig.set_operating(true)
+	var frame := truck.global_transform
+	p.global_position = frame * Vector3(3.6, 0.0, 1.0)
+	await _frames(20)
+	truck.rig._take_player(p)
+	truck.rig.target = truck.rig.clamp_target(truck.rig.target + Vector3(0, 2.2, 0))
+	for i in 150:
+		await get_tree().physics_frame
+	var hang := p.tumble.global_position
+	cam.global_position = hang + Vector3(3.5, 0.6, 3.5)
+	cam.look_at(hang + Vector3(0, -0.4, 0), Vector3.UP)
+	await _frames(10)
+	await snap("rd_crane")
+
+## Walking and sprinting from the side, close, to see the knees and elbows.
+func shot_gait() -> void:
+	Settings.set_value(&"moving_sun", false, false)
+	world.hud.visible = false
+	var p: Player = world.player
+	var base := world.plot.global_position + Vector3(-10, 0, 22)
+	base.y = world.terrain.height_at(base.x, base.z)
+	p.global_position = base + Vector3(0, 0.2, 0)
+	p.rotation.y = PI * 0.5          # walking along -x
+	await _frames(30)
+	var cam := Camera3D.new()
+	world.add_child(cam)
+	cam.current = true
+	Input.action_press("move_forward")
+	for i in 70:
+		await get_tree().physics_frame
+		cam.global_position = p.global_position + Vector3(0, 1.0, 3.2)
+		cam.look_at(p.global_position + Vector3(0, 0.75, 0), Vector3.UP)
+		if i in [40, 47, 54, 61]:
+			await snap("gait_walk_%d" % i)
+	Input.action_press("sprint")
+	for i in 70:
+		await get_tree().physics_frame
+		cam.global_position = p.global_position + Vector3(0, 1.0, 3.2)
+		cam.look_at(p.global_position + Vector3(0, 0.75, 0), Vector3.UP)
+		if i in [40, 45, 50, 55]:
+			await snap("gait_run_%d" % i)
+	Input.action_release("sprint")
+	Input.action_release("move_forward")

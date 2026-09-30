@@ -698,8 +698,7 @@ func _physics_step(delta: float) -> void:
 		return
 	if tumble != null and not is_instance_valid(tumble):
 		# The body went (dropped into something): up he gets.
-		tumble = null
-		crane_hold = false
+		_end_ragdoll()
 		collision_layer = Layers.PLAYER
 		collision_mask = Layers.MASK_PLAYER
 		_restore_camera()
@@ -1744,10 +1743,11 @@ func exit_vehicle() -> void:
 
 # --- Knocked flying ---------------------------------------------------------------
 #
-# A long fall, a truck, a blast or a crane's grapple and he goes limp: the body
-# becomes a tumbling physics body (the lumberjack flopping about on it, see
-# PlayerAvatar._limp), the camera pulls back to watch, and once he has come to
-# rest he gets up where he lies. The crusher is worse.
+# A long fall, a truck, a blast or a crane's grapple and he goes limp: he
+# becomes a ragdoll (Ragdoll: body, head, arms and legs each a physics body,
+# jointed), the camera pulls back to watch - shaking as he hits the ground, in
+# slow motion for a moment on a big hit - his hat flies off, and once he has
+# come to rest he gets up where he lies. The crusher is worse.
 
 ## Co-op, on the host: something happened to a guest's player that the
 ## guest's own game has to act out (thrown, crushed).
@@ -1758,15 +1758,27 @@ static var FALL_KNOCK_SPEED: float = Balance.num("player.fall_knock_speed", 16.0
 ## A vehicle coming at him faster than this (m/s) sends him flying.
 static var CAR_KNOCK_SPEED: float = Balance.num("player.car_knock_speed", 5.0)
 ## Seconds lying still before he gets up; the longest he stays down.
-const TUMBLE_REST := 1.0
+const TUMBLE_REST := 1.6
 const TUMBLE_MOST := 12.0
 ## Seconds watching the crusher before he is back at base.
 const CRUSHED_SECONDS := 4.5
-## The tumbling body's middle, above his feet.
+## The tumbling body's middle, above his feet (a plain capsule, when there is
+## no model to make a ragdoll of); a ragdoll's body is held at the hips.
 const TUMBLE_HIPS := 0.9
+const RAGDOLL_HIPS := 0.62
+## A knock this hard (m/s) is worth slow motion and his hat.
+const BIG_KNOCK := 13.0
 
-## The body he is tumbling as, while knocked flying.
+## The body he is tumbling as, while knocked flying: the ragdoll's body, or a
+## plain capsule.
 var tumble: RigidBody3D = null
+## The whole of him, limp.
+var ragdoll: Ragdoll = null
+var _hips: float = TUMBLE_HIPS
+## Camera shake, 0..1, dying away.
+var _shake: float = 0.0
+var _last_v: Vector3 = Vector3.ZERO
+var _impact_cd: float = 0.0
 ## Held up by a crane's grapple: he stays limp until it lets go.
 var crane_hold: bool = false
 var _tumble_t: float = 0.0
@@ -1790,9 +1802,13 @@ func knock(push: Vector3) -> void:
 	if driving() or crushed() or (build_system != null and build_system.active):
 		return
 	if knocked():
-		tumble.linear_velocity += push
-		tumble.angular_velocity += _spin_for(push)
+		if ragdoll != null:
+			ragdoll.shove(push, _spin_for(push))
+		else:
+			tumble.linear_velocity += push
+			tumble.angular_velocity += _spin_for(push)
 		_tumble_still = 0.0
+		_drama(push)
 		return
 	_release_dragged()
 	# Whatever was on the rack goes everywhere.
@@ -1803,6 +1819,30 @@ func knock(push: Vector3) -> void:
 	if not held.is_empty():
 		held.clear()
 		carry_changed.emit(0, capacity_m3())
+	var rd := Ragdoll.new()
+	get_parent().add_child(rd)
+	if avatar != null and avatar.model != null and rd.build(avatar.part, velocity, self):
+		ragdoll = rd
+		tumble = rd.torso
+		_hips = RAGDOLL_HIPS
+		rd.shove(push, _spin_for(push))
+	else:
+		rd.queue_free()
+		ragdoll = null
+		tumble = _capsule_body(push)
+		_hips = TUMBLE_HIPS
+	_tumble_t = 0.0
+	_tumble_still = 0.0
+	_last_v = tumble.linear_velocity
+	collision_layer = 0
+	collision_mask = 0
+	velocity = Vector3.ZERO
+	camera.top_level = true
+	Sfx.play(&"whoosh", global_position, 0.0, 0.7)
+	_drama(push)
+
+## With no model to make a ragdoll of: one capsule for all of him.
+func _capsule_body(push: Vector3) -> RigidBody3D:
 	var body := RigidBody3D.new()
 	body.name = "Tumble"
 	body.mass = 80.0
@@ -1825,15 +1865,72 @@ func knock(push: Vector3) -> void:
 	body.global_transform = Transform3D(Basis(Vector3.UP, global_rotation.y), global_position + Vector3.UP * TUMBLE_HIPS)
 	body.linear_velocity = velocity + push
 	body.angular_velocity = _spin_for(push)
-	body.add_collision_exception_with(self)
-	tumble = body
-	_tumble_t = 0.0
-	_tumble_still = 0.0
-	collision_layer = 0
-	collision_mask = 0
-	velocity = Vector3.ZERO
-	camera.top_level = true
-	Sfx.play(&"whoosh", global_position, 0.0, 0.7)
+	return body
+
+## The show: the camera shakes, a big hit knocks his hat off and slows the
+## world down for a moment (only playing alone - it would slow everyone).
+func _drama(push: Vector3) -> void:
+	var hard := push.length()
+	_shake = maxf(_shake, clampf(hard / 18.0, 0.25, 1.0))
+	if hard < BIG_KNOCK:
+		return
+	if avatar != null:
+		avatar.lose_hat(tumble.linear_velocity + push * 0.4 + Vector3.UP * 3.0)
+	if input.remote or net_view or Net.online() or DisplayServer.get_name() == "headless":
+		return
+	Engine.time_scale = 0.3
+	get_tree().create_timer(0.55, true, false, true).timeout.connect(func() -> void:
+		Engine.time_scale = 0.65
+		get_tree().create_timer(0.25, true, false, true).timeout.connect(func() -> void:
+			Engine.time_scale = 1.0))
+
+## Hitting the ground: a thud, a puff of dust, the camera shaken.
+func _impact(at: Vector3, strength: float) -> void:
+	_impact_cd = 0.18
+	_shake = maxf(_shake, clampf(strength / 16.0, 0.15, 1.0))
+	Sfx.play(&"thud", at, clampf(strength * 0.6 - 6.0, -12.0, 4.0), randf_range(0.85, 1.1))
+	var dust := Blast._burst(Color(0.55, 0.45, 0.33), false, int(clampf(strength * 2.0, 8.0, 30.0)), 2.5, 0.9, 0.14)
+	dust.gravity = Vector3(0, 0.6, 0)
+	var parent := get_parent()
+	if parent == null:
+		return
+	parent.add_child(dust)
+	dust.global_position = at + Vector3.DOWN * 0.3
+	get_tree().create_timer(2.0).timeout.connect(dust.queue_free)
+
+## A crane's grapple has hold of him (or lets go).
+func set_held(on: bool, let_go_velocity: Vector3 = Vector3.ZERO) -> void:
+	if not knocked():
+		return
+	if ragdoll != null:
+		ragdoll.set_held(on)
+	else:
+		tumble.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		tumble.freeze = on
+	if not on:
+		tumble.linear_velocity = let_go_velocity
+
+## How far below a grapple's jaws the held body hangs.
+func hang_drop() -> float:
+	return 0.72 if ragdoll != null else 0.85
+
+## Puts the ragdoll (or capsule) away.
+func _end_ragdoll(immediately: bool = false) -> void:
+	if ragdoll != null and is_instance_valid(ragdoll):
+		if immediately:
+			ragdoll.free()
+		else:
+			ragdoll.queue_free()
+	elif tumble != null and is_instance_valid(tumble):
+		if immediately:
+			tumble.free()
+		else:
+			tumble.queue_free()
+	ragdoll = null
+	tumble = null
+	crane_hold = false
+	if avatar != null:
+		avatar.recover()
 
 ## Head over heels, harder the harder he was hit.
 func _spin_for(push: Vector3) -> Vector3:
@@ -1849,9 +1946,15 @@ func _tumble_step(delta: float) -> void:
 		# rescue brings him back.
 		stand_up()
 		return
-	global_position = b.global_position - Vector3.UP * TUMBLE_HIPS
+	global_position = b.global_position - Vector3.UP * _hips
 	velocity = b.linear_velocity
 	_tumble_t += delta
+	# A sudden stop is him hitting something.
+	_impact_cd = maxf(0.0, _impact_cd - delta)
+	var dv := (_last_v - b.linear_velocity).length()
+	if dv > 5.0 and _impact_cd <= 0.0 and not b.freeze:
+		_impact(b.global_position, dv)
+	_last_v = b.linear_velocity
 	if crane_hold:
 		_tumble_still = 0.0
 		# Hold jump to wriggle free of the grapple.
@@ -1859,9 +1962,10 @@ func _tumble_step(delta: float) -> void:
 		if _wriggle > 1.0:
 			_wriggle = 0.0
 			crane_hold = false
-			b.freeze = false
+			set_held(false)
 		return
-	if b.linear_velocity.length() < 0.7 and b.angular_velocity.length() < 1.5:
+	var moving := ragdoll.speed() if ragdoll != null else b.linear_velocity.length()
+	if moving < 0.8 and b.angular_velocity.length() < 1.5:
 		_tumble_still += delta
 	else:
 		_tumble_still = 0.0
@@ -1875,20 +1979,22 @@ func stand_up() -> void:
 	var at := tumble.global_position
 	var along := tumble.global_basis.y
 	var yaw := atan2(-along.x, -along.z) if Vector2(along.x, along.z).length() > 0.3 else global_rotation.y
-	tumble.queue_free()
-	tumble = null
-	crane_hold = false
-	# Feet on whatever is under him.
+	var hips := _hips
+	var skip := ragdoll.rids() if ragdoll != null else [tumble.get_rid()] as Array[RID]
+	# Feet on whatever is under him (not on his own limbs).
 	var q := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.5, at + Vector3.DOWN * 3.0, Layers.MASK_PLAYER | Layers.KERB)
+	q.exclude = skip
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	var feet: Vector3 = (hit.position as Vector3) + Vector3.UP * 0.05 if not hit.is_empty() else at - Vector3.UP * TUMBLE_HIPS
+	_end_ragdoll()
+	var feet: Vector3 = (hit.position as Vector3) + Vector3.UP * 0.05 if not hit.is_empty() else at - Vector3.UP * hips
 	global_position = feet
 	rotation = Vector3(0, yaw, 0)
 	velocity = Vector3.ZERO
 	collision_layer = Layers.PLAYER
 	collision_mask = Layers.MASK_PLAYER
 	_restore_camera()
-	act(&"land")
+	if avatar != null:
+		avatar.restore_hat()
 
 func _restore_camera() -> void:
 	camera.top_level = false
@@ -1897,20 +2003,25 @@ func _restore_camera() -> void:
 ## While he is down: the camera stands off and watches him (the mouse still
 ## swings it round).
 func _update_down_camera(delta: float) -> void:
-	var look: Vector3 = tumble.global_position if knocked() else _crushed_at
+	var look: Vector3 = tumble.global_position + Vector3.UP * (0.35 if ragdoll != null else 0.0) if knocked() else _crushed_at
 	var yaw := global_rotation.y
 	var back := Basis(Vector3.UP, yaw).z
-	var want := look + back * (4.5 if knocked() else 7.0) + Vector3.UP * (2.2 if knocked() else 4.0)
+	# Further back the faster he is going, so a big throw stays in frame.
+	var far := 4.5 + clampf(tumble.linear_velocity.length() * 0.15, 0.0, 3.5) if knocked() else 7.0
+	var want := look + back * far + Vector3.UP * (2.2 if knocked() else 4.0)
 	if knocked():
 		# Pulled in rather than behind a wall. (Over the crusher it just stands
 		# up and back: the machine's own walls would pull it into the hopper.)
-		var skip: Array[RID] = [tumble.get_rid()]
+		var skip: Array[RID] = ragdoll.rids() if ragdoll != null else [tumble.get_rid()] as Array[RID]
 		var clear := _camera_clearance(look + Vector3.UP * 0.5, (want - look - Vector3.UP * 0.5).normalized(),
 			want.distance_to(look + Vector3.UP * 0.5), skip)
 		want = look + Vector3.UP * 0.5 + (want - look - Vector3.UP * 0.5).normalized() * clear
 	camera.global_position = camera.global_position.lerp(want, 1.0 - exp(-8.0 * delta))
 	if camera.global_position.distance_to(look) > 0.2:
 		camera.look_at(look, Vector3.UP)
+	if _shake > 0.0:
+		camera.global_position += Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * 0.22 * _shake * _shake
+		_shake = maxf(0.0, _shake - delta * 2.5)
 
 ## A truck coming at him.
 func _check_vehicles() -> void:
@@ -1950,9 +2061,7 @@ func crush(at: Vector3) -> void:
 		# he is sent back to base from here when it is over.
 		net_event.emit({"t": "crush", "x": [at.x, at.y, at.z]})
 	if knocked():
-		tumble.queue_free()
-		tumble = null
-		crane_hold = false
+		_end_ragdoll()
 	_release_dragged()
 	_crushed_t = CRUSHED_SECONDS
 	_crushed_at = at
@@ -1981,6 +2090,7 @@ func _crushed_step(delta: float) -> void:
 	collision_mask = Layers.MASK_PLAYER
 	if avatar != null:
 		avatar.visible = true
+		avatar.restore_hat()
 	_restore_camera()
 
 ## [E] on a stick of TNT: light it.
@@ -1992,7 +2102,6 @@ func _light_tnt(item: LooseItem) -> String:
 
 ## Tests: puts away a tumbling body without the getting-up.
 func free_tumble_for_test() -> void:
-	if knocked():
-		tumble.free()
-	tumble = null
-	crane_hold = false
+	_end_ragdoll(true)
+	if avatar != null:
+		avatar.restore_hat()

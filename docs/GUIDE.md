@@ -467,13 +467,18 @@ region that is not there.
   Loose ore chunks in the blast crack in two the same way. The knobs are in the
   `explosives` section of `balance.json`.
 * **Getting knocked flying.** A long drop (landing faster than 16 m/s, about
-  twelve metres), a truck driving into you or a blast turns you into a ragdoll:
-  the body tumbles as a physics body with the lumberjack flopping about on it,
-  the camera stands off and watches (the mouse swings it round), and once you
-  have come to rest you get up where you lie. Whatever was on the rack goes
-  everywhere.
+  twelve metres), a truck driving into you or a blast turns you into a ragdoll
+  (`scripts/player/Ragdoll.gd`): body, head, upper arms, forearms, thighs and
+  shins are each a physics body, jointed at the neck, shoulders, elbows, hips
+  and knees within a person's range, so every limb flails and flops on its
+  own. The camera stands off and follows (the mouse swings it round, it pulls
+  back the faster you go and shakes as you hit things), each hit on the ground
+  is a thud and a puff of dust, a big knock sends your beanie flying and -
+  playing alone - drops the world into slow motion for a moment. Once you have
+  lain still a second or two you pick yourself up where you are, hat back on.
+  Whatever was on the rack goes everywhere.
 * **Cranes pick up players.** Close the grapple (or drop the claw) on someone
-  and they come too, dangling by the shirt. Hold **jump** for a second to
+  and they come too, held by the body with arms and legs dangling. Hold **jump** for a second to
   wriggle free; otherwise they drop when the crane lets go.
 * **The crusher crushes players.** Fall (or be dropped) into its hopper and you
   go through: the camera watches the machine for a few seconds while ten Meat
@@ -632,16 +637,22 @@ catch is drawn only from the driver's seat.
 
 Nearly every mesh is built in code from primitives. The one exception is you.
 
-* **The player** is a barrel-shaped lumberjack with a huge ginger beard, a red
-  plaid shirt, braces, mittens and a tiny yellow beanie:
-  `assets/models/player.glb`, made in Blender to the game's own rules (flat
-  colours, boxes, eight-sided round parts, rough flat shading) with the
-  source in `source/player.blend` (Godot skips that folder). The model is six pivots - legs, torso,
-  arms, head - and `PlayerAvatar` poses them in code every frame; nothing is
-  keyframed in the file. Its base pose follows what you are doing: standing
+* **The player** is a barrel-shaped lumberjack with a huge ginger beard lying on
+  his belly (its strands carved into it), a red plaid shirt, braces, green work
+  gloves, domed work boots with laces and brass eyelets, and a yellow knit
+  beanie: `assets/models/player.glb`, built in Blender by a script kept in the
+  file (`source/player.blend`, text `player_build`: flat colours, faceted,
+  lightly rounded blocks). The model is pivots - hips (the body), head,
+  shoulders, elbows, wrists, each finger at the knuckle and halfway, thumbs,
+  hips, knees and ankles - and `PlayerAvatar` poses them in code every frame;
+  nothing is keyframed in the file. Knees bend as each leg comes through a
+  step and on landing, and fold to sit; elbows pump when sprinting, bend to
+  carry and wind up a swing; fingers close round a tool, the wheel or the
+  levers and hang loose otherwise; stood still, he shifts his weight from leg
+  to leg. Its base pose follows what you are doing: standing
   (breathing), walking and sprinting (short quick steps, arms swinging), in the
   air (arms out, windmilling on a long drop, a squash on landing), swimming (a
-  doggy paddle), wading (mittens held up out of the wet), carrying a load
+  doggy paddle), wading (hands held up out of the wet), carrying a load
   (across the chest, leaning back), dragging (reaching for the grabbed point,
   both hands on anything heavy), holding a tool (over the shoulder), at the
   wheel (hands on it, turning it as you steer), working a crane or loader

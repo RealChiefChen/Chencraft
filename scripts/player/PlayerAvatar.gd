@@ -228,6 +228,9 @@ func _process(delta: float) -> void:
 # --- What he is doing --------------------------------------------------------
 
 func _current_mode(delta: float) -> StringName:
+	if _limp_body() != null:
+		_air = 0.0
+		return &"ragdoll"
 	if player.driving():
 		var r: VehicleRig = player.rig()
 		if player.loader() != null or (r != null and r.operating):
@@ -251,6 +254,12 @@ func _current_mode(delta: float) -> StringName:
 ## At the wheel he sits in the seat and turns with the vehicle; otherwise he
 ## stands where the player stands.
 func _place() -> void:
+	var body := _limp_body()
+	if body != null:
+		# Knocked flying: he goes wherever the tumbling body goes, head over
+		# heels with it.
+		global_transform = body.global_transform * Transform3D(Basis(), Vector3.DOWN * Player.TUMBLE_HIPS)
+		return
 	var v: Node3D = player.vehicle as Node3D if player.driving() else null
 	if v != null and is_instance_valid(v) and v.has_method("seat_transform"):
 		var b := v.global_transform.basis.orthonormalized()
@@ -321,6 +330,8 @@ func _base_pose(delta: float) -> Dictionary:
 			_airborne(p)
 		&"build":
 			_supervising(p)
+		&"ragdoll":
+			_limp(p)
 		_:
 			_walking(p, delta)
 	# Breathing, whatever else is going on: the belly rises, the arms drift.
@@ -411,6 +422,33 @@ func _airborne(p: Dictionary) -> void:
 	if _carrying():
 		p[&"Arm_L"] = Vector3(1.25, 0, 0.2)
 		p[&"Arm_R"] = Vector3(1.25, 0, -0.2)
+
+## The tumbling body he is flopping about on, or null.
+func _limp_body() -> RigidBody3D:
+	if player.has_method("knocked") and player.knocked():
+		return player.tumble
+	return null
+
+## Limp: arms and legs flung out and flopping with the spin; hanging from a
+## crane's grapple, arms up and legs dangling, kicking now and then.
+func _limp(p: Dictionary) -> void:
+	var body := _limp_body()
+	var spin := body.angular_velocity.length() + body.linear_velocity.length() * 0.3 if body != null else 0.0
+	var flop := sin(_t * 11.0) * clampf(spin * 0.06, 0.05, 0.7)
+	var flop2 := sin(_t * 8.3 + 1.7) * clampf(spin * 0.06, 0.05, 0.7)
+	if bool(player.get("crane_hold")):
+		p[&"Arm_L"] = Vector3(-2.7 + flop * 0.3, 0, -0.35)
+		p[&"Arm_R"] = Vector3(-2.7 - flop * 0.3, 0, 0.35)
+		p[&"Leg_L"] = _rest[&"Leg_L"] + Vector3(0.35 * sin(_t * 6.0), 0, 0)
+		p[&"Leg_R"] = _rest[&"Leg_R"] + Vector3(-0.35 * sin(_t * 6.0), 0, 0)
+		_add(p, &"Head", Vector3(0.25, 0, 0))
+		return
+	p[&"Arm_L"] = Vector3(-0.5 + flop, 0.3, -1.5 + flop2 * 0.5)
+	p[&"Arm_R"] = Vector3(-0.5 - flop2, -0.3, 1.5 + flop * 0.5)
+	p[&"Leg_L"] = _rest[&"Leg_L"] + Vector3(0.45 + flop * 0.6, 0, -0.35)
+	p[&"Leg_R"] = _rest[&"Leg_R"] + Vector3(-0.3 - flop2 * 0.6, 0, 0.35)
+	_add(p, &"Torso", Vector3(0.15, 0, 0))
+	_add(p, &"Head", Vector3(0.35 * sin(_t * 5.0), 0.3 * flop2, 0))
 
 func _swimming(p: Dictionary) -> void:
 	# A doggy paddle, head held up out of the water.

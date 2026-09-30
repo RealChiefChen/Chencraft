@@ -179,6 +179,12 @@ func _run_all() -> void:
 	await _test(&"the lumberjack is posed from what you do, and third person still aims true", test_avatar)
 	await _test(&"per-plot cap is enforced", test_cap)
 	await _test(&"shop stock stays on the shelf however busy the world gets", test_shop_stock_kept)
+	await _test(&"ore blocks are built to fit any box", test_ore_look_fits_any_box)
+	await _test(&"a knock throws the player limp, and he gets back up", test_knocked_flying)
+	await _test(&"a truck driving into a player sends him flying", test_truck_knocks_player)
+	await _test(&"a crane's grapple picks a player up", test_crane_lifts_player)
+	await _test(&"the crusher crushes a player into meat", test_crusher_crushes_player)
+	await _test(&"TNT: $50 a stick, blows players about, cracks easy ore, not the best", test_tnt)
 	await _test(&"full automated base stays in budget", test_full_base)
 
 	_say("")
@@ -6968,4 +6974,231 @@ func test_climb() -> void:
 		await step(1)
 		best = maxf(best, truck.global_position.y)
 	check(best > 15.0, "a loaded log truck only got %.1f m up a 38-degree slope" % best)
+	done()
+
+## Ore blocks are built for the box they fill: any aspect ratio, cubes kept
+## (nearly) cubic, the rock filling the box and only glowing ore sticking out.
+func test_ore_look_fits_any_box() -> void:
+	for size: Vector3 in [Vector3(1, 1, 1), Vector3(2.4, 0.4, 0.9), Vector3(0.3, 1.6, 0.5), Vector3(0.12, 0.2, 0.15)]:
+		var n := OreLook.cells_for(size)
+		var cube := Vector3(size.x / n.x, size.y / n.y, size.z / n.z)
+		var ratio := maxf(cube.x, maxf(cube.y, cube.z)) / minf(cube.x, minf(cube.y, cube.z))
+		check(ratio < 1.35, "ore cubes stay near cubes in %s (ratio %.2f)" % [size, ratio])
+		for id: StringName in [&"ore_iron", &"ore_bismuth", &"ore_starmetal"]:
+			var parts := OreLook.rock(id, size, Vector3.ZERO, 0.0, 7)
+			check(parts.size() >= 1, "%s has a rock for %s" % [id, size])
+			if parts.is_empty():
+				continue
+			var box: AABB = parts[0].mesh.get_aabb()
+			for k in range(1, parts.size()):
+				box = box.merge(parts[k].mesh.get_aabb())
+			# Ore stands out of a face by under half a cube.
+			var slack := Vector3.ONE * (maxf(cube.x, maxf(cube.y, cube.z)) * 0.9 + 0.001)
+			check(box.size.x >= size.x * 0.99 and box.size.x <= size.x + slack.x
+				and box.size.y >= size.y * 0.99 and box.size.y <= size.y + slack.y
+				and box.size.z >= size.z * 0.99 and box.size.z <= size.z + slack.z,
+				"%s rock fills %s (got %s)" % [id, size, box.size])
+			for p in parts:
+				p.free()
+	done()
+
+# --- Friends' list: ragdolls, cranes, the crusher, TNT ------------------------------
+
+## A player standing on the test ground, ready to be thrown about.
+func _standing_player(at: Vector3) -> Player:
+	var p := _make_player()
+	p.position = at
+	world.add_child(p)
+	return p
+
+func test_knocked_flying() -> void:
+	_setup(false)
+	var p := _standing_player(Vector3(0, 1.0, 0))
+	await step(30)
+	check(p.is_on_floor(), "the player is not standing to start with")
+	p.knock(Vector3(8, 7, 0))
+	check(p.knocked(), "a knock did not throw him limp")
+	await step(10)
+	check_eq(p.avatar.mode(), &"ragdoll", "the lumberjack does not go limp when thrown")
+	var went := false
+	for i in 60 * 14:
+		await step(1)
+		if p.global_position.x > 3.0:
+			went = true
+		if not p.knocked():
+			break
+	check(went, "the knock did not send him flying")
+	check(not p.knocked(), "he never got back up")
+	check_eq(p.collision_layer, Layers.PLAYER, "standing up did not give him his body back")
+	check(not p.camera.top_level, "the camera stayed off watching after he got up")
+	# A long drop lands him in a heap too.
+	p.global_position = Vector3(0, 40, 0)
+	p.velocity = Vector3.ZERO
+	var fell := false
+	for i in 60 * 6:
+		await step(1)
+		if p.knocked():
+			fell = true
+			break
+	check(fell, "a long fall did not knock him over")
+	p.free_tumble_for_test()
+	done()
+
+func test_truck_knocks_player() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"pickup")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 30)
+	await step(30)
+	var p := _standing_player(Vector3(0, 1.0, 0))
+	await step(20)
+	# Straight at him, flat out.
+	truck.autopilot = true
+	truck.input_throttle = 1.0
+	var toward := (p.global_position - truck.global_position).normalized()
+	if (-truck.global_transform.basis.z).dot(toward) < 0.0:
+		truck.input_throttle = -1.0
+	var hit := false
+	for i in 60 * 8:
+		await step(1)
+		if p.knocked():
+			hit = true
+			break
+	check(hit, "a truck driving into him did not send him flying")
+	if hit:
+		check(p.tumble.linear_velocity.dot(toward) > 3.0, "he did not go the way the truck was going")
+	p.free_tumble_for_test()
+	done()
+
+func test_crane_lifts_player() -> void:
+	_setup(false)
+	var truck := Hauler.new()
+	truck.setup(manager, 0, &"crane_truck")
+	world.add_child(truck)
+	truck.global_position = Vector3(0, truck.spawn_height(), 0)
+	await step(60)
+	var rig := truck.rig
+	rig.set_operating(true)
+	var frame := truck.global_transform
+	var beside: Vector3 = frame * Vector3(3.6, 0.0, 1.0)
+	var p := _standing_player(Vector3(beside.x, 1.0, beside.z))
+	await step(40)
+	var over := frame.affine_inverse() * (p.global_position + Vector3.UP * 1.0)
+	rig.target = rig.clamp_target(Vector3(over.x, over.y + 3.0, over.z))
+	for i in 400:
+		await step(1)
+	rig.claw()
+	for i in 900:
+		await step(1)
+		if rig.claw_state == &"":
+			break
+	check(rig.held_player == p, "the claw did not pick the player up")
+	check(p.knocked() and p.crane_hold, "the player is not hanging from the grapple")
+	var low := p.global_position.y
+	rig.target += Vector3(0, 1.5, 0)
+	for i in 120:
+		await step(1)
+	check(p.global_position.y > low + 0.8, "the player did not go up with the crane")
+	# Let go: he drops, and gets up again.
+	rig.claw()
+	check(rig.held_player == null, "F did not let the player go")
+	for i in 60 * 14:
+		await step(1)
+		if not p.knocked():
+			break
+	check(not p.knocked(), "dropped by the crane, he never got up")
+	done()
+
+func test_crusher_crushes_player() -> void:
+	_setup(false)
+	var crusher := _inline(&"crusher")
+	_runout(crusher)
+	await step(10)
+	var top := crusher.global_transform * Vector3(0, InlineMachine.DECK_THICKNESS + crusher.canopy_height() + InlineMachine.HOPPER_DEPTH + 1.0, 0)
+	var p := _standing_player(top)
+	var got := false
+	for i in 120:
+		await step(1)
+		if p.crushed():
+			got = true
+			break
+	check(got, "falling into the crusher did not crush him")
+	var meat := 0
+	for i in 60 * 6:
+		await step(1)
+	for item in manager.free_items():
+		if item.item_id == &"meat_bits":
+			meat += 1
+	check(meat >= 5, "the crusher did not spit out meat (%d bits)" % meat)
+	check(not p.crushed(), "he was never let out of the crusher")
+	done()
+
+func test_tnt() -> void:
+	_setup()
+	# Sold by the stick at the hardware store, $50 a go, and always back on
+	# the shelf.
+	check_eq(GameData.item(&"tnt_stick").cost, 50, "a stick of TNT is not $50")
+	var town := Store.new()
+	town.setup(manager, plot, 0, &"general")
+	world.add_child(town)
+	await step(4)
+	var slot: Dictionary = {}
+	for s in town.slots:
+		if s.target == &"tnt_stick":
+			slot = s
+	check(not slot.is_empty(), "the hardware store does not sell TNT")
+	if not slot.is_empty():
+		check_eq(town.price_of(slot), 50, "the shop does not charge $50 for TNT")
+		var box := slot.item as LooseItem
+		check(box != null, "no TNT on the shelf")
+		if box != null:
+			var before := Economy.money
+			town.buy([box] as Array[LooseItem])
+			check_eq(Economy.money, before - 50, "buying TNT did not take $50")
+			town.open_box(box)
+			await step(2)
+			check(slot.item != null and slot.item != box, "the TNT was not put back on the shelf")
+	var sticks := 0
+	for item in manager.free_items():
+		if item.item_id == &"tnt_stick":
+			sticks += 1
+	check_eq(sticks, 1, "opening the box did not give a stick of TNT")
+	# In a quarry: an iron chunk and a platinum one the same size, the same
+	# distance from a stick, and a player standing by.
+	var iron := OreRock.new()
+	iron.manager = manager
+	iron.ore_item = &"ore_iron"
+	iron.embed = 0.3
+	iron.volume = 0.8
+	iron.position = Vector3(-30, 0, 30)
+	world.add_child(iron)
+	var plat := OreRock.new()
+	plat.manager = manager
+	plat.ore_item = &"ore_platinum"
+	plat.embed = 0.3
+	plat.volume = 0.8
+	plat.position = Vector3(-30, 0, 26)
+	world.add_child(plat)
+	var p := _standing_player(Vector3(-27, 1.0, 28))
+	await step(20)
+	var stick := spawn(&"tnt_stick", Vector3(-30, 0.5, 28))
+	await step(10)
+	check(Blast.light(stick, manager, 0.2), "the stick would not light")
+	check(not Blast.light(stick, manager), "a lit stick lit again")
+	for i in 30:
+		await step(1)
+	var left := 0
+	for item in manager.free_items():
+		if item.item_id == &"tnt_stick":
+			left += 1
+	# Only the one unpacked at the shop is left.
+	check_eq(left, 1, "the stick did not go off")
+	check(iron.consumed() or iron.volume < 0.5, "TNT barely touched an iron chunk (%.2f m3 left)" % iron.volume)
+	check(not plat.consumed() and plat.volume > 0.75, "TNT tore up platinum (%.2f m3 left)" % plat.volume)
+	check(p.knocked(), "the blast did not throw the player")
+	if p.knocked():
+		check(p.tumble.linear_velocity.length() > 4.0 or p.global_position.distance_to(Vector3(-27, 1, 28)) > 1.0,
+			"the blast barely moved the player")
+	p.free_tumble_for_test()
 	done()

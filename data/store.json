@@ -135,6 +135,25 @@
               "target": "garden_gnome"
             }
           ]
+        },
+        {
+          "title": "EXPLOSIVES",
+          "color": [
+            0.8,
+            0.18,
+            0.12
+          ],
+          "box": [
+            0.5,
+            0.3,
+            0.4
+          ],
+          "products": [
+            {
+              "kind": "item",
+              "target": "tnt_stick"
+            }
+          ]
         }
       ]
     },

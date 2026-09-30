@@ -274,6 +274,17 @@ func _model_for(product: Dictionary) -> Node3D:
 				for y in [0.25, 0.55]:
 					g.block(Vector3(0.6, 0.05, 0.3), Vector3(0, y, 0.12), Color.WHITE)
 			return g.instance("Upgrade")
+		"item":
+			# Sticks of dynamite lying in a bundle, two under one, taped round,
+			# a fuse curling out of one end.
+			var g := Greeble.new()
+			var lie := Basis(Vector3.FORWARD, PI * 0.5)
+			for at in [Vector3(0, 0.09, -0.09), Vector3(0, 0.09, 0.09), Vector3(0, 0.25, 0.0)]:
+				g.prism(10, 0.085, 0.085, 0.8, Transform3D(lie, at + Vector3(-0.4, 0, 0)), Color.WHITE)
+			for x in [-0.22, 0.22]:
+				g.block(Vector3(0.07, 0.36, 0.36), Vector3(x, 0.17, 0), Color.WHITE)
+			g.prism(6, 0.018, 0.018, 0.22, Transform3D(Basis(Vector3.FORWARD, -1.0), Vector3(0.42, 0.28, 0.0)), Color.WHITE)
+			return g.instance("Item")
 	var def := GameData.building(target)
 	if def == null:
 		return null

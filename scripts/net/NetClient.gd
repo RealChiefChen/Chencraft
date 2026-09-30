@@ -158,10 +158,21 @@ func on_batch(batch: Array) -> void:
 			"warp":
 				var wp: Player = world.get("player")
 				if wp != null:
+					wp.stand_up()
 					var x: Array = e.x
 					wp.global_position = Vector3(float(x[0]), float(x[1]), float(x[2]))
 					wp.velocity = Vector3.ZERO
 				_warp_seq = int(e.s)
+			"knock":
+				var kp: Player = world.get("player")
+				if kp != null:
+					var v: Array = e.v
+					kp.knock(Vector3(float(v[0]), float(v[1]), float(v[2])))
+			"crush":
+				var cp: Player = world.get("player")
+				if cp != null:
+					var cx: Array = e.x
+					cp.crush(Vector3(float(cx[0]), float(cx[1]), float(cx[2])))
 			"msg":
 				var p: Player = world.get("player")
 				if p != null:

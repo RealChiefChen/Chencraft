@@ -53,6 +53,10 @@ func on_guest_ready(peer: int, display: String) -> void:
 	_ready_peers[peer] = true
 	if not p.warped.is_connected(_on_warped):
 		p.warped.connect(_on_warped.bind(peer, p))
+	# Thrown about or crushed here: the guest's game acts it out.
+	if not p.has_meta("net_event_hooked"):
+		p.set_meta("net_event_hooked", true)
+		p.net_event.connect(func(entry: Dictionary) -> void: _post(peer, entry))
 	# Everything there is, as it is, then who they are.
 	# Money, unlocks and the size of the land first: the buildings that follow
 	# may stand on land bought since the game began.

@@ -224,6 +224,9 @@ func _validate() -> void:
 			"upgrade", "part":
 				if not upgrade_tracks.has(target):
 					load_errors.append("store box '%s' upgrades unknown track '%s'" % [box, target])
+			"item":
+				if not items.has(target) or item(target).cost <= 0:
+					load_errors.append("store box '%s' sells unknown or unpriced item '%s'" % [box, target])
 			"tier":
 				if not upgrade_tracks.has(target) or not buildings.has(target):
 					load_errors.append("store box '%s' tiers unknown machine '%s'" % [box, target])
@@ -372,6 +375,8 @@ func product_name(p: Dictionary) -> String:
 			return "%s T%d" % [b.display_name if b != null else String(target), int(p.get("tier", 1))]
 		"part":
 			return part_name(target, int(p.get("level", 2)))
+		"item":
+			return item_name(target)
 	var def := building(target)
 	return def.display_name if def != null else String(target)
 

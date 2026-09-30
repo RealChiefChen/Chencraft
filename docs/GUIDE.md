@@ -456,6 +456,32 @@ Quotas follow how much country each species actually has, so a seed that grows
 little swamp gets a few willows rather than an empty field grinding away at a
 region that is not there.
 
+## Mayhem
+
+* **TNT** is sold by the stick at the hardware store (EXPLOSIVES, $50 each,
+  always back on the shelf). Open the box, **[E]** on the stick lights a
+  four-second fuse, then pick it up and throw it. A blast (`scripts/world/Blast.gd`)
+  throws players flying, blows loose things about, sets off other sticks nearby
+  and cracks ore apart: easy ores (tier 1) come to pieces, tier 2 ores take 30%
+  of it, and the top ores and finest gems (tier 3) only 3% - barely a mark.
+  Loose ore chunks in the blast crack in two the same way. The knobs are in the
+  `explosives` section of `balance.json`.
+* **Getting knocked flying.** A long drop (landing faster than 16 m/s, about
+  twelve metres), a truck driving into you or a blast turns you into a ragdoll:
+  the body tumbles as a physics body with the lumberjack flopping about on it,
+  the camera stands off and watches (the mouse swings it round), and once you
+  have come to rest you get up where you lie. Whatever was on the rack goes
+  everywhere.
+* **Cranes pick up players.** Close the grapple (or drop the claw) on someone
+  and they come too, dangling by the shirt. Hold **jump** for a second to
+  wriggle free; otherwise they drop when the crane lets go.
+* **The crusher crushes players.** Fall (or be dropped) into its hopper and you
+  go through: the camera watches the machine for a few seconds while ten Meat
+  Bits come out of the far end (worth $2 each at the yard), then you are back
+  at base.
+* In co-op the host works out who gets hit and the guest's own game acts it
+  out (`knock` and `crush` messages).
+
 ## Co-op
 
 One player hosts their own game; friends join it. Everything is shared: one
@@ -670,14 +696,16 @@ Nearly every mesh is built in code from primitives. The one exception is you.
   catches the light - sunk into the ground by however much is buried, and
   drawn from the ore left in them, so hammering a piece off visibly shrinks the
   rock. Open cracks are dark seams that lengthen as they deepen.
-  Each ore's chunk is a perfect cube of its rock built out of cubes, with
-  the ore sticking out of its faces and glowing, each cube its own colour (`assets/models/ores.glb`, source in `source/ores.blend`): the
-  rock's cubes sit a little in or out, and the ore's cubes stand proud, split
-  into smaller cubes of ore and rock. Used for the chunk in the ground and the
-  pieces mined from it, always scaled evenly so the cubes stay cubes - banded
-  iron, copper in green patina, a gold-in-quartz vein, silver, cobalt in pink
-  bloom, sunstone, tin, zinc, magnetite, nickel, rainbow bismuth, tungsten,
-  platinum in olivine, and a starmetal meteorite with glowing cracks.
+  Each ore's chunk is a block of its rock built out of cubes, Minecraft-style,
+  with the ore sticking out of its faces as cubes that glow, each in its own
+  colour. The block is built in the game (`scripts/world/OreLook.gd`) for the
+  exact box it fills - any size and aspect ratio, a long slab just gets more
+  cubes along its length - for the chunk in the ground and every piece mined
+  from it. Every ore has its own pattern: banded iron, copper in green patina,
+  a gold-in-quartz vein, silver, cobalt in pink bloom, sunstone, tin, zinc,
+  magnetite, nickel, rainbow bismuth, tungsten blades, platinum in olivine,
+  and a starmetal meteorite with glowing cracks. The design was worked out in
+  Blender (`assets/models/source/ores.blend`).
 * **Machines** are tunnels over a belt, dressed like a curing oven: steel side
   panels with ribs and a bolted access panel, a dark inside the belt vanishes
   into, a bulkhead at each end with the mouth cut out of it, hazard stripes

@@ -166,7 +166,7 @@ func _build_rock_mesh(color: Color) -> void:
 	# An ore with a look of its own is a lump of that ore's rock, filling the
 	# piece's box (the collider stays the box).
 	if OreLook.has_look(item_id):
-		var parts := OreLook.rock(item_id, size, Vector3.ZERO, float(hash([item_id, size.snapped(Vector3.ONE * 0.001)]) % 628) * 0.01)
+		var parts := OreLook.rock(item_id, size, Vector3.ZERO, 0.0, hash([item_id, size.snapped(Vector3.ONE * 0.001)]))
 		_mesh.mesh = parts[0].mesh
 		_mesh.transform = parts[0].transform
 		_mesh.material_override = parts[0].material_override

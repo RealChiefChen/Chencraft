@@ -633,12 +633,15 @@ func latch() -> String:
 		return "this vehicle has no crane"
 	if not operating:
 		return "work the crane first [R]"
-	if held != null or held_vehicle != null:
+	if held != null or held_vehicle != null or held_player != null:
 		drop()
 		return ""
 	var target_node := _between_jaws()
 	if target_node == null:
 		return "nothing between the jaws - put the grapple on a log"
+	if target_node is Player:
+		_take_player(target_node as Player)
+		return ""
 	if target_node is Hauler:
 		var v := target_node as Hauler
 		if v.lift_mass() > crane_power_kg:
@@ -658,6 +661,44 @@ func latch() -> String:
 	_take(item)
 	return ""
 
+# --- Crane: a player ------------------------------------------------------------------
+
+## A player hanging from the grapple by the scruff of his shirt.
+var held_player: Player = null
+
+func _can_take_player(who: Player) -> bool:
+	if who == null or who.driving() or who.crushed() or who.net_follow:
+		return false
+	# Not whoever is working this crane.
+	return vehicle == null or vehicle.get("driver") != who
+
+func _take_player(who: Player) -> void:
+	if not who.knocked():
+		who.knock(Vector3.ZERO)
+	if not who.knocked():
+		return
+	held_player = who
+	who.crane_hold = true
+	who.tumble.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	who.tumble.freeze = true
+	target = clamp_target(_frame().affine_inverse() * (who.tumble.global_position + Vector3.UP * 0.8))
+	_target_vel = Vector3.ZERO
+	crane_grabbed.emit(null)
+	Sfx.play(&"clink", jaw_world())
+
+## Hung under the jaws, upright, swinging a little as the crane moves.
+func _carry_player(delta: float) -> void:
+	var body := held_player.tumble
+	var jaw := jaw_world()
+	var want := jaw + Vector3.DOWN * 0.85
+	var moved := want - body.global_position
+	_held_vel = moved / maxf(delta, 0.0001)
+	var sway := Vector3(_held_vel.z, 0, -_held_vel.x).limit_length(3.0) * 0.12
+	var basis := Basis(Vector3.UP, held_player.global_rotation.y)
+	if sway.length() > 0.001:
+		basis = Basis(sway.normalized(), sway.length()) * basis
+	body.global_transform = Transform3D(basis, want)
+
 # --- The claw drop -------------------------------------------------------------------
 
 ## [F] with the grapple empty works it like a claw machine: the grapple goes
@@ -675,7 +716,7 @@ func claw() -> String:
 		return "this vehicle has no crane"
 	if not operating:
 		return "work the crane first [R]"
-	if held != null:
+	if held != null or held_player != null:
 		claw_state = &""
 		drop()
 		return ""
@@ -717,9 +758,9 @@ func _jaws_on_something() -> bool:
 
 func _close_claw() -> void:
 	var said := latch()
-	claw_said = said if said != "" else ("got %s" % held.display_name() if held != null else "")
+	claw_said = said if said != "" else ("got %s" % held.display_name() if held != null else ("got someone!" if held_player != null else ""))
 	if held == null and claw_said == "":
-		claw_said = "nothing there"
+		claw_said = "nothing there" if held_player == null else claw_said
 	claw_state = &"up"
 
 ## Kept for the old key.
@@ -737,13 +778,20 @@ func _between_jaws() -> Node3D:
 	sphere.radius = GRAB_RADIUS
 	q.shape = sphere
 	q.transform = Transform3D(Basis(), jaw)
-	q.collision_mask = Layers.LOOSE | Layers.TREE | Layers.VEHICLE
+	q.collision_mask = Layers.LOOSE | Layers.TREE | Layers.VEHICLE | Layers.PLAYER
 	var best: Node3D = null
 	var best_d := INF
 	for hit in get_world_3d().direct_space_state.intersect_shape(q, 16):
 		var o: Object = hit.collider
 		var n: Node3D = null
-		if o is OreRock and not (o as OreRock).consumed():
+		if o is RigidBody3D and (o as Node).has_meta("player"):
+			o = (o as Node).get_meta("player")
+		if o is Player:
+			# Someone standing (or lying) under the grapple: he comes too.
+			var who := o as Player
+			if _can_take_player(who):
+				n = who
+		elif o is OreRock and not (o as OreRock).consumed():
 			n = o
 		elif o is LooseItem and (o as LooseItem).state == LooseItem.State.FREE:
 			n = o
@@ -779,6 +827,15 @@ func _take(item: LooseItem) -> void:
 ## Opens the grapple. A log let go low over the bed and near square to it is
 ## set down square. Returns what it let go of.
 func drop() -> LooseItem:
+	if held_player != null:
+		var who := held_player
+		held_player = null
+		if is_instance_valid(who) and who.knocked():
+			who.crane_hold = false
+			who.tumble.freeze = false
+			who.tumble.linear_velocity = _held_vel.limit_length(6.0)
+		crane_released.emit(null)
+		return null
 	if held_vehicle != null:
 		_drop_vehicle()
 		crane_released.emit(null)
@@ -797,9 +854,11 @@ func drop() -> LooseItem:
 func holding() -> bool:
 	if held != null and (not is_instance_valid(held) or held.state != LooseItem.State.CAPTURED):
 		held = null
+	if held_player != null and (not is_instance_valid(held_player) or not held_player.knocked() or not held_player.crane_hold):
+		held_player = null
 	if held_vehicle != null and not _vehicle_ok():
 		held_vehicle = null
-	return held != null or held_vehicle != null
+	return held != null or held_vehicle != null or held_player != null
 
 func _settle(item: LooseItem) -> void:
 	if vehicle == null or vehicle.get("bed_half_width") == null:
@@ -949,6 +1008,8 @@ func _work_crane(delta: float) -> void:
 		_carry(delta)
 	elif held_vehicle != null:
 		_carry_vehicle()
+	elif held_player != null:
+		_carry_player(delta)
 
 # --- Outriggers ------------------------------------------------------------------
 

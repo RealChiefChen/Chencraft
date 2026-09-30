@@ -364,6 +364,12 @@ func test_prices() -> void:
 	var p1 := float(Economy.price_of(&"gem_ruby", g1))
 	var p2 := float(Economy.price_of(&"gem_ruby", g2))
 	check(absf(p2 / p1 - 4.0) < 0.1, "twice the stone is not four times the price (%.0f vs %.0f)" % [p1, p2])
+	# At any size: a stone far past the usual, and one far under it.
+	for scale in [16.0, 0.1]:
+		var one := Solid.box(Solid.bounds(gem.default_dims()) * pow(scale, 1.0 / 3.0))
+		var two := Solid.box(Solid.bounds(gem.default_dims()) * pow(scale * 2.0, 1.0 / 3.0))
+		var ratio := Economy.size_bonus(gem, two) * Solid.volume(two) / (Economy.size_bonus(gem, one) * Solid.volume(one))
+		check_near(ratio, 4.0, 0.05, "at %.1fx the usual size, twice the stone is not four times the price" % scale)
 	done()
 
 func test_chop() -> void:

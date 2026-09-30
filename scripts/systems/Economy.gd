@@ -177,10 +177,9 @@ func price_of(item_id: StringName, dims: Dictionary = {}) -> int:
 
 ## Big pieces sell for more per cubic metre: +25% for each doubling past the
 ## item's usual size, up to +75%. Smaller pieces pay the plain rate.
-## Gemstones go further: their price runs with the square of their volume,
-## so one big stone is worth far more than the same stone in pieces - up to
-## four times the usual rate, past which a stone is a lump of rock to be cut
-## down, not a jewel.
+## Gemstones go further: their price runs with the square of their volume at
+## every size - twice the stone, four times the price - so one big stone is
+## worth far more than the same stone in pieces.
 static func size_bonus(def: ItemDef, dims: Dictionary) -> float:
 	if def.fixed_value > 0:
 		return 1.0
@@ -189,7 +188,7 @@ static func size_bonus(def: ItemDef, dims: Dictionary) -> float:
 		return 1.0
 	var ratio := Solid.volume(dims) / usual
 	if def.category == &"gem" or def.category == &"jewel":
-		return clampf(ratio, 0.05, 4.0)
+		return ratio
 	if ratio <= 1.0:
 		return 1.0
 	return 1.0 + 0.25 * minf(log(ratio) / log(2.0), 3.0)

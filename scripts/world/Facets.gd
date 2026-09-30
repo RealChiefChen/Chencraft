@@ -189,6 +189,8 @@ const BIOME_TOLERANCE := {
 	Terrain.Biome.MOUNTAIN: 2.2,
 	Terrain.Biome.TAIGA: 1.5,
 	Terrain.Biome.SNOW: 2.0,
+	Terrain.Biome.ICE: 0.4,
+	Terrain.Biome.ASH: 1.8,
 }
 
 ## The points along a tile's four edges. An edge is split on its own terms -

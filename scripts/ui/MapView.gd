@@ -86,11 +86,13 @@ func _draw() -> void:
 	# Home and the fixed places.
 	var fixed := [
 		["Plot", world.get("plot").global_position, Color(0.55, 0.85, 0.50)],
-		["Sell Yard", world.get("depot").global_position, Color(0.98, 0.80, 0.30)],
-		["Hardware Store", world.get("store").global_position, Color(0.55, 0.78, 1.0)],
-		["Quarry", World.QUARRY_CENTRE, Color(0.80, 0.70, 0.62)],
 	]
-	for extra in [["Vehicle Dealer", world.get("dealer_store"), Color(0.45, 0.9, 0.95)],
+	# A map with no buildings (Ostars) has none of the rest.
+	if not WorldMap.is_ostars():
+		fixed.append(["Quarry", World.QUARRY_CENTRE, Color(0.80, 0.70, 0.62)])
+	for extra in [["Sell Yard", world.get("depot"), Color(0.98, 0.80, 0.30)],
+			["Hardware Store", world.get("store"), Color(0.55, 0.78, 1.0)],
+			["Vehicle Dealer", world.get("dealer_store"), Color(0.45, 0.9, 0.95)],
 			["Machine Works", world.get("works_store"), Color(0.95, 0.6, 0.35)]]:
 		if extra[1] != null:
 			fixed.append([extra[0], (extra[1] as Node3D).global_position, extra[2]])

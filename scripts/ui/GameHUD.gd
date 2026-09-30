@@ -607,7 +607,7 @@ func _on_tutorial_advanced() -> void:
 	if i < 0:
 		show_banner("You're up and running", "Everything else is in the journal [Tab]".replace("[Tab]", "(Tab)"))
 	else:
-		var last: Dictionary = Tutorial.STEPS[i - 1] if i > 0 else {}
+		var last: Dictionary = tutorial.steps[i - 1] if i > 0 else {}
 		if not last.is_empty():
 			toast("Done: %s" % last.title, UITheme.GOOD)
 	_update_tutorial()
@@ -620,7 +620,7 @@ func _update_tutorial() -> void:
 		return
 	var step := tutorial.current()
 	_tutorial_card.visible = true
-	_tutorial_count.text = "%d / %d" % [tutorial.done_count() + 1, Tutorial.STEPS.size()]
+	_tutorial_count.text = "%d / %d" % [tutorial.done_count() + 1, tutorial.steps.size()]
 	_tutorial_title.text = step.title
 	for child in _tutorial_hint.get_children():
 		child.queue_free()

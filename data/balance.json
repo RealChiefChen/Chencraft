@@ -91,8 +91,9 @@
   },
 
   "world": {
-    "_about": "Trees grow in groves of their own kind: tree_count is roughly how many there are across the map; grove_radius (m) is how big a grove is, grove_share how many of a kind stand in one rather than as strays. starter_forest_trees: the wood a short walk from the plot. vehicle_clearance: no tree or rock appears within this many metres of a vehicle. kill_plane_y: loose pieces below this height are put back on the surface (keep it under the deepest cave, about -90).",
+    "_about": "Trees grow in groves of their own kind: tree_count is roughly how many there are across the map; grove_radius (m) is how big a grove is, grove_share how many of a kind stand in one rather than as strays. starter_forest_trees: the wood a short walk from the plot. ostars_tree_count: how many trees stand on the Ostars map (its forests are grown in stands, thick in the woods and bare in the desert, so it carries more than the islands). vehicle_clearance: no tree or rock appears within this many metres of a vehicle. kill_plane_y: loose pieces below this height are put back on the surface (keep it under the deepest cave, about -90).",
     "tree_count": 14000,
+    "ostars_tree_count": 20000,
     "grove_radius": 55.0,
     "grove_share": 0.93,
     "starter_forest_trees": 90,

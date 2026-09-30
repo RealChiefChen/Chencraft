@@ -54,6 +54,9 @@ func _run_all() -> void:
 	await _test(&"stones are either polished or cut, and which pays depends on the stone", test_gem_line)
 	await _test(&"islands, bridges and carved places", test_islands)
 	await _test(&"big consolidated biome regions with real relief", test_regions)
+	await _test(&"ostars: the continent is where the map puts it", test_ostars_land)
+	await _test(&"ostars: forests grow in stands, on dry land, apart", test_ostars_forest)
+	await _test(&"ostars: each save remembers its map", test_ostars_save_map)
 	await _test(&"roads are routed over the land, graded, with no tight bends", test_road_routing)
 	await _test(&"cave networks: joined up, below sea level, with open mouths", test_cave_network)
 	await _test(&"belted lines of machines keep flowing without jamming", test_machine_lines)
@@ -7243,4 +7246,172 @@ func test_tnt_chain() -> void:
 	check(not p.held.has(carried), "the stick on his rack did not go off")
 	check(fastest > 18.0, "the blast only threw him at %.1f m/s" % fastest)
 	p.free_tumble_for_test()
+	done()
+
+# --- Ostars -------------------------------------------------------------------
+
+## The second map is drawn, not rolled: the places on it are where it says.
+func test_ostars_land() -> void:
+	var o := Ostars.new()
+	var home: Array = o.sample(0.0, 0.0)
+	check(float(home[1]) > 0.5 and float(home[1]) < 10.0, "home is not low dry ground (%.1f)" % float(home[1]))
+	check_eq(int(home[0]), Terrain.Biome.WOODLAND, "home is not in the meadows")
+	for corner in [Vector2(2350, 2350), Vector2(-2350, -2350), Vector2(2350, -2350), Vector2(-2350, 2350)]:
+		check(float(o.sample(corner.x, corner.y)[1]) < -3.0, "the map's corner %s is not sea" % corner)
+	check(float(o.sample(-1500.0, 200.0)[1]) < 0.0, "the Aethel Sea is dry")
+	check(float(o.sample(-1940.0, -360.0)[1]) > 3.0, "the Whispering Woods' island is not there")
+	# The Arch stands out of the sea, with sea either side of it.
+	check(float(o.sample(-1470.0, -400.0)[1]) > 10.0, "the Great Sky Arch is not up out of the sea")
+	check(float(o.sample(-1470.0, -330.0)[1]) < 0.0 and float(o.sample(-1470.0, -470.0)[1]) < 0.0,
+		"the Arch is not over open water")
+	# The Spine: a flat top well up off the desert, and it drops away.
+	var top: float = o.sample(560.0, 350.0)[1]
+	check_near(top, 38.0, 1.0, "the Emperor's Spine's top")
+	check(float(o.sample(620.0, 300.0)[1]) < top - 4.0, "the Spine is not a ridge")
+	# Orodruin: a high cone with a crater sunk in its top.
+	var rim: float = o.sample(-1010.0, -980.0)[1]
+	var pit: float = o.sample(-1080.0, -980.0)[1]
+	check(rim > 200.0, "Mt. Orodruin is only %.0f m high" % rim)
+	check(pit < rim - 30.0, "Orodruin has no crater (%.0f in, %.0f at the rim)" % [pit, rim])
+	check_eq(int(o.sample(-1080.0, -900.0)[0]), Terrain.Biome.ASH, "Orodruin is not ash")
+	check(Ostars.lava_level() < rim and Ostars.lava_level() > pit, "the lava is not in the crater")
+	# The frozen lakes are flat ice; the north is snow.
+	var lake: Array = o.sample(520.0, -1830.0)
+	check_eq(int(lake[0]), Terrain.Biome.ICE, "the tundra lake is not ice")
+	check_near(float(o.sample(560.0, -1830.0)[1]), float(lake[1]), 0.01, "the ice is not flat")
+	check_eq(int(o.sample(900.0, -1800.0)[0]), Terrain.Biome.SNOW, "the Frostpeak Tundra is not snow")
+	check_eq(int(o.sample(450.0, 360.0)[0]), Terrain.Biome.DESERT, "the Shattered Desert is not desert")
+	check_eq(int(o.sample(1450.0, 760.0)[0]), Terrain.Biome.SWAMP, "the Mor'uk Bogs are not swamp")
+	check_eq(String(o.region_at(-700.0, -260.0).name), "Sylvenwood", "Sylvenwood is not where the map has it")
+	# The rivers run in low valleys all the way down.
+	for k in Ostars.RIVERS.size():
+		var path: Array = Ostars.RIVERS[k].path
+		for i in range(2, path.size()):
+			var at: Vector2 = path[i]
+			check(float(o.sample(at.x, at.y)[1]) < 6.0, "%s is up on high ground at %s" % [Ostars.RIVERS[k].name, at])
+	# The Dragon's Teeth are fangs, and the shaper is a pure function of place.
+	var teeth := -INF
+	for x in range(700, 2150, 25):
+		for z in range(1150, 2050, 25):
+			teeth = maxf(teeth, float(o.sample(x, z)[1]))
+	check(teeth > 120.0, "the Dragon's Teeth top out at %.0f m" % teeth)
+	check_eq(Ostars.new().sample(123.0, -456.0), o.sample(123.0, -456.0), "the same place sampled twice differs")
+	done()
+
+## A piece of Ostars round home, as the terrain builds it, for the tests.
+func _ostars_patch(half: float) -> Terrain:
+	var land := Terrain.new()
+	land.half_extent = half
+	land.noise_seed = 20260929
+	var o := Ostars.new()
+	o.configure(land)
+	land.reserve_site(Vector3(0, World.PLOT_GROUND, 0), 56.0)
+	land.reserve_clear_square(Vector3(0, World.PLOT_GROUND, 0), 50.0, World.PLOT_GROUND, 10.0)
+	return land
+
+func test_ostars_forest() -> void:
+	_setup(false)
+	var land := _ostars_patch(420.0)
+	world.add_child(land)
+	await step(2)
+	var o: Ostars = land.shaper
+	var forester := Forester.new(land, o, World.SPECIES)
+	var grown := forester.grow(1500)
+	check(grown > 900, "only %d trees grew round home" % grown)
+	check(forester.stands.size() > 20, "the trees are not in stands (%d)" % forester.stands.size())
+	# The home wood, a short walk out, of easy trees.
+	check(forester.home_wood != Vector3.INF, "no wood by the plot")
+	var out := Vector2(forester.home_wood.x, forester.home_wood.z).length()
+	check(out >= Forester.HOME_WOOD.near - 1.0 and out <= Forester.HOME_WOOD.far + 1.0,
+		"the home wood is %.0f m out" % out)
+	check(forester.home_spots.size() >= 40, "the home wood has %d trees" % forester.home_spots.size())
+	# Every tree: somewhere it can stand, off the plot, and not in another.
+	var all: Array[Vector2] = []
+	var bad_wet := 0
+	var on_plot := 0
+	var off_mix := 0
+	for name in forester.spots:
+		var kind: Dictionary = forester.kinds[name]
+		for p: Vector3 in forester.spots[name]:
+			all.append(Vector2(p.x, p.z))
+			if land.water_depth(p.x, p.z) > float(kind.get("wet", 0.0)) + 0.05:
+				bad_wet += 1
+			if land.in_clear_zone(p.x, p.z, 5.0):
+				on_plot += 1
+			var mix: Dictionary = forester.mix_at(p.x, p.z)
+			if not mix.has(name):
+				off_mix += 1
+	for p in forester.home_spots:
+		all.append(Vector2(p.x, p.z))
+	check_eq(bad_wet, 0, "trees standing in water too deep for them")
+	check_eq(on_plot, 0, "trees on the plot")
+	check(float(off_mix) < float(all.size()) * 0.12, "%d of %d trees are not of their country" % [off_mix, all.size()])
+	var cells := {}
+	var close := 0
+	for p in all:
+		var c := Vector2i(floori(p.x / 4.0), floori(p.y / 4.0))
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				for q: Vector2 in cells.get(Vector2i(c.x + dx, c.y + dz), []):
+					if q.distance_to(p) < Forester.SPACING - 0.01:
+						close += 1
+		if not cells.has(c):
+			cells[c] = []
+		(cells[c] as Array).append(p)
+	check_eq(close, 0, "trees closer than %.1f m" % Forester.SPACING)
+	# Thick in the woods, thin in the open: the same ground grows the same forest.
+	var again := Forester.new(land, o, World.SPECIES)
+	check_eq(again.grow(1500), grown, "the same seed grew a different forest")
+	check(forester.wood_at(0.0, 0.0) == 0.0, "trees could grow on the plot")
+	done()
+
+func test_ostars_save_map() -> void:
+	_setup()
+	await step(2)
+	var was := WorldMap.current
+	var path := "user://test_map.json"
+	WorldMap.current = WorldMap.OSTARS
+	check(SaveSystem.save_game(plot, null, path), "saving failed")
+	check_eq(SaveSystem.summary(path).get("map"), WorldMap.OSTARS, "the save does not say it is Ostars")
+	WorldMap.current = WorldMap.ISLES
+	check(SaveSystem.save_game(plot, null, path), "saving failed")
+	check_eq(SaveSystem.summary(path).get("map"), WorldMap.ISLES, "the save does not say it is the islands")
+	# A save from before there were maps is on the islands; nonsense is too.
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify({"version": 2, "economy": {"day": 2}}))
+	f.close()
+	check_eq(SaveSystem.summary(path).get("map"), WorldMap.ISLES, "an old save is not on the islands")
+	check_eq(WorldMap.valid("atlantis"), WorldMap.ISLES, "an unknown map is not the islands")
+	check_eq(WorldMap.valid("ostars"), WorldMap.OSTARS, "ostars is not a map")
+	SaveSystem.delete_save(path)
+	# An empty slot builds the map chosen for a new game; a used one its own.
+	var was_slot := SaveSystem.slot
+	var was_chosen := WorldMap.chosen
+	SaveSystem.slot = 6
+	var slot_path := SaveSystem.slot_path(6)
+	var kept := FileAccess.get_file_as_string(slot_path) if FileAccess.file_exists(slot_path) else ""
+	SaveSystem.delete_save(slot_path)
+	WorldMap.chosen = WorldMap.OSTARS
+	WorldMap.pick_for_slot()
+	check_eq(WorldMap.current, WorldMap.OSTARS, "a new game is not on the map chosen for it")
+	WorldMap.current = WorldMap.ISLES
+	check(SaveSystem.save_game(plot, null, slot_path), "saving to slot 6 failed")
+	WorldMap.pick_for_slot()
+	check_eq(WorldMap.current, WorldMap.ISLES, "a saved game is not built on its own map")
+	SaveSystem.delete_save(slot_path)
+	if kept != "":
+		var back := FileAccess.open(slot_path, FileAccess.WRITE)
+		back.store_string(kept)
+		back.close()
+	SaveSystem.slot = was_slot
+	WorldMap.chosen = was_chosen
+	WorldMap.current = was
+	# The checklist on a map with no yard or store leaves those steps out,
+	# and doing the rest still finishes it.
+	var t := Tutorial.new()
+	t.skip([&"sell", &"store", &"order"])
+	check_eq(t.steps.size(), Tutorial.STEPS.size() - 3, "the skipped steps are still on the list")
+	for step_def in t.steps:
+		check(not [&"sell", &"store", &"order"].has(step_def.id), "%s is still on the list" % step_def.id)
+	t.free()
 	done()

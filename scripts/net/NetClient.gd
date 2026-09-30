@@ -32,6 +32,8 @@ func _ready() -> void:
 	_mirror = Node3D.new()
 	_mirror.name = "Mirror"
 	world.add_child(_mirror)
+	# Built as the wrong map (the host's word came late): build it again.
+	Net.map_known.connect(_check_map)
 	# Now the world is built, connect (or, already connected, say hello).
 	if multiplayer.multiplayer_peer is ENetMultiplayerPeer \
 			and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
@@ -43,7 +45,19 @@ func _ready() -> void:
 	if err != "":
 		_give_up(err)
 
+## The world here has to be the host's map; if it is not, it is built again
+## as that one (still connected) before saying hello.
+func _check_map(id: StringName) -> bool:
+	if id == &"" or id == WorldMap.current or _leaving:
+		return false
+	_leaving = true
+	MainMenu.skip_once = true
+	get_tree().call_deferred("change_scene_to_file", "res://scenes/boot.tscn")
+	return true
+
 func _hello() -> void:
+	if _check_map(Net.host_map):
+		return
 	Net.rpc_id(1, "c_hello", Net.player_name)
 	# You in the shirt the others see you in.
 	var me: Variant = world.get("player") if world != null else null

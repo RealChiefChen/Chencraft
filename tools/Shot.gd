@@ -9,6 +9,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := String(a).trim_prefix("--").split("=")
 		args[kv[0]] = kv[1] if kv.size() > 1 else "1"
+	if args.has("map"):
+		WorldMap.forced = WorldMap.valid(args["map"])
 	world = load("res://scenes/world.tscn").instantiate()
 	world.show_menu = false
 	world.autosave = false
@@ -307,6 +309,11 @@ func shot_menu() -> void:
 	for i in 10:
 		await get_tree().process_frame
 	await snap("main_controls")
+	WorldMap.chosen = WorldMap.OSTARS
+	world.main_menu._on_new_game()
+	for i in 10:
+		await get_tree().process_frame
+	await snap("main_new_game")
 
 func shot_axe() -> void:
 	var p := world.player
@@ -1267,3 +1274,63 @@ func shot_chain() -> void:
 	for k in 6:
 		await get_tree().create_timer(0.12).timeout
 		await snap("chain_%d" % k)
+
+# --- Ostars (run with --map=ostars) --------------------------------------------------
+
+## The whole map from above (the journal's map image), and the country from a
+## few places on it.
+func shot_ostars() -> void:
+	var img: Image = world.terrain.map_image(2)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://shots"))
+	img.save_png("user://shots/ostars_map.png")
+	print("saved ostars_map")
+	if world.forester != null:
+		print("forest: ", world.forester.census(), " stands ", world.forester.stands.size())
+	var views := [
+		["ostars_home", Vector3(40, 45, 140), Vector3(0, 0, 0)],
+		["ostars_sylvenwood", Vector3(-380, 90, -60), Vector3(-700, 10, -260)],
+		["ostars_orodruin", Vector3(-620, 140, -700), Vector3(-1080, 150, -980)],
+		["ostars_spine", Vector3(300, 70, 60), Vector3(700, 30, 520)],
+		["ostars_tundra", Vector3(700, 90, -1450), Vector3(900, 10, -1850)],
+		["ostars_arch", Vector3(-1250, 60, -250), Vector3(-1640, 10, -380)],
+		["ostars_teeth", Vector3(900, 110, 1100), Vector3(1400, 80, 1550)],
+		["ostars_bogs", Vector3(1150, 45, 550), Vector3(1450, 0, 760)],
+		["ostars_kael", Vector3(180, 110, 1250), Vector3(180, 0, 1450)],
+		["ostars_whispering", Vector3(-1700, 70, -150), Vector3(-1940, 10, -360)],
+		["ostars_in_sylvenwood", Vector3(-640, 6, -200), Vector3(-760, 8, -300)],
+		["ostars_in_whispering", Vector3(-1900, 6, -300), Vector3(-2000, 10, -420)],
+		["ostars_on_spine", Vector3(430, 42, 190), Vector3(800, 38, 640)],
+		["ostars_in_bog", Vector3(1400, 5, 700), Vector3(1520, 3, 820)],
+		["ostars_home_ground", Vector3(0, 4, 40), Vector3(-100, 6, -160)],
+	]
+	var only: String = args.get("view", "")
+	for v in views:
+		if only != "" and not String(v[0]).contains(only):
+			continue
+		var from: Vector3 = v[1]
+		var at: Vector3 = v[2]
+		# Stand the player below the camera so the forest round it wakes up.
+		world.player.global_position = world.terrain.place(Vector3(from.x, 0, from.z), 1.0)
+		for i in 40:
+			await get_tree().process_frame
+		await look(from + Vector3(0, world.terrain.height_at(from.x, from.z), 0), at)
+		for i in 30:
+			await get_tree().process_frame
+		await snap(v[0])
+
+## How many trees are built (not stand-ins) round a few spots: the cost of a
+## forest. Run with and without --map=ostars.
+func shot_treecount() -> void:
+	var spots := [Vector3(0, 0, 0), Vector3(-700, 0, -260), Vector3(-1940, 0, -360), Vector3(1200, 0, -700),
+		Vector3(120, 0, 120), world.starter_forest if world.starter_forest != Vector3.INF else Vector3.ZERO]
+	for at in spots:
+		world.player.global_position = world.terrain.place(at, 1.0)
+		for i in 10:
+			await get_tree().process_frame
+		var built := world.trees().size()
+		var near := 0
+		for e in world.census():
+			var p: Vector3 = e.pos
+			if String(e.what).begins_with("wood_") and Vector2(p.x - at.x, p.z - at.z).length() < 120.0:
+				near += 1
+		print("at %s: %d trees built, %d standing within 120 m, fps %d" % [at, built, near, Engine.get_frames_per_second()])

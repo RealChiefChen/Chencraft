@@ -245,6 +245,13 @@ func _ready() -> void:
 	await _stage(LOAD_STAGES[0][0], LOAD_STAGES[0][1])
 	_rng.seed = 20260921
 	InputSetup.ensure()
+	# Which map: a guest builds the host's; otherwise the slot's own, or the
+	# one picked for a new game.
+	if Net.is_client():
+		WorldMap.current = WorldMap.valid(Net.host_map)
+	else:
+		SaveSystem.choose_start_slot()
+		WorldMap.pick_for_slot()
 	await _detail("Setting up the sky, the sun and the sea")
 	_build_environment()
 	await _build_terrain()
@@ -287,18 +294,23 @@ func _ready() -> void:
 	await _stage(LOAD_STAGES[2][0], LOAD_STAGES[2][1])
 	await _build_quarry()
 	await _detail("Dropping starmetal into the crater where it fell")
-	_build_crater()
+	if WorldMap.is_ostars():
+		_build_kael()
+	else:
+		_build_crater()
 	_lap("rocks")
 	await _stage(LOAD_STAGES[3][0], LOAD_STAGES[3][1])
 	await _build_caves()
 	_lap("cave fields")
 	await _stage(LOAD_STAGES[4][0], LOAD_STAGES[4][1])
-	await _detail("Building the outposts, trading posts and miners' camps")
-	_build_outposts()
-	await _detail("Opening the sell depot")
-	_build_depot()
-	await _detail("Stocking the hardware store, the vehicle dealer and the machine works")
-	_build_store()
+	# Ostars has no buildings at all: no shops, no yard, no outposts.
+	if not WorldMap.is_ostars():
+		await _detail("Building the outposts, trading posts and miners' camps")
+		_build_outposts()
+		await _detail("Opening the sell depot")
+		_build_depot()
+		await _detail("Stocking the hardware store, the vehicle dealer and the machine works")
+		_build_store()
 	_lap("places")
 	await _stage(LOAD_STAGES[5][0], LOAD_STAGES[5][1])
 	await _detail("Making you, your tools and your build kit")
@@ -364,6 +376,8 @@ func _ready() -> void:
 	tutorial = Tutorial.new()
 	tutorial.name = "Tutorial"
 	tutorial.setup(player, plot, store, build_system, quests, tree_fields)
+	if WorldMap.is_ostars():
+		tutorial.skip([&"sell", &"store", &"order"])
 	add_child(tutorial)
 	tutorial.evaluate()
 	hud.bind_tutorial(tutorial)
@@ -507,6 +521,9 @@ static func _arterial(angle: float, onward: Array) -> Array:
 ## bridge, and roads that are quicker to drive. The build sites are levelled out
 ## of it first, so a factory floor is never on a slope.
 func _build_terrain() -> void:
+	if WorldMap.is_ostars():
+		await _build_ostars_terrain()
+		return
 	terrain = Terrain.new()
 	terrain.name = "Terrain"
 	terrain.half_extent = MAP_HALF
@@ -631,8 +648,21 @@ func _build_terrain() -> void:
 	if not terrain.generated:
 		await terrain.finished_generating
 	await _detail("Walling the edge of the map and building %d bridges" % terrain.bridges.size())
+	_build_map_edge()
+	_build_bridges()
+	await _detail("Standing up the landmarks: spires, arches and lookouts")
+	landmarks = Landmarks.new()
+	landmarks.name = "Landmarks"
+	landmarks.setup(terrain, 911)
+	add_child(landmarks)
+	await _detail("Laying %d roads' surfaces, kerbs and markings" % terrain.road_paths.size())
+	var roads := RoadSurface.new()
+	roads.name = "RoadSurface"
+	roads.setup(terrain)
+	add_child(roads)
 
-	# A wall at the map edge, so nothing drives off the world.
+## A wall at the map edge, so nothing drives off the world.
+func _build_map_edge() -> void:
 	var bounds := StaticBody3D.new()
 	bounds.name = "MapEdge"
 	bounds.collision_layer = Layers.WORLD
@@ -650,17 +680,82 @@ func _build_terrain() -> void:
 		cs.position = spec[0]
 		bounds.add_child(cs)
 	add_child(bounds)
-	_build_bridges()
-	await _detail("Standing up the landmarks: spires, arches and lookouts")
+
+## Ostars: the continent as drawn (see Ostars), with the plot levelled at
+## home in the middle. No roads, no bridges, nothing built: rock outcrops,
+## the rivers, and the lava in Orodruin's crater.
+var ostars: Ostars
+
+func _build_ostars_terrain() -> void:
+	terrain = Terrain.new()
+	terrain.name = "Terrain"
+	terrain.half_extent = MAP_HALF
+	terrain.noise_seed = 20260929
+	ostars = Ostars.new()
+	ostars.configure(terrain)
+	terrain.reserve_site(Vector3(0, PLOT_GROUND, 0), 56.0)
+	terrain.reserve_clear_square(Vector3(0, PLOT_GROUND, 0), 50.0, PLOT_GROUND, 10.0)
+	terrain.cave_count = 12
+	for zone in Ostars.CAVE_ZONES:
+		terrain.cave_zones.append({"centre": zone.centre, "radius": zone.radius * 0.92, "count": zone.mouths})
+	terrain.cache_path = "user://terrain_cache_ostars.bin"
+	if staged_load:
+		terrain.loading_hook = _detail
+	add_child(terrain)
+	if not terrain.generated:
+		await terrain.finished_generating
+	await _detail("Walling the edge of the map")
+	_build_map_edge()
+	await _detail("Standing up the rock outcrops")
 	landmarks = Landmarks.new()
 	landmarks.name = "Landmarks"
-	landmarks.setup(terrain, 911)
+	landmarks.setup(terrain, 929)
 	add_child(landmarks)
-	await _detail("Laying %d roads' surfaces, kerbs and markings" % terrain.road_paths.size())
-	var roads := RoadSurface.new()
-	roads.name = "RoadSurface"
-	roads.setup(terrain)
-	add_child(roads)
+	await _detail("Filling Mt. Orodruin with lava")
+	_build_volcano()
+
+## The lava lake in Orodruin's crater, glowing, and smoke going up off it.
+func _build_volcano() -> void:
+	var node := Node3D.new()
+	node.name = "Orodruin"
+	var c: Vector2 = Ostars.VOLCANO.centre
+	node.position = Vector3(c.x, Ostars.lava_level(), c.y)
+	add_child(node)
+	var lava := MeshInstance3D.new()
+	lava.name = "Lava"
+	var disc := CylinderMesh.new()
+	var r := float(Ostars.VOLCANO.crater) * 0.78
+	disc.top_radius = r
+	disc.bottom_radius = r
+	disc.height = 1.0
+	disc.radial_segments = 20
+	lava.mesh = disc
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.36, 0.06)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.42, 0.08)
+	mat.emission_energy_multiplier = 2.6
+	mat.roughness = 0.9
+	lava.material_override = mat
+	lava.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.add_child(lava)
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.45, 0.15)
+	glow.light_energy = 4.0
+	glow.omni_range = 110.0
+	glow.position = Vector3(0, 12, 0)
+	node.add_child(glow)
+	var smoke := Blast._burst(Color(0.32, 0.30, 0.30), false, 40, 5.0, 14.0, 9.0)
+	smoke.one_shot = false
+	smoke.explosiveness = 0.0
+	smoke.spread = 25.0
+	smoke.gravity = Vector3(0.6, 2.2, 0.3)
+	smoke.damping_min = 0.2
+	smoke.damping_max = 0.5
+	smoke.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	smoke.emission_sphere_radius = r * 0.6
+	smoke.visibility_aabb = AABB(Vector3(-200, -20, -200), Vector3(400, 400, 400))
+	node.add_child(smoke)
 
 func _build_bridges() -> void:
 	for plan in terrain.bridges:
@@ -684,7 +779,121 @@ func _build_bridges() -> void:
 ## different trees that both cut into oak, so the map can be varied without the
 ## economy growing a new material for every silhouette.
 func _build_forest() -> void:
-	var species := [
+	if WorldMap.is_ostars():
+		await _build_ostars_forest()
+		return
+	var species := SPECIES
+	# Quotas follow how much country each species actually has, so a seed that
+	# happens to grow little swamp gets few willows rather than an empty field
+	# grinding away at a region that is not there.
+	var pools: Array[PackedVector3Array] = []
+	var total := 0
+	var step := 2 if MAP_HALF <= 400.0 else 3
+	await _detail("Finding the right country for %d kinds of tree" % species.size())
+	for kind in species:
+		var pool: PackedVector3Array
+		if kind.has("site"):
+			pool = terrain.points_in_feature(String(kind.site))
+		else:
+			pool = _banded(terrain.points_in_biomes(kind.biomes, step, float(kind.get("wet", 0.0))),
+				float(kind.get("near", 0.0)), float(kind.get("far", INF)))
+			total += pool.size()
+		pools.append(pool)
+	if total == 0:
+		return
+
+	for i in species.size():
+		var kind: Dictionary = species[i]
+		var pool := pools[i]
+		if pool.is_empty():
+			continue
+		var quota: int = int(kind.get("quota", 0))
+		if quota == 0:
+			quota = int(round(float(tree_count) * float(pool.size()) / float(total)
+				* float(kind.get("weight", 1.0)) * 2.0))
+		# The rare ones get a few, however little of their country there is.
+		quota = maxi(quota, int(kind.get("min", 0)))
+		if quota <= 0:
+			continue
+		await _detail("Growing %d %s trees in their groves (%d of %d kinds)" % [quota, String(kind.name).to_lower(), i + 1, species.size()])
+		var field := _tree_field(kind, quota)
+		# Each species grows in groves of its own, with a few strays between.
+		var sampler := _from_pool(pool) if kind.has("site") else _grove_sampler(kind, pool, _groves(pool, String(kind.name)))
+		field.setup([kind], _build_tree, sampler, _rng.randi())
+		add_child(field)
+		field.prefill()
+		tree_fields.append(field)
+	await _detail("Planting the wood by your plot")
+	_build_starter_forest(species)
+
+## Ostars' forests: grown by the Forester (stands, glades, river banks, the
+## treeline) into spots for each kind of tree; each kind gets a field that
+## keeps most of its spots stood and regrows on the rest.
+var forester: Forester
+## Of a kind's spots, the share stood at once; the rest are where it regrows.
+const OSTARS_STOOD := 0.85
+
+func _build_ostars_forest() -> void:
+	await _detail("Working out how wooded Ostars is, region by region, and where the stands are")
+	forester = Forester.new(terrain, ostars, SPECIES)
+	var grown := forester.grow(int(Balance.num("world.ostars_tree_count", 20000.0) / OSTARS_STOOD))
+	_lap("forester")
+	var census := forester.census()
+	await _detail("Grew %d trees of %d kinds in %d stands" % [grown, census.size(), forester.stands.size()])
+	for pair in census:
+		var name: String = pair[0]
+		var pool: PackedVector3Array = forester.spots[name]
+		var kind: Dictionary = forester.kinds[name]
+		var field := _tree_field(kind, maxi(1, int(ceil(float(pool.size()) * OSTARS_STOOD))))
+		field.setup([kind], _build_tree, _from_spots(pool), _rng.randi())
+		add_child(field)
+		field.prefill()
+		tree_fields.append(field)
+	if forester.home_wood == Vector3.INF or forester.home_spots.is_empty():
+		return
+	await _detail("Planting the wood by your plot")
+	starter_forest = forester.home_wood
+	var kinds: Array = [forester.kinds["Pine"], forester.kinds["Birch"], forester.kinds["Oak"]]
+	var home := ResourceField.new()
+	home.name = "Forest_Starter"
+	home.quota = forester.home_spots.size()
+	home.min_spacing = 3.4
+	home.refill_seconds = 20.0
+	home.wake_distance = TREE_WAKE
+	home.impostor = _tree_impostor(kinds[0])
+	home.impostor_height = (float(kinds[0].height[0]) + float(kinds[0].height[1])) * 0.5
+	home.setup(kinds, _build_tree, _from_spots(forester.home_spots), 4242)
+	add_child(home)
+	home.prefill()
+	tree_fields.append(home)
+
+## Draws one of a set of spots already vetted for a tree, nudged no more than
+## a stride so the stands keep their shape.
+func _from_spots(points: PackedVector3Array) -> Callable:
+	return func(rng: RandomNumberGenerator) -> Vector3:
+		var spot := points[rng.randi() % points.size()]
+		var nudged := Vector3(spot.x + rng.randf_range(-0.8, 0.8), 0.0, spot.z + rng.randf_range(-0.8, 0.8))
+		if terrain.water_depth(nudged.x, nudged.z) > terrain.water_depth(spot.x, spot.z) + 0.05 \
+				or terrain.is_blocked(nudged.x, nudged.z):
+			return terrain.place(spot)
+		return terrain.place(nudged)
+
+## A field for one species' trees, set up the way every forest's is.
+func _tree_field(kind: Dictionary, quota: int) -> ResourceField:
+	var field := ResourceField.new()
+	field.name = "Forest_%s" % String(kind.name).replace(" ", "_").replace("'", "")
+	field.quota = quota
+	field.min_spacing = 3.3
+	field.refill_seconds = 6.0
+	field.churn_seconds = 30.0
+	field.wake_distance = TREE_WAKE
+	field.impostor = _tree_impostor(kind)
+	field.impostor_height = (float(kind.height[0]) + float(kind.height[1])) * 0.5
+	return field
+
+## Every kind of tree on the islands. Ostars grows these and a few of its own
+## (Forester.OWN_SPECIES).
+const SPECIES := [
 		{"name": "Pine", "item": &"wood_pine",
 			"biomes": [Terrain.Biome.WOODLAND, Terrain.Biome.TAIGA],
 			"leaf": Color(0.15, 0.38, 0.22), "work": 620.0,
@@ -836,58 +1045,7 @@ func _build_forest() -> void:
 			# Grey, bare and broken: cheap wood, but it breaks up the skyline.
 			"start": 0.5, "pitch": [0.5, 1.1], "length": [0.12, 0.2],
 			"foliage": 0.0, "crown": [0.0, 0.0], "style": &"bare", "weight": 0.3},
-	]
-
-	# Quotas follow how much country each species actually has, so a seed that
-	# happens to grow little swamp gets few willows rather than an empty field
-	# grinding away at a region that is not there.
-	var pools: Array[PackedVector3Array] = []
-	var total := 0
-	var step := 2 if MAP_HALF <= 400.0 else 3
-	await _detail("Finding the right country for %d kinds of tree" % species.size())
-	for kind in species:
-		var pool: PackedVector3Array
-		if kind.has("site"):
-			pool = terrain.points_in_feature(String(kind.site))
-		else:
-			pool = _banded(terrain.points_in_biomes(kind.biomes, step, float(kind.get("wet", 0.0))),
-				float(kind.get("near", 0.0)), float(kind.get("far", INF)))
-			total += pool.size()
-		pools.append(pool)
-	if total == 0:
-		return
-
-	for i in species.size():
-		var kind: Dictionary = species[i]
-		var pool := pools[i]
-		if pool.is_empty():
-			continue
-		var quota: int = int(kind.get("quota", 0))
-		if quota == 0:
-			quota = int(round(float(tree_count) * float(pool.size()) / float(total)
-				* float(kind.get("weight", 1.0)) * 2.0))
-		# The rare ones get a few, however little of their country there is.
-		quota = maxi(quota, int(kind.get("min", 0)))
-		if quota <= 0:
-			continue
-		await _detail("Growing %d %s trees in their groves (%d of %d kinds)" % [quota, String(kind.name).to_lower(), i + 1, species.size()])
-		var field := ResourceField.new()
-		field.name = "Forest_%s" % kind.name.replace(" ", "_")
-		field.quota = quota
-		field.min_spacing = 3.3
-		field.refill_seconds = 6.0
-		field.churn_seconds = 30.0
-		field.wake_distance = TREE_WAKE
-		field.impostor = _tree_impostor(kind)
-		field.impostor_height = (float(kind.height[0]) + float(kind.height[1])) * 0.5
-		# Each species grows in groves of its own, with a few strays between.
-		var sampler := _from_pool(pool) if kind.has("site") else _grove_sampler(kind, pool, _groves(pool, String(kind.name)))
-		field.setup([kind], _build_tree, sampler, _rng.randi())
-		add_child(field)
-		field.prefill()
-		tree_fields.append(field)
-	await _detail("Planting the wood by your plot")
-	_build_starter_forest(species)
+]
 
 ## How big a grove is, and what share of a species' trees stand in one rather
 ## than scattered on their own.
@@ -1213,7 +1371,10 @@ func _build_quarry() -> void:
 		{"item": &"ore_gold", "volume": [0.20, 1.4], "embed": [0.45, 0.70]},
 	]
 	var per_ore: int = maxi(1, rock_count / ores.size())
-	await _detail("Stocking the quarry with %d kinds of ore, bedded in the pit floor" % ores.size())
+	if WorldMap.is_ostars():
+		ores = []
+	else:
+		await _detail("Stocking the quarry with %d kinds of ore, bedded in the pit floor" % ores.size())
 	for i in ores.size():
 		var kind: Dictionary = ores[i]
 		var field := ResourceField.new()
@@ -1231,7 +1392,11 @@ func _build_quarry() -> void:
 
 	var step := 3 if MAP_HALF <= 400.0 else 4
 	for kind in WILD_ORE:
-		var pool := _banded(terrain.points_in_biomes(kind.biomes, step),
+		var biomes: Array = kind.biomes.duplicate()
+		# Ostars' volcano is mountain country for what turns up in it.
+		if WorldMap.is_ostars() and biomes.has(Terrain.Biome.MOUNTAIN):
+			biomes.append(Terrain.Biome.ASH)
+		var pool := _banded(terrain.points_in_biomes(biomes, step),
 			float(kind.get("near", 0.0)), float(kind.get("far", INF)))
 		if pool.is_empty():
 			continue
@@ -1284,6 +1449,39 @@ func _build_crater() -> void:
 		opal.prefill()
 		rock_fields.append(opal)
 
+## Ostars: starmetal lies in the Meteor Crater of Kael where it fell, and
+## black opal on the Dragon's Tooth Isle, nowhere else.
+func _build_kael() -> void:
+	var pool := terrain.points_in_feature(String(Ostars.CRATER.name))
+	if not pool.is_empty():
+		var field := ResourceField.new()
+		field.name = "Crater_Starmetal"
+		field.quota = 9
+		field.min_spacing = 6.0
+		field.refill_seconds = 45.0
+		field.setup([{"item": &"ore_starmetal", "volume": [0.3, 1.4], "embed": [0.35, 0.6]}],
+			_build_rock, _from_pool(pool), _rng.randi())
+		add_child(field)
+		field.prefill()
+		rock_fields.append(field)
+	var isle := Vector2(2000, 1960)
+	var opal_pool := PackedVector3Array()
+	for p in terrain.points_in_biomes([0, 1, 2, 3, 4, 5], 4):
+		if Vector2(p.x, p.z).distance_to(isle) < 240.0:
+			opal_pool.append(p)
+	if not opal_pool.is_empty():
+		var opal := ResourceField.new()
+		opal.name = "Isle_BlackOpal"
+		opal.quota = 3
+		opal.min_spacing = 30.0
+		opal.refill_seconds = 240.0
+		opal.min_present = 1
+		opal.setup([{"item": &"gem_black_opal", "volume": [0.1, 0.5], "embed": [0.5, 0.75]}],
+			_build_rock, _from_pool(opal_pool), _rng.randi())
+		add_child(opal)
+		opal.prefill()
+		rock_fields.append(opal)
+
 ## Diamonds: a few, in one cavern only, the deepest one under the mountains.
 func _build_diamond_cavern() -> void:
 	var best: Dictionary = {}
@@ -1324,8 +1522,10 @@ func _build_caves() -> void:
 	network = CaveNetwork.new()
 	network.name = "Caves"
 	network.manager = manager
-	await _detail("Planning %d cave networks under the islands, and the deep passages between them" % CAVE_ZONES.size())
-	network.plan(terrain, CAVE_ZONES, CAVE_LINKS, 4242)
+	var zones: Array = Ostars.CAVE_ZONES if WorldMap.is_ostars() else CAVE_ZONES
+	var links: Array = [] if WorldMap.is_ostars() else CAVE_LINKS
+	await _detail("Planning %d cave networks under the land, and the deep passages between them" % zones.size())
+	network.plan(terrain, zones, links, 4242)
 	_lap("cave plan")
 	var net_summary: Dictionary = network.summary()
 	await _detail("Hollowing out %d caverns and %.1f km of tunnel, %d of them below the sea" % [
@@ -1434,6 +1634,14 @@ func _facing(place: String, at: Vector3) -> float:
 ## Everything worth marking on the map and the compass.
 func points_of_interest() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
+	if WorldMap.is_ostars():
+		# The places on the owner's map: found by going there (each has its
+		# own reach - a forest is found at its edge, not its middle).
+		for place in Ostars.PLACES:
+			var at := Vector3(float(place[1]), 0.0, float(place[2]))
+			at.y = terrain.height_at(at.x, at.z)
+			out.append({"name": String(place[0]), "kind": "place", "pos": at, "reach": float(place[3]),
+				"color": Color(0.70, 0.90, 0.62)})
 	for cave in caves:
 		out.append({"name": cave.cave_name, "kind": "cave", "pos": cave.global_position,
 			"color": Color(0.78, 0.66, 1.0)})
@@ -1468,7 +1676,7 @@ func _check_discovery(delta: float) -> void:
 		if discovered(poi.name):
 			continue
 		var p: Vector3 = poi.pos
-		if Vector2(p.x - here.x, p.z - here.z).length() < 40.0:
+		if Vector2(p.x - here.x, p.z - here.z).length() < float(poi.get("reach", 40.0)):
 			PlayerState.discovered.append(poi.name)
 			hud.show_banner("Discovered", poi.name)
 
@@ -1559,8 +1767,8 @@ func _town_shop(node_name: String, id: StringName, at: Vector3) -> Store:
 
 ## Every shop in the world.
 func all_stores() -> Array[Store]:
-	var out: Array[Store] = [store]
-	for s in [dealer_store, works_store, summit_store]:
+	var out: Array[Store] = []
+	for s in [store, dealer_store, works_store, summit_store]:
 		if s != null:
 			out.append(s)
 	return out
@@ -1728,15 +1936,18 @@ func vehicle_at_hand(reach: float = 6.0, p: Player = null) -> Hauler:
 func compass_markers() -> Array[Dictionary]:
 	var base: Array[Dictionary] = [
 		{"name": "Plot", "color": Color(0.55, 0.85, 0.50), "where": func(): return plot.global_position},
-		{"name": "Sell Yard", "color": Color(0.98, 0.80, 0.30), "where": func(): return depot.global_position},
-		{"name": "Hardware Store", "color": Color(0.55, 0.78, 1.0), "where": func(): return store.global_position},
+		{"name": "Sell Yard", "color": Color(0.98, 0.80, 0.30), "where": func():
+			return depot.global_position if depot != null else null},
+		{"name": "Hardware Store", "color": Color(0.55, 0.78, 1.0), "where": func():
+			return store.global_position if store != null else null},
 		{"name": "Vehicle Dealer", "color": Color(0.45, 0.9, 0.95), "where": func():
 			return dealer_store.global_position if dealer_store != null else null},
 		{"name": "Machine Works", "color": Color(0.95, 0.6, 0.35), "where": func():
 			return works_store.global_position if works_store != null else null},
 		{"name": "Summit Outfitters", "color": Color(0.7, 0.62, 1.0), "where": func():
 			return summit_store.global_position if summit_store != null else null},
-		{"name": "Quarry", "color": Color(0.80, 0.70, 0.62), "where": func(): return QUARRY_CENTRE},
+		{"name": "Quarry", "color": Color(0.80, 0.70, 0.62), "where": func():
+			return null if WorldMap.is_ostars() else QUARRY_CENTRE},
 		{"name": "Home Woods", "color": Color(0.45, 0.80, 0.40), "where": func():
 			return starter_forest if starter_forest != Vector3.INF else null},
 		{"name": "Demo Lines", "color": Color(0.95, 0.55, 0.9), "where": func():
@@ -1888,7 +2099,8 @@ func quick_load() -> void:
 ## A fresh world, not this one scrubbed: the progress autoloads are reset and
 ## the scene is built again from nothing.
 func start_new_game() -> void:
-	if not SaveSystem.has_save() and not playing and not loaded_game:
+	# The world behind the menu is already a new one, on the map wanted.
+	if not SaveSystem.has_save() and not playing and not loaded_game and WorldMap.chosen == WorldMap.current:
 		# Nothing to throw away - the world behind the menu is already new.
 		resume_play()
 		return
@@ -1959,7 +2171,8 @@ func _on_setting_changed(_key: StringName) -> void:
 
 ## The demo lines come and go with their setting.
 func _apply_showcase() -> void:
-	var wanted := Settings.flag(&"demo_lines")
+	# Not on Ostars: nothing is built there.
+	var wanted := Settings.flag(&"demo_lines") and not WorldMap.is_ostars()
 	if wanted and showcase == null:
 		showcase = Showcase.new()
 		showcase.name = "Showcase"
@@ -2254,7 +2467,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		pause_game()
 		pause_menu.ask("Start a new game?",
 			"This save slot will be replaced. Settings are kept.", "Start over",
-			start_new_game)
+			func():
+				# Over again on the same map.
+				WorldMap.chosen = WorldMap.current
+				start_new_game())
 	else:
 		handle_key(player, event)
 

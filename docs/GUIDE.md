@@ -25,7 +25,8 @@ it up; headless runs resolve class names from that cache.
 
 The game opens on a title screen over a flyover of the valley: **Continue**
 picks up the newest save (it tells you the slot, day, money and when it was
-saved), **Load Game** lists every save slot, **New Game** asks which slot to
+saved), **Load Game** lists every save slot, **New Game** asks which map
+(Pinecraft Isles or Ostars - see [The maps](#the-maps)) and which slot to
 start in, and Settings and Controls are there before you play. The full list
 of keys is on the Controls page and in the journal (F1), and the few that
 matter right now are always in the bottom-right corner.
@@ -231,7 +232,74 @@ its cell grid and a hazard-striped edge.
    up the mountain a golden statue, a fountain and a crystal beacon - are just
    for looks.
 
-## The map
+## The maps
+
+There are two, picked on the New Game page; each save slot remembers its own,
+and a co-op guest builds whichever the host is playing.
+
+- **Pinecraft Isles** - the home island and five more, with the town, the
+  sell yard, the quarry, outposts, roads and bridges. Everything below
+  [Ostars](#ostars) describes this one.
+- **Ostars, the Known Continent** - drawn after the owner's map, with no
+  buildings at all.
+
+### Ostars
+
+One big continent in the same 4.8 km square of sea (`scripts/world/Ostars.gd`
+is the terrain's *shaper*: it gives the biome and height at any point, and
+Terrain carves the rivers, the crater and the caves into that as usual). Home
+- the plot - is in the Silverflow Meadows in the middle, where it always is.
+
+| Where | What |
+|---|---|
+| North | The **Frostpeak Wilds** (snow crags, the Frostpeak range) and the **Frostpeak Tundra**: flat snowfields with frozen lakes (the new ICE biome - flat, nothing grows) |
+| Across the north | The **Avalanche Mountains**, snow-capped, over 200 m, with two passes through |
+| West | **Sylvenwood** (thick woods), the **Silverflow River** past home down to **Halyon Port**, **Mt. Orodruin** on the coast - a 250 m cone of ash (the new ASH biome) with a lava lake smoking in its crater - and over the **Aethel Sea** the **Great Sky Arch**, a rock causeway humped up out of the sea to the **Whispering Woods** on their island |
+| Middle | The **Shattered Desert** - plates of rock lifted in steps with cracks down to the sand between - the **Al-Khalid Sands** (dunes), and the **Emperor's Spine**, a sandstone ridge 38 m high with a flat top you can drive along, ramping down at both ends (the near end is a short walk north-east of home) |
+| South | The **Sunscorched Badlands** (mesas and gullies) and the **Meteor Crater of Kael** - starmetal lies in it |
+| South-west | The **Gulf of Krakens** |
+| East | The other **Whispering Woods**, the **Ostar River** past **Ostaros City** to the **Bay of the Wyrm**, **Sylvanwood** (maples and cherries, a little mahogany), the two **Mor'uk Bogs**, and the **Veiled Archipelago** off the coast |
+| South-east | The **Dragon's Teeth** - fangs of rock over 200 m - running out to their own island (black opal) |
+
+The towns on the owner's map (Halyon Port, Ostaros City) are empty sites:
+nothing is built anywhere - no shops, sell yard, outposts, quarry, roads or
+bridges - so on Ostars there is nothing to buy or sell yet, and the checklist
+leaves those steps out. Every named place is on the journal's map as a "?"
+until you go there. Wild ore is spread by country and distance from home as on
+the islands (the volcano counts as mountains), there are caves (a big network
+under the continent with a cave biome under each kind of country, and a small
+one under the Whispering Woods), rock outcrops, and the map caches to
+`user://terrain_cache_ostars.bin`.
+
+**The forests are grown, not scattered** (`scripts/world/Forester.gd`):
+
+1. *How wooded the land is*, everywhere: each region has its own (Sylvenwood
+   and the Whispering Woods thick, the meadows light, the desert all but bare),
+   broken up by glades and patchiness, thicker along the rivers, thinning to
+   nothing at the treeline (120 m, 165 m in the snow), and nothing on ice, the
+   ridges, the beach or the plot.
+2. *Stands*: spots tried all over on a jittered grid, each kept by how wooded
+   it is there, sized by the same, with a leading and a second kind of tree
+   from the region's mix (willows and birches on a river bank, palms at a
+   desert river, pine, ironwood and spruce on any mountain).
+3. *Trees*: the budget shared between the stands by how much wood each holds,
+   and each stand's trees dropped in a clump round its middle - 70% its
+   leading kind, 20% its second, the rest anything in the mix. A rare tree
+   (ebony, mahogany, spirit trees) never leads a stand, so it turns up one
+   here and there rather than as a grove. Too wet for a kind, and something in
+   the mix that likes the wet takes the spot instead.
+   No two trees closer than 3.6 m.
+4. *Strays*: a few lone trees anywhere wooded enough.
+5. *The home wood*: 70 pine, birch and oak in the best patch 95-175 m from the
+   plot (the compass calls it the Home Woods).
+
+Each kind of tree then gets a field that keeps 85% of its spots stood and
+regrows on the rest. Ostars has three trees of its own, each cutting into a
+wood the game already has: **Whisperbark** (tall, pale, a blue-green head;
+birch), **Bog Cypress** (a fat trunk standing in the bog water; willow) and
+**Charred Snag** (burnt black on Orodruin; pine).
+
+## The isles
 
 > **Current world (latest):** 4.8 km across. A home island 2.4 km wide, split
 > into big single-biome regions (the Greenwood round home, the Spine Mountains

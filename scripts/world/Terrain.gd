@@ -13,7 +13,10 @@ extends StaticBody3D
 ## face normal, which is what makes the hills read as facets rather than as a
 ## blurry blanket, and it is also what the doc asks for.
 
-enum Biome { WOODLAND, SWAMP, DESERT, MOUNTAIN, TAIGA, SNOW }
+## ICE and ASH only turn up on the maps that ask for them (the frozen lakes and
+## the volcano's slopes on Ostars): nothing grows on ice, and ash is charred
+## country.
+enum Biome { WOODLAND, SWAMP, DESERT, MOUNTAIN, TAIGA, SNOW, ICE, ASH }
 
 ## Metres per quad. Bigger is coarser and cheaper; this is the knob for both.
 const CELL := 6.0
@@ -120,6 +123,19 @@ var _mesa := FastNoiseLite.new()
 const SHORE_BASE := 1.5
 ## The land as welded plates (the region map), once built.
 var facets: Facets
+## A hand-drawn country instead of the islands and regions: an object with
+## `sample(x, z) -> [biome, height]` (called from worker threads, so it only
+## reads) and `key() -> String` (for the map cache). Rivers, features, caves
+## and everything after the heights work on it the same as ever.
+var shaper: Object = null
+
+## Drawn as welded plates with the toon colours (the region map, or a shaped one).
+func _plated() -> bool:
+	return not regions.is_empty() or shaper != null
+
+## Open water all round, out past the edge of the map.
+func _open_sea() -> bool:
+	return not islands.is_empty() or shaper != null
 
 ## Flat ground, per biome: the tops of the terraces.
 const BIOME_COLORS := {
@@ -129,6 +145,8 @@ const BIOME_COLORS := {
 	Biome.MOUNTAIN: Color(0.47, 0.47, 0.45),
 	Biome.TAIGA: Color(0.26, 0.44, 0.31),
 	Biome.SNOW: Color(0.88, 0.91, 0.96),
+	Biome.ICE: Color(0.70, 0.86, 0.96),
+	Biome.ASH: Color(0.24, 0.22, 0.23),
 }
 ## Steep ground, per biome: the risers between terraces, and cliffs.
 const CLIFF_COLORS := {
@@ -138,6 +156,8 @@ const CLIFF_COLORS := {
 	Biome.MOUNTAIN: Color(0.42, 0.42, 0.45),
 	Biome.TAIGA: Color(0.41, 0.40, 0.37),
 	Biome.SNOW: Color(0.60, 0.65, 0.74),
+	Biome.ICE: Color(0.56, 0.70, 0.82),
+	Biome.ASH: Color(0.30, 0.20, 0.18),
 }
 ## Faces steeper than this (the normal's vertical part) are drawn as rock.
 const CLIFF_NORMAL_Y := 0.82
@@ -157,6 +177,8 @@ const TERRACE_STEP := {
 	Biome.MOUNTAIN: 4.0,
 	Biome.TAIGA: 2.5,
 	Biome.SNOW: 3.5,
+	Biome.ICE: 0.0,
+	Biome.ASH: 3.0,
 }
 ## Where in each band the riser starts. Higher is flatter tops and steeper risers.
 const TERRACE_EDGE := 0.74
@@ -171,6 +193,8 @@ const BIOME_HEIGHT := {
 	Biome.MOUNTAIN: [14.0, 34.0],
 	Biome.TAIGA: [3.5, 10.0],
 	Biome.SNOW: [10.0, 22.0],
+	Biome.ICE: [4.0, 0.0],
+	Biome.ASH: [14.0, 30.0],
 }
 
 func _ready() -> void:
@@ -328,7 +352,7 @@ func biome_mix() -> Dictionary:
 	return mix
 
 func biome_name(biome: Biome) -> String:
-	return ["woodland", "swamp", "desert", "mountains", "taiga", "snowland"][int(biome)]
+	return ["woodland", "swamp", "desert", "mountains", "taiga", "snowland", "ice", "ash"][int(biome)]
 
 ## How deep the water is over a point. Zero on dry land.
 func water_depth(x: float, z: float) -> float:
@@ -573,6 +597,9 @@ func _fill_row(iz: int, bufs: Array) -> void:
 func _cache_key() -> String:
 	var config := [GENERATOR_VERSION, half_extent, noise_seed, islands, regions, features, rivers,
 		roads, build_sites, site_requests, spur_sites, driveways, cave_count, clear_zones]
+	# A shaped country has its own key (and the islands' key is left as it was).
+	if shaper != null:
+		config.append(String(shaper.call("key")))
 	return str(hash(var_to_str(config)))
 
 func _load_cache() -> bool:
@@ -622,6 +649,14 @@ func _lap(what: String) -> void:
 
 ## Biome and height at a point, from one read of the noise.
 func _sample(x: float, z: float) -> Array:
+	if shaper != null:
+		var shaped: Array = shaper.call("sample", x, z)
+		var feature := _feature_at(x, z)
+		if feature.size() > 0:
+			# A crater's rock is its bowl and rim; past that, the country round it.
+			var fb: int = feature[1] if not _crater_near(x, z) or _crater_bowl(x, z) else shaped[0]
+			shaped = [fb, lerpf(float(shaped[1]), float(feature[2]), float(feature[0]))]
+		return shaped
 	if not regions.is_empty():
 		return _sample_regions(x, z)
 	var isle := _island_at(x, z)
@@ -904,6 +939,20 @@ static func pit_space(f: Dictionary, x: float, z: float) -> Vector2:
 ## Back from the pit's round frame to the map.
 static func from_pit_space(f: Dictionary, q: Vector2) -> Vector2:
 	return (f.centre as Vector2) + Vector2(q.x * float(f.get("stretch", 1.0)), q.y).rotated(float(f.get("angle", 0.0)))
+
+## In a crater's scorched bowl (as far out as it is drawn scorched).
+func _crater_bowl(x: float, z: float) -> bool:
+	for f in features:
+		if String(f.kind) == "crater" and Vector2(x, z).distance_to(f.centre) < float(f.radius) * 1.3:
+			return true
+	return false
+
+## Within reach of a crater at all (its rim eases out a long way).
+func _crater_near(x: float, z: float) -> bool:
+	for f in features:
+		if String(f.kind) == "crater" and Vector2(x, z).distance_to(f.centre) < float(f.radius) * 2.7:
+			return true
+	return false
 
 ## Nothing grows in a crater.
 func _in_crater(x: float, z: float) -> bool:
@@ -1739,7 +1788,7 @@ const CHUNK := 32
 
 func _build_mesh() -> void:
 	var mat: StandardMaterial3D
-	if regions.is_empty():
+	if not _plated():
 		mat = StandardMaterial3D.new()
 		mat.vertex_color_use_as_albedo = true
 		mat.roughness = 1.0
@@ -1749,7 +1798,7 @@ func _build_mesh() -> void:
 		mat = Textures.material("grass", 6.0).duplicate()
 		mat.roughness = 0.62
 		mat.metallic_specular = 0.6
-	if not regions.is_empty():
+	if _plated():
 		_build_plates(mat)
 		return
 	var chunks := int(ceil(float(_cells) / float(CHUNK)))
@@ -1951,9 +2000,9 @@ func _build_sheets(sea: PackedVector3Array, water: PackedVector3Array) -> void:
 		add_child(_flat_mesh(sea, bed, "SeaBed"))
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.18, 0.34, 0.46, 0.72) if regions.is_empty() else Color(0.10, 0.42, 0.78, 0.86)
+	mat.albedo_color = Color(0.18, 0.34, 0.46, 0.72) if not _plated() else Color(0.10, 0.42, 0.78, 0.86)
 	mat.roughness = 0.15
-	mat.metallic = 0.2 if regions.is_empty() else 0.05
+	mat.metallic = 0.2 if not _plated() else 0.05
 	var outer := PackedVector3Array()
 	var h := half_extent
 	var far := half_extent * 4.0
@@ -1968,7 +2017,7 @@ func _build_sheets(sea: PackedVector3Array, water: PackedVector3Array) -> void:
 	add_child(_flat_mesh(water, mat, "Water"))
 	# The sea bed goes on past the edge of the map too, so open water looks
 	# the same inside the map and out.
-	if not islands.is_empty():
+	if _open_sea():
 		var bed_out := PackedVector3Array()
 		for i in range(0, outer.size()):
 			bed_out.append(Vector3(outer[i].x, SEA_FLOOR, outer[i].z))
@@ -2084,6 +2133,8 @@ const TOON_GROUND := {
 	Biome.MOUNTAIN: Color(0.32, 0.52, 0.26),
 	Biome.TAIGA: Color(0.20, 0.48, 0.30),
 	Biome.SNOW: Color(0.95, 0.97, 1.0),
+	Biome.ICE: Color(0.66, 0.86, 0.98),
+	Biome.ASH: Color(0.25, 0.23, 0.24),
 }
 const TOON_ROCK := {
 	Biome.WOODLAND: Color(0.52, 0.53, 0.58),
@@ -2092,6 +2143,8 @@ const TOON_ROCK := {
 	Biome.MOUNTAIN: Color(0.55, 0.55, 0.60),
 	Biome.TAIGA: Color(0.49, 0.50, 0.56),
 	Biome.SNOW: Color(0.68, 0.73, 0.84),
+	Biome.ICE: Color(0.60, 0.76, 0.90),
+	Biome.ASH: Color(0.33, 0.22, 0.20),
 }
 const TOON_BEACH := Color(0.97, 0.89, 0.66)
 
@@ -2286,7 +2339,7 @@ func _plan_caves() -> void:
 		"Crystal Throat", "Wormhole Drift", "Lantern Gallery", "Hollow King", "Blackwater Sink",
 		"Sandglass Hole", "Rimefall", "Moonmilk Grotto", "Cinder Vent", "Spore Hollow",
 		"Drowned Stair", "Whistling Adit", "Bramble Pit", "Gull's Throat", "Lastlight"]
-	var spacing := 150.0 if islands.is_empty() else 280.0
+	var spacing := 150.0 if not _open_sea() else 280.0
 	var zones: Array = cave_zones if not cave_zones.is_empty() else \
 		[{"centre": Vector2.ZERO, "radius": INF, "count": cave_count}]
 	for zone in zones:
@@ -2398,7 +2451,7 @@ func _cave_score(entrance: Vector3, dir: Vector3) -> float:
 	# Some cover is enough; beyond that prefer caves nearer the middle of the
 	# map, so they are a trip but not a pilgrimage. On an island map they are
 	# spread about instead, near and far alike.
-	if not islands.is_empty():
+	if _open_sea():
 		return minf(spare, 6.0) + float(hash(Vector2i(int(entrance.x), int(entrance.z))) % 1000) / 50.0
 	return minf(spare, 6.0) + 60.0 / (1.0 + entrance.length() / 100.0)
 
@@ -2422,7 +2475,7 @@ func map_image(px_per_cell: int = 2) -> Image:
 			if height < WATER_LEVEL - 0.05:
 				color = Color(0.20, 0.42, 0.60).darkened(clampf(-height * 0.08, 0.0, 0.3))
 			else:
-				color = _face_color(ix, iz, height, normal) if regions.is_empty() \
+				color = _face_color(ix, iz, height, normal) if not _plated() \
 					else _map_color(ix, iz, height)
 				color = color.darkened(clampf(0.35 - normal.dot(sun) * 0.45, 0.0, 0.4))
 			img.set_pixel(ix, iz, color)

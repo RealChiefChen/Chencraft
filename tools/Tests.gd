@@ -95,6 +95,7 @@ func _run_all() -> void:
 	await _test(&"belts carry by friction, and things on them can jam", test_conveyor_physics)
 	await _test(&"splitter routes round-robin", test_splitter)
 	await _test(&"the 3-way splitter takes a belt in and deals onto three belts", test_splitter_belts)
+	await _test(&"a splitter's ways lock and unlock, and stay locked through a save", test_splitter_locks)
 	await _test(&"filter sorts items by type", test_filter)
 	await _test(&"building placement, cost and removal", test_building)
 	await _test(&"buildings sit on the pad, not in it", test_buildings_sit_on_pad)
@@ -2839,6 +2840,51 @@ func test_splitter_belts() -> void:
 	check(int(ways.left) > 0 and int(ways.straight) > 0 and int(ways.right) > 0,
 		"the splitter did not deal onto all three belts (%s)" % str(ways))
 	check_eq(lost, 0, "pieces left sitting on the splitter")
+	done()
+
+## Aiming at a side of a splitter and pressing [R] locks that way (a gate
+## comes down across it) or opens it again; pieces only go out the open ways,
+## and which are locked is kept with the plot.
+func test_splitter_locks() -> void:
+	_setup()
+	var sp := plot.place(GameData.building(&"splitter"), Vector2i(0, 0), 0, false) as Splitter
+	await step(3)
+	var at := sp.global_position
+	check_eq(sp.toggle_toward(at + Vector3(-1.2, 0.2, 0)), 0, "aiming left did not pick the left way")
+	check_eq(sp.toggle_toward(at + Vector3(1.2, 0.2, 0.1)), 2, "aiming right did not pick the right way")
+	check_eq(sp.toggle_toward(at + Vector3(0, 0.2, 1.3)), -1, "aiming at the way in locked something")
+	check(not sp.enabled_outputs[0] and sp.enabled_outputs[1] and not sp.enabled_outputs[2], "the wrong ways are locked")
+	check(sp._gates[0].visible and not sp._gates[1].visible, "no gate across the locked way")
+	check(sp.status_line().contains("left LOCKED"), "the prompt does not say the left is locked")
+	for i in 5:
+		spawn(&"ingot_iron", at + Vector3(0, 0.45, 0.9), Solid.box(Vector3(0.2, 0.3, 0.1)))
+		await step(40)
+	await step(90)
+	var sideways := 0
+	var front := 0
+	for item in manager.free_items():
+		var local: Vector3 = sp.global_transform.affine_inverse() * item.global_position
+		if absf(local.x) > 1.6:
+			sideways += 1
+		elif local.z < -1.4:
+			front += 1
+	check_eq(sideways, 0, "a piece went out a locked way")
+	check(front >= 4, "only %d of 5 went out the open front" % front)
+	# Kept with the plot.
+	var saved := plot.to_dict()
+	plot.clear_buildings()
+	await step(2)
+	plot.from_dict(saved)
+	await step(3)
+	var back: Splitter = null
+	for rec in plot.placed:
+		if rec.node is Splitter:
+			back = rec.node
+	check(back != null and not back.enabled_outputs[0] and back.enabled_outputs[1] and not back.enabled_outputs[2],
+		"the locks were not kept through a save")
+	sp = back
+	sp.toggle_toward(sp.global_position + Vector3(-1.2, 0.2, 0))
+	check(sp.enabled_outputs[0] and not sp._gates[0].visible, "the left way would not open again")
 	done()
 
 func test_filter() -> void:

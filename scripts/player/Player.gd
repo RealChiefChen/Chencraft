@@ -1059,6 +1059,19 @@ func _cycle_machine_output() -> bool:
 	if target is Filter:
 		filter_config_requested.emit(target as Filter)
 		return true
+	if target is Splitter:
+		var sp := target as Splitter
+		var way := sp.toggle_toward(hit.position)
+		if way < 0:
+			interacted.emit("aim at the side you want to lock (left, front or right), not the way in")
+			return true
+		interacted.emit("%s way %s" % [Splitter.WAY_NAMES[way], "opened" if sp.enabled_outputs[way] else "locked"])
+		# A guest's splitter is a picture of the host's: the host is told.
+		if Net.is_client() and Net.client_side != null:
+			var id := int(Net.client_side.call("id_of", sp))
+			if id >= 0:
+				Net.client_side.call("send_event", {"t": "fcfg", "id": id, "state": sp.to_dict()})
+		return true
 	var m := target as InlineMachine
 	if m == null or m.config_fields().is_empty():
 		return false
@@ -1147,6 +1160,8 @@ func _update_prompt() -> void:
 		last_prompt = ("%s" if plan.solid else "[E] add material   %s") % plan.status_line()
 	elif target is Conveyor:
 		last_prompt = (target as Conveyor).status_line()
+	elif target is Splitter:
+		last_prompt = (target as Splitter).status_line()
 	elif target is Hauler:
 		var h := target as Hauler
 		if h.has_bed():

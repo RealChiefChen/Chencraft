@@ -1080,7 +1080,9 @@ rule below is enforced in one place rather than per object.
   lands and a friction-limited push toward it, so heavy pieces turn slowly.
   The **3-Way Splitter** is in build mode with the belts ($510): a 3 x 3 plate
   level with a belt's deck, one belt in at the back and belts off its left,
-  front and right, dealing pieces out to each in turn.
+  front and right, dealing pieces out to each in turn. Aim at a side and press
+  [R] to lock that way (a red-and-white gate comes down across it, and pieces
+  go out the open ways only); [R] again opens it. Locks are kept in the save.
   Items entering a machine still become counters in its buffer.
 * **Trigger volumes are geometry-checked.** `Area3D.get_overlapping_bodies()` can
   report a body that is no longer really inside — pooled items are detached

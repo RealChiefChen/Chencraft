@@ -282,8 +282,17 @@ Terrain carves the rivers, the crater and the caves into that as usual). Home
 | East | The other **Whispering Woods**, the **Ostar River** past **Ostaros City** to the **Bay of the Wyrm**, **Sylvanwood** (maples and cherries, a little mahogany), the two **Mor'uk Bogs**, and the **Veiled Archipelago** off the coast |
 | South-east | The **Dragon's Teeth** - fangs of rock over 200 m - running out to their own island (black opal) |
 
-**What is built** (`Ostars.SITES`, each levelled and facing home; no roads,
-bridges, outposts or quarry): the town by home - the hardware store, the
+**Roads** (`World.ostars_roads`): the plot's drive runs down to a main street
+south of the town, with a lane up between the dealer and the works to the
+hardware store; the street runs west to Old Bjorn's yard and on to the sea at
+Granny Opal's, and east out of town, then north up through the foothills to
+Dusty's and over the pass to Summit Outfitters. The long roads are routed over
+the land - round the hills, switching back up the slopes - and each ends on
+the home side of its yard. Roads are quicker to drive, and nothing grows on
+them.
+
+**What is built** (`Ostars.SITES`, each levelled and facing home; no outposts
+or quarry): the town by home - the hardware store, the
 vehicle dealer and the machine works - Summit Outfitters up on the tundra past
 the Avalanche pass, and the three traders (see [Traders](#traders)): Old
 Bjorn's lumber yard at the edge of the meadows 270 m from home, Dusty's assay

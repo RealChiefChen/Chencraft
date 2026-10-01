@@ -62,6 +62,7 @@ func _run_all() -> void:
 	await _test(&"shaders switch trees and ground between plain and fancy", test_shaders_switch)
 	await _test(&"birds fly round you, above the ground, and roost at night", test_birds)
 	await _test(&"ostars: each save remembers its map", test_ostars_save_map)
+	await _test(&"ostars: roads from home to the town and every trader", test_ostars_roads)
 	await _test(&"ostars: ore by hardness, the best in the hardest country", test_ostars_ore)
 	await _test(&"traders: each has a model, a tool or a chair, and pivots", test_trader_models)
 	await _test(&"traders: each yard buys only its own goods", test_trader_yards)
@@ -7692,6 +7693,26 @@ func test_birds() -> void:
 	check_eq(far, 0, "birds wandered off")
 	birds.set_enabled(false)
 	check(not birds._mmi.visible, "birds still shown with birds off")
+	done()
+
+## Ostars has roads: from the plot to the main street, and one to each of the
+## traders and Summit Outfitters, ending just outside their yards.
+func test_ostars_roads() -> void:
+	var roads := World.ostars_roads()
+	check(roads.size() >= 5, "only %d roads on Ostars" % roads.size())
+	var ends: Array = []
+	for road in roads:
+		var pts: Array = road.route if road is Dictionary else road
+		ends.append(pts[0])
+		ends.append(pts[pts.size() - 1])
+	check(ends.has(Vector3(0, 0, 52)), "no road from the plot")
+	for key in ["lumber", "metal", "gems", "summit"]:
+		var at: Array = Ostars.SITES[key]
+		var c := Vector3(float(at[0]), 0, float(at[1]))
+		var nearest := INF
+		for e: Vector3 in ends:
+			nearest = minf(nearest, e.distance_to(c))
+		check(nearest < float(at[2]) + 12.0 and nearest > float(at[2]), "the road to %s ends %.0f m from it" % [key, nearest])
 	done()
 
 func test_ostars_forest() -> void:

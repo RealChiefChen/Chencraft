@@ -710,8 +710,8 @@ func _build_map_edge() -> void:
 	add_child(bounds)
 
 ## Ostars: the continent as drawn (see Ostars), with the plot levelled at
-## home in the middle. No roads, no bridges, nothing built: rock outcrops,
-## the rivers, and the lava in Orodruin's crater.
+## home in the middle, roads out to its places (see ostars_roads), rock
+## outcrops, the rivers, and the lava in Orodruin's crater.
 var ostars: Ostars
 
 func _build_ostars_terrain() -> void:
@@ -726,6 +726,7 @@ func _build_ostars_terrain() -> void:
 	# The shops and the traders' yards, each levelled to the lie of its land.
 	for key in Ostars.SITES:
 		terrain.reserve_site(_ostars_site_centre(key), float(Ostars.SITES[key][2]))
+	terrain.roads = ostars_roads()
 	terrain.cave_count = 12
 	for zone in Ostars.CAVE_ZONES:
 		terrain.cave_zones.append({"centre": zone.centre, "radius": zone.radius * 0.92, "count": zone.mouths})
@@ -735,8 +736,14 @@ func _build_ostars_terrain() -> void:
 	add_child(terrain)
 	if not terrain.generated:
 		await terrain.finished_generating
-	await _detail("Walling the edge of the map")
+	await _detail("Walling the edge of the map and building %d bridges" % terrain.bridges.size())
 	_build_map_edge()
+	_build_bridges()
+	await _detail("Laying %d roads' surfaces, kerbs and markings" % terrain.road_paths.size())
+	var surface := RoadSurface.new()
+	surface.name = "RoadSurface"
+	surface.setup(terrain)
+	add_child(surface)
 	await _detail("Standing up the rock outcrops")
 	landmarks = Landmarks.new()
 	landmarks.name = "Landmarks"
@@ -744,6 +751,44 @@ func _build_ostars_terrain() -> void:
 	add_child(landmarks)
 	await _detail("Filling Mt. Orodruin with lava")
 	_build_volcano()
+
+## Ostars' roads: the drive from the plot down to the main street, which runs
+## past the town (the hardware store, the dealer, the works) west to Old
+## Bjorn's yard and east out of town; from there north up through the
+## foothills to Dusty's and on over the pass to Summit Outfitters; and west
+## from Bjorn's to the sea at Granny Opal's. The long ones are routed over the
+## land (round the hills, switching back up the slopes, bridging the rivers);
+## each ends on the side of its yard that faces home, where the way in is.
+static func ostars_roads() -> Array:
+	var lumber := _ostars_gate("lumber", 27.0)
+	var metal := _ostars_gate("metal", 27.0)
+	var gems := _ostars_gate("gems", 27.0)
+	var summit := _ostars_gate("summit", 18.0)
+	# South of the town, clear of the dealer's and the works' yards.
+	var main := [lumber, Vector3(-120, 0, 140), Vector3(-30, 0, 138), Vector3(80, 0, 138), Vector3(185, 0, 138),
+		Vector3(300, 0, 132), Vector3(420, 0, 110)]
+	return [
+		# The plot's drive, square onto the main street.
+		[Vector3(0, 0, 52), Vector3(0, 0, 138)],
+		{"bridge": true, "route": main},
+		# Up between the dealer and the works to the hardware store.
+		[Vector3(185, 0, 138), Vector3(185, 0, 80)],
+		# North to Dusty's, and on to Summit Outfitters.
+		{"bridge": true, "branch_of": 1, "route": [Vector3(420, 0, 110), Vector3(460, 0, -150),
+			Vector3(360, 0, -480), metal]},
+		{"bridge": true, "route": [metal, Vector3(420, 0, -1000), Vector3(560, 0, -1300), summit]},
+		# West to the coast.
+		{"bridge": true, "route": [lumber, Vector3(-560, 0, 260), Vector3(-950, 0, 400), gems]},
+	]
+
+## Where a road meets one of Ostars' places: just outside its levelled
+## ground, on the side facing home.
+static func _ostars_gate(key: String, radius: float) -> Vector3:
+	var at: Array = Ostars.SITES[key]
+	var c := Vector2(float(at[0]), float(at[1]))
+	var home := -c.normalized()
+	var p := c + home * (radius + 7.0)
+	return Vector3(p.x, 0, p.y)
 
 ## The lava lake in Orodruin's crater, glowing, and smoke going up off it.
 func _build_volcano() -> void:

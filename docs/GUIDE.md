@@ -1078,6 +1078,9 @@ rule below is enforced in one place rather than per object.
   lip, where a piece that has reached a machine, bin or chute is dropped into
   it. Splitters are powered-roller plates: each piece gets an output when it
   lands and a friction-limited push toward it, so heavy pieces turn slowly.
+  The **3-Way Splitter** is in build mode with the belts ($510): a 3 x 3 plate
+  level with a belt's deck, one belt in at the back and belts off its left,
+  front and right, dealing pieces out to each in turn.
   Items entering a machine still become counters in its buffer.
 * **Trigger volumes are geometry-checked.** `Area3D.get_overlapping_bodies()` can
   report a body that is no longer really inside — pooled items are detached

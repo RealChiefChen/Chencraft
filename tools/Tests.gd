@@ -94,6 +94,7 @@ func _run_all() -> void:
 	await _test(&"belts come as ramps, borderless and stoppable", test_conveyor_options)
 	await _test(&"belts carry by friction, and things on them can jam", test_conveyor_physics)
 	await _test(&"splitter routes round-robin", test_splitter)
+	await _test(&"the 3-way splitter takes a belt in and deals onto three belts", test_splitter_belts)
 	await _test(&"filter sorts items by type", test_filter)
 	await _test(&"building placement, cost and removal", test_building)
 	await _test(&"buildings sit on the pad, not in it", test_buildings_sit_on_pad)
@@ -2795,6 +2796,49 @@ func test_splitter() -> void:
 			straight += 1
 	check(left > 0 and right > 0 and straight > 0,
 		"splitter did not use all three outputs (l%d s%d r%d)" % [left, straight, right])
+	done()
+
+## Built from build mode on the plot, in a line of belts: a belt into the back
+## of the 3-way splitter, a belt off each side and the front. Pieces go out
+## all three, and none is left on the plate.
+func test_splitter_belts() -> void:
+	_setup()
+	var def := GameData.building(&"splitter")
+	check(not def.hidden, "the 3-way splitter is not in build mode")
+	check(def.id in PlayerState.available_buildings().map(func(d): return d.id), "the 3-way splitter is not offered")
+	var sp := plot.place(def, Vector2i(0, 0), 0, false) as Splitter
+	check(sp != null, "the splitter would not go down")
+	await step(3)
+	# Belts round it, each running away from it, the in-belt running into it.
+	var belts: Array = []
+	for spec in [[Vector3(0, 0, 3.5), 0.0], [Vector3(-3.5, 0, 0), PI * 0.5], [Vector3(0, 0, -3.5), 0.0], [Vector3(3.5, 0, 0), -PI * 0.5]]:
+		var belt := Conveyor.new()
+		belt.length = 4.0
+		belt.width = 0.9
+		belt.speed = 3.0
+		world.add_child(belt)
+		belt.global_transform = Transform3D(Basis(Vector3.UP, spec[1]), sp.global_position + spec[0])
+		belts.append(belt)
+	await step(3)
+	for i in 6:
+		spawn(&"ingot_iron", sp.global_position + Vector3(0, 0.45, 4.8), Solid.box(Vector3(0.2, 0.3, 0.1)))
+		await step(45)
+	await step(150)
+	var ways := {"left": 0, "straight": 0, "right": 0}
+	var lost := 0
+	for item in manager.free_items():
+		var local: Vector3 = sp.global_transform.affine_inverse() * item.global_position
+		if local.x < -1.6:
+			ways.left += 1
+		elif local.x > 1.6:
+			ways.right += 1
+		elif local.z < -1.6:
+			ways.straight += 1
+		if absf(local.x) < 1.6 and absf(local.z) < 1.6:
+			lost += 1
+	check(int(ways.left) > 0 and int(ways.straight) > 0 and int(ways.right) > 0,
+		"the splitter did not deal onto all three belts (%s)" % str(ways))
+	check_eq(lost, 0, "pieces left sitting on the splitter")
 	done()
 
 func test_filter() -> void:

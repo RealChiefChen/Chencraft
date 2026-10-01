@@ -15,7 +15,9 @@ extends Node3D
 var body_color: Color = Color(0.22, 0.26, 0.34)
 
 const OUTPUT_DIRS := [Vector3.LEFT, Vector3.FORWARD, Vector3.RIGHT]
-const PLATE_THICKNESS := 0.2
+## Level with a belt's deck, so a piece rides off a belt straight onto it
+## and off it onto the next.
+const PLATE_THICKNESS := Conveyor.DECK_THICKNESS
 const OUTPUT_DISTANCE := 1.6
 
 var def: BuildingDef
@@ -64,7 +66,8 @@ func _ready() -> void:
 	var ab := BoxShape3D.new()
 	ab.size = Vector3(size.x, 1.0, size.z)
 	acs.shape = ab
-	acs.position = Vector3(0, PLATE_THICKNESS + 0.6, 0)
+	# From the plate's top up: a flat piece (an ingot lying down) is in it too.
+	acs.position = Vector3(0, PLATE_THICKNESS + 0.45, 0)
 	_area_shape = acs
 	_area.add_child(acs)
 	add_child(_area)

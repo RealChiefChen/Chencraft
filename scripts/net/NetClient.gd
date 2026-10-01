@@ -182,6 +182,11 @@ func on_batch(batch: Array) -> void:
 				if kp != null:
 					var v: Array = e.v
 					kp.knock(Vector3(float(v[0]), float(v[1]), float(v[2])))
+			"grind":
+				var gp: Player = world.get("player")
+				if gp != null:
+					var gx: Array = e.x
+					gp.grind(Vector3(float(gx[0]), float(gx[1]), float(gx[2])), float(e.get("s", 2.6)))
 			"crush":
 				var cp: Player = world.get("player")
 				if cp != null:

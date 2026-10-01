@@ -204,6 +204,7 @@ func _run_all() -> void:
 	await _test(&"running into a parked truck does not knock him over", test_run_into_parked_truck)
 	await _test(&"a crane's grapple picks a player up", test_crane_lifts_player)
 	await _test(&"the crusher crushes a player into meat", test_crusher_crushes_player)
+	await _test(&"jumping over or standing by the crusher's hopper is safe", test_crusher_rim_safe)
 	await _test(&"TNT: $50 a stick, blows players about, cracks easy ore, not the best", test_tnt)
 	await _test(&"one stick of TNT sets off the rest, and throws you far", test_tnt_chain)
 	await _test(&"full automated base stays in budget", test_full_base)
@@ -7428,12 +7429,20 @@ func test_crusher_crushes_player() -> void:
 	var top := crusher.global_transform * Vector3(0, InlineMachine.DECK_THICKNESS + crusher.canopy_height() + InlineMachine.HOPPER_DEPTH + 1.0, 0)
 	var p := _standing_player(top)
 	var got := false
-	for i in 120:
+	var pulled := false
+	var frames_drawn := 0
+	for i in 600:
 		await step(1)
+		if p.grinding():
+			pulled = true
+			frames_drawn += 1
 		if p.crushed():
 			got = true
 			break
+	check(pulled, "he was not drawn into the wheels first")
+	check(frames_drawn > 100, "he went through in %d frames: not slowly" % frames_drawn)
 	check(got, "falling into the crusher did not crush him")
+	check(crusher._wheels.size() == 2, "the crusher has no grinding wheels")
 	var meat := 0
 	for i in 60 * 6:
 		await step(1)
@@ -7442,6 +7451,29 @@ func test_crusher_crushes_player() -> void:
 			meat += 1
 	check(meat >= 5, "the crusher did not spit out meat (%d bits)" % meat)
 	check(not p.crushed(), "he was never let out of the crusher")
+	done()
+
+## The crusher only takes someone who is down inside its hopper: standing on
+## its roof beside the mouth, or passing just over the rims, is safe.
+func test_crusher_rim_safe() -> void:
+	_setup(false)
+	var crusher := _inline(&"crusher")
+	_runout(crusher)
+	await step(10)
+	var roof := InlineMachine.DECK_THICKNESS + crusher.canopy_height() + 0.06
+	var rim := roof + InlineMachine.HOPPER_DEPTH
+	var open := crusher.hopper_opening()
+	var t := crusher.global_transform
+	# Just over the rims, as at the top of a jump across.
+	check(not crusher._in_hopper(t * Vector3(0, rim + 0.3, 0)), "just over the hopper counts as in it")
+	check(not crusher._in_hopper(t * Vector3(open * 0.5 + 0.1, rim - 0.4, 0)), "beside the rim counts as in it")
+	check(crusher._in_hopper(t * Vector3(0, rim - 0.5, 0)), "down in the hopper does not count")
+	# A player standing on the roof next to the hopper for a while.
+	var p := _standing_player(t * Vector3(open * 0.5 + 0.45, roof + 0.3, 0))
+	for i in 120:
+		await step(1)
+	check(not p.grinding() and not p.crushed(), "standing by the hopper pulled him in")
+	p.queue_free()
 	done()
 
 func test_tnt() -> void:

@@ -164,6 +164,13 @@ const VIEWMODEL_REST := Vector3(-0.45, 0.35, -0.35)
 func _process(delta: float) -> void:
 	if knocked() or crushed():
 		_update_down_camera(delta)
+	# In the crusher's wheels, the view shakes.
+	if grinding():
+		camera.h_offset = randf_range(-1.0, 1.0) * 0.06 * _shake
+		camera.v_offset = randf_range(-1.0, 1.0) * 0.06 * _shake
+	elif camera.h_offset != 0.0 or camera.v_offset != 0.0:
+		camera.h_offset = 0.0
+		camera.v_offset = 0.0
 	_update_view(delta)
 	var tool := selected_tool() if not driving() and not (build_system != null and build_system.active) else &""
 	_viewmodel_pivot.visible = not third_person
@@ -364,8 +371,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _ui_blocking:
 		return
-	if knocked() or crushed():
-		# Nothing to be done while flying through the air.
+	if knocked() or crushed() or grinding():
+		# Nothing to be done while flying through the air, or in the wheels.
 		return
 	var press := (event is InputEventMouseButton or event is InputEventKey) \
 		and event.is_pressed() and not event.is_echo()
@@ -697,6 +704,9 @@ func _physics_process(delta: float) -> void:
 func _physics_step(delta: float) -> void:
 	if crushed():
 		_crushed_step(delta)
+		return
+	if grinding():
+		_grind_step(delta)
 		return
 	if tumble != null and not is_instance_valid(tumble):
 		# The body went (dropped into something): up he gets.
@@ -2068,6 +2078,48 @@ func _check_vehicles() -> void:
 			knock(rel * 1.1 + to_me.normalized() * 2.0 + Vector3.UP * (3.0 + closing * 0.35))
 			return
 
+## Caught by the crusher's wheels: drawn down into them over `seconds`,
+## slowly at first, shaking, with no way out; then the machine puts him
+## through (crush).
+var _grind_t: float = -1.0
+var _grind_total: float = 1.0
+var _grind_from: Vector3
+var _grind_to: Vector3
+
+func grinding() -> bool:
+	return _grind_t >= 0.0
+
+func grind(into: Vector3, seconds: float) -> void:
+	if grinding() or crushed():
+		return
+	if knocked():
+		var at := tumble.global_position
+		_end_ragdoll()
+		global_position = at
+	_release_dragged()
+	_grind_total = maxf(0.2, seconds)
+	_grind_t = 0.0
+	_grind_from = global_position
+	# Feet first, the wheels at his waist by the end.
+	_grind_to = into - Vector3(0, 1.1, 0)
+	collision_layer = 0
+	collision_mask = 0
+	velocity = Vector3.ZERO
+	if net_follow:
+		net_event.emit({"t": "grind", "x": [into.x, into.y, into.z], "s": seconds})
+	interacted.emit("the crusher's got you!")
+
+func _grind_step(delta: float) -> void:
+	velocity = Vector3.ZERO
+	_grind_t += delta
+	var f := clampf(_grind_t / _grind_total, 0.0, 1.0)
+	var p := _grind_from.lerp(_grind_to, f * f)
+	p += Vector3(sin(_grind_t * 23.0), 0.0, cos(_grind_t * 19.0)) * 0.04 * (0.3 + f)
+	global_position = p
+	_shake = maxf(_shake, 0.45 + 0.5 * f)
+	if f >= 1.0:
+		_grind_t = -1.0
+
 ## Into the crusher. The meat is the machine's to make; here he is gone for a
 ## moment, the camera on the machine, then back at base.
 func crush(at: Vector3) -> void:
@@ -2079,6 +2131,7 @@ func crush(at: Vector3) -> void:
 		net_event.emit({"t": "crush", "x": [at.x, at.y, at.z]})
 	if knocked():
 		_end_ragdoll()
+	_grind_t = -1.0
 	_release_dragged()
 	_crushed_t = CRUSHED_SECONDS
 	_crushed_at = at

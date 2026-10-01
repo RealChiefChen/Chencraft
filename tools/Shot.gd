@@ -1144,13 +1144,17 @@ func shot_crush() -> void:
 	m.position = mpos
 	world.add_child(m)
 	await _frames(20)
+	# The wheels from above, before.
+	await look(m.global_transform * Vector3(0.6, 4.2, 2.2), m.global_transform * Vector3(0, 1.4, 0))
+	await snap("crusher_wheels")
 	p.global_position = m.global_transform * Vector3(0, InlineMachine.DECK_THICKNESS + m.canopy_height() + InlineMachine.HOPPER_DEPTH + 0.8, 0)
+	# Halfway drawn in: the blood.
 	for i in 60 * 3:
 		await get_tree().physics_frame
-		if p.crushed() and i > 140:
+		if p.grinding() and p._grind_t > 1.4:
 			break
-	await _frames(5)
-	await snap("slop_crusher")
+	await look(m.global_transform * Vector3(1.4, 3.6, 3.0), m.global_transform * Vector3(0, 1.6, 0))
+	await snap("crusher_grinding")
 
 ## The TNT on the hardware store's shelf.
 func shot_tntshelf() -> void:

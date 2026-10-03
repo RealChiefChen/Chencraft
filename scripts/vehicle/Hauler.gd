@@ -1,3 +1,4 @@
+# 4-1
 class_name Hauler
 extends RigidBody3D
 
@@ -17,10 +18,20 @@ extends RigidBody3D
 ## springs, and falls out if you roll the truck. Driven sensibly it stays put.
 
 signal cargo_changed(count: int, capacity: int)
-
+ 
 @export var engine_force_max: float = 16000.0     ## total, split over the wheels
 @export var max_steer_angle: float = 0.55         ## radians, at a standstill
+## TOP SPEED (per vehicle), in m/s, before the fleet multiplier below.
+## NOTE: a vehicle's "max_speed" in vehicles.json overrides this value; this one
+## is only used when the vehicle row has none. Real top speed =
+## max_speed * TOP_SPEED_MULT * (gear ratio) * (road/bridge bonus).
 @export var max_speed: float = 22.0
+## UNCAP SPEED: when true there is no artificial top speed. The engine keeps
+## pushing at full force at any speed and the hard speed ceiling in
+## _clamp_motion() is off, so the vehicle only stops accelerating where drag
+## (linear_damp, and the engine's own force) balances the thrust. Set to false
+## to get the old max_speed * TOP_SPEED_MULT limit back.
+
 @export var suspension_rest: float = 0.75
 ## How far a wheel sinks under the truck's own weight, and how far it can go
 ## up into the arch or down off an edge.
@@ -35,6 +46,57 @@ const DROOP := 0.3
 @export var wheel_radius: float = 0.45
 @export var wheel_width: float = 0.34
 
+# --- Hover ----------------------------------------------------------------------
+## Hover vehicles ride on a cushion of air instead of wheels: each former wheel
+## position is a downward thruster that pushes the chassis up in proportion to
+## how close the ground is (a spring with damping), so the vehicle floats at
+## `hover_height` over flat ground, rides over bumps, banks over slopes and
+## settles back down after a jump. Drive, brake and steering all act on the
+## chassis directly. ONLY BIKES HOVER: _apply_spec() sets hover_mode from the
+## vehicle row's "bike" flag, so every other vehicle keeps its regular wheels
+## (the "hover" key in vehicles.json is ignored). "hover_height": 1.2 in a
+## bike's row still sets how high it floats.
+@export var hover_mode: bool = false
+## Metres from the underside of the chassis (the old wheel anchors) to the ground.
+@export var hover_height: float = 0.7
+## Damping of the cushion, as a share of critical: lower is bouncier.
+@export_range(0.1, 1.5) var hover_damping: float = 1.50
+## Turn rate at a standstill, in radians/s per radian of `max_steer_angle`.
+@export var hover_turn_factor: float = 2.5
+## How hard sideways drift is killed (1/s). Low = slidey, high = on rails.
+@export var hover_side_grip: float = 3.0
+## Braking deceleration (m/s^2) and the glide-to-a-stop drag when coasting (1/s).
+@export var hover_brake_decel: float = 14.0
+@export var hover_coast_drag: float = 0.8
+## Colour of the thruster pads under the chassis.
+@export var hover_glow: Color = Color(0.25, 0.85, 1.0)
+## Bikes are tuned sharper than the rest of the fleet. Turn these down for a
+## calmer ride, up for a twitchier one.
+@export var bike_turn_response: float = 100.0   ## how fast the yaw rate follows the stick (1/s)
+@export var bike_turn_boost: float = 20.0       ## multiplies the turn rate
+@export var bike_side_grip: float = 20.0        ## sideways drift is killed this hard (1/s)
+@export var bike_lean_rate: float = 30.0       ## how fast it rolls into and out of a lean (1/s)
+@export_range(0.0, 1.0) var bike_speed_soften: float = 1.0  ## share of the speed-based steering softening it keeps
+## Lowest brightness a bike's thruster glow ever drops to (the stock floor is
+## HOVER_GLOW_MIN). Raise it so the glow never looks switched off; 0 lets it go dark.
+@export var bike_glow_min: float = 0.15
+@export var bike_brake_boost: float = 1.4      ## multiplies braking deceleration
+const BIKE_SPEED_BAND := 0.5                   ## m/s: thrust stays full almost to the target speed
+const BIKE_LEAN_SPEED := 5.0                   ## m/s at which the lean is fully applied
+const HOVER_REACH := 1.0           ## the thrusters sense the ground this many hover heights down
+const HOVER_PROGRESSION := 3.0     ## >1: the cushion firms up as the ground gets closer
+const HOVER_GLOW_MIN := 0.15       ## dimmest a (non-bike) pad gets: no ground in reach, or no thrust
+const HOVER_GLOW_SMOOTH := 6.0     ## how quickly the glow follows its target (1/s): higher = more flicker
+const HOVER_SPEED_BAND := 1.5      ## m/s over which drive thrust fades out near the target speed
+const HOVER_SKID_GRIP := 0.15      ## sideways grip left with the brake locked: the tail slides out
+const HOVER_TURN_RESPONSE := 10.0   ## how quickly the yaw rate follows the steering
+const HOVER_AIR_LEVEL := 5.0       ## rad/s^2 of self-levelling while in the air
+var _hover_mats: Array[StandardMaterial3D] = []
+var _hover_grip: float = 1.0
+var _hover_time: float = 0.0
+const HOVER_GLOW_HOLD := 0.2       ## s: a pad keeps its glow this long after losing the ground
+var _hover_air_time: Array[float] = []
+
 var manager: LooseItemManager
 var plot_id: int = 0
 var driver: Node3D = null
@@ -45,6 +107,9 @@ var terrain: Terrain
 var input_throttle: float = 0.0
 var input_steer: float = 0.0
 var input_brake: bool = false
+## Hold the left mouse button and the driver is steered and driven toward
+## wherever the camera is looking (along the ground). Space still brakes.
+@export var mouse_drive: bool = true
 var autopilot: bool = false
 
 ## Towing. A truck with a hitch can pull a trailer; a trailer is a vehicle
@@ -121,7 +186,12 @@ static var GEAR_TORQUE_EXP: float = Balance.num("vehicles.gear_torque_exponent",
 const OVERDRIVE: Array[float] = [1.15, 1.32, 1.5]
 ## Whole-fleet knobs, and what the tyre upgrades add on top.
 static var ENGINE_MULT: float = Balance.num("vehicles.engine_multiplier", 1.0)
-static var TOP_SPEED_MULT: float = Balance.num("vehicles.top_speed_multiplier", 1.0)
+## >>> TOP SPEED MULTIPLIER (fleet-wide) <<<
+## Scales the top speed of EVERY vehicle at once, whatever its own max_speed is.
+## 1.0 = stock, 2.0 = twice as fast. Raised from 1.0 to 2.0.
+## (If your Balance data defines "vehicles.top_speed_multiplier", that value wins
+## over this default - change it there instead.)
+static var TOP_SPEED_MULT: float = Balance.num("vehicles.top_speed_multiplier", 4.0)  # was 1.0
 static var GRIP_MULT: float = Balance.num("vehicles.grip_multiplier", 1.0)
 static var STEER_MULT: float = Balance.num("vehicles.steer_multiplier", 1.0)
 ## How much steering eases off with speed (per m/s).
@@ -192,14 +262,16 @@ func _apply_spec() -> void:
 	style = StringName(spec.get("style", "truck"))
 	mass = float(spec.get("mass", 900))
 	tow_limit = float(spec.get("tow_limit", 0.0))
-	engine_force_max = float(spec.get("engine", 16000))
-	max_speed = float(spec.get("max_speed", 22))
+	engine_force_max = float(spec.get("engine", engine_force_max))
+	# Top speed from the vehicle row; falls back to the exported max_speed above.
+	max_speed = float(spec.get("max_speed", max_speed))
 	tyre_grip = float(spec.get("grip", 1.7))
 	max_steer_angle = float(spec.get("steer", 0.55))
 	body_size = _vec(spec.get("body", [2.6, 0.7, 5.0]))
 	wheel_radius = float(spec.get("wheel_radius", 0.45))
 	wheel_width = float(spec.get("wheel_width", 0.34))
 	suspension_rest = float(spec.get("suspension_rest", 0.75))
+	hover_height = float(spec.get("hover_height", hover_height))
 	cargo_capacity_m3 = float(spec.get("capacity", 8))
 	camera_distance = float(spec.get("camera", 9.0))
 	var c: Array = spec.get("paint", [0.62, 0.2, 0.16])
@@ -227,6 +299,8 @@ func _apply_spec() -> void:
 	bed_mid_z = (bed_front + bed_back) * 0.5
 	is_trailer = bool(spec.get("trailer", false))
 	bike = bool(spec.get("bike", false))
+	# Only the bike rides on a hover cushion; everything else gets wheels.
+	hover_mode = bike
 	hitch_offset = _vec(spec.get("hitch", [0, 0, 0]))
 	tongue_offset = _vec(spec.get("tongue", [0, 0, 0]))
 	rear_steer = float(spec.get("rear_steer", 0.0))
@@ -332,6 +406,7 @@ func set_parts(levels: Dictionary) -> void:
 
 ## Tyres bought since the wheels went on: new rubber on every wheel.
 func _refresh_grip() -> void:
+	_hover_grip = grip_scale()
 	for i in wheel_bodies.size():
 		var old := wheel_bodies[i].physics_material_override as PhysicsMaterial
 		if old == null:
@@ -374,7 +449,9 @@ func _ready() -> void:
 		add_child(_engine_sound)
 	collision_layer = Layers.VEHICLE
 	collision_mask = Layers.WORLD | Layers.LOOSE | Layers.MACHINE | Layers.TREE | Layers.PLAYER | Layers.VEHICLE
-	can_sleep = true
+	# A hovering body is pushed every physics step, so it must not doze off;
+	# when parked it is held (frozen) instead.
+	can_sleep = not hover_mode
 	continuous_cd = true          # a heavy box at 20+ m/s must never tunnel
 	linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
 	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
@@ -384,9 +461,12 @@ func _ready() -> void:
 	# Low: makes rollovers very unlikely.
 	center_of_mass = Vector3(0, float(spec.get("com_y", -0.45)), 0)
 	_build()
-	# The wheels go on once the truck is where it is going: a pad puts it in
-	# place just after adding it.
-	_build_wheels.call_deferred()
+	if hover_mode:
+		_build_hover_pads()
+	else:
+		# The wheels go on once the truck is where it is going: a pad puts it in
+		# place just after adding it.
+		_build_wheels.call_deferred()
 
 
 func _build() -> void:
@@ -405,7 +485,7 @@ func _build() -> void:
 		bar.shape = bb
 		bar.position = Vector3(0, tongue_offset.y, (tongue_offset.z + from_z) * 0.5)
 		add_child(bar)
-		var ride := wheel_radius - _lowest_wheel_y() + SAG
+		var ride := _ride_height()
 		var leg_height := ride + tongue_offset.y
 		_stand = CollisionShape3D.new()
 		var sb := BoxShape3D.new()
@@ -576,7 +656,7 @@ func ramp_xs() -> Array[float]:
 
 ## The ramp's angle down from level when its foot is on the ground.
 func _ramp_down_angle() -> float:
-	var ground := -(wheel_radius - _lowest_wheel_y() + SAG)
+	var ground := -_ride_height()
 	return asin(clampf((bed_floor - ground) / ramp_length(), 0.0, 1.0))
 
 ## A ramp at `pose` (0 down, 1 up): hinged on the deck's back edge; the
@@ -756,10 +836,7 @@ func seat_of(who: Node3D) -> Transform3D:
 
 ## How high above a pad to put the vehicle so it drops onto its wheels.
 func spawn_height() -> float:
-	var low := 0.0
-	for o in wheel_offsets:
-		low = minf(low, (o as Vector3).y)
-	return wheel_radius - low + SAG + 0.3
+	return _ride_height() + 0.3
 
 # --- Cargo -----------------------------------------------------------------
 
@@ -1279,13 +1356,15 @@ func _balance() -> void:
 	var up := global_transform.basis.y
 	var right := global_transform.basis.x
 	var speed := linear_velocity.dot(forward)
-	var lean := input_steer * BIKE_LEAN * clampf(absf(speed) / 10.0, 0.0, 1.0)
+	var lean_speed := BIKE_LEAN_SPEED if hover_mode else 10.0
+	var lean := input_steer * BIKE_LEAN * clampf(absf(speed) / lean_speed, 0.0, 1.0)
 	var want := (Vector3.UP - right * lean).normalized()
 	# How far it is off upright about its own length: its roll is set to
 	# close that gap steadily (a torque strong enough to do it overshoots).
 	var off := forward.dot(up.cross(want))
 	var roll := forward.dot(angular_velocity)
-	angular_velocity += forward * (clampf(off, -1.0, 1.0) * 5.0 - roll)
+	var lean_rate := bike_lean_rate if hover_mode else 5.0
+	angular_velocity += forward * (clampf(off, -1.0, 1.0) * lean_rate - roll)
 
 func _physics_process(delta: float) -> void:
 	_engine_note()
@@ -1382,7 +1461,7 @@ func _rides_on(v: Hauler, slack: float) -> bool:
 		return false
 	if local.z < bed_front - 0.5 - slack or local.z > bed_back + 0.5 + slack:
 		return false
-	var lowest := v.wheel_radius - v._lowest_wheel_y()
+	var lowest := v._ride_height() - (0.0 if v.hover_mode else SAG)
 	var above := local.y - bed_floor
 	if above < -0.3 - slack or above > lowest + 1.5 + slack:
 		return false
@@ -1418,7 +1497,7 @@ static var HOLD_SPEED: float = Balance.num("vehicles.hold_speed", 1.2)          
 static var HOLD_AFTER: float = Balance.num("vehicles.hold_after", 0.3)          ## seconds of being slow before it is
 
 func _may_hold() -> bool:
-	return parked() and not planted and towed_by == null and not wheel_bodies.is_empty() and carried_on == null
+	return parked() and not planted and towed_by == null and (hover_mode or not wheel_bodies.is_empty()) and carried_on == null
 
 func _update_hold(delta: float) -> void:
 	if not _may_hold():
@@ -1429,7 +1508,7 @@ func _update_hold(delta: float) -> void:
 	if held:
 		return
 	var slow := linear_velocity.length() < HOLD_SPEED and angular_velocity.length() < 0.8
-	var grounded := _grounded * 2 >= wheel_bodies.size()
+	var grounded := _grounded * 2 >= _thruster_count()
 	_hold_time = _hold_time + delta if slow and grounded else 0.0
 	if _hold_time >= HOLD_AFTER:
 		_hold()
@@ -1470,6 +1549,29 @@ func _read_input() -> void:
 	input_steer = inp.axis("move_right", "move_left")
 	# In a loader Space works the bucket lock, not the brake.
 	input_brake = loader == null and inp.pressed("jump")
+	if mouse_drive and loader == null and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_drive_toward_camera()
+
+## Left mouse held: turn toward the camera's heading and drive that way. It
+## turns on the spot first when the camera is off to the side or behind, and
+## eases onto the throttle as it lines up. Overrides the keys while held.
+func _drive_toward_camera() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var aim := -cam.global_transform.basis.z
+	aim.y = 0.0
+	var heading := -global_transform.basis.z
+	heading.y = 0.0
+	# Looking straight down, or the vehicle on its side: no heading to follow.
+	if aim.length() < 0.05 or heading.length() < 0.05:
+		return
+	aim = aim.normalized()
+	heading = heading.normalized()
+	# Positive is to the left, the same sign as the steering input.
+	var angle := heading.signed_angle_to(aim, Vector3.UP)
+	input_steer = clampf(angle / 0.5, -1.0, 1.0)
+	input_throttle = clampf(cos(angle) * 2.0, 0.0, 1.0)
 
 ## Stood on its outriggers for the crane: it does not roll, rock or tip, and
 ## the crane's load is carried into the ground.
@@ -1525,6 +1627,11 @@ func _lowest_wheel_y() -> float:
 	for o in wheel_offsets:
 		low = minf(low, (o as Vector3).y)
 	return low
+
+## How high the chassis origin rides above flat ground at rest: on its sprung
+## wheels, or on its hover cushion.
+func _ride_height() -> float:
+	return (hover_height if hover_mode else wheel_radius + SAG) - _lowest_wheel_y()
 
 # --- Towing ---------------------------------------------------------------------
 
@@ -1767,6 +1874,9 @@ func _snap_wheels() -> void:
 ## turns the wheel toward the speed asked for with no more than the engine's
 ## torque; the tyre on the ground does the rest.
 func _drive_wheels() -> void:
+	if hover_mode:
+		_hover_drive()
+		return
 	if wheel_bodies.is_empty():
 		return
 	# Anything that moved the chassis in one jump takes its wheels with it.
@@ -1787,27 +1897,9 @@ func _drive_wheels() -> void:
 	var torque := 0.0
 	var full := max_speed * speed_scale() * bonus
 	var manual := manual_gearbox()
-	if not manual:
-		# It shifts for the speed being asked for, not flat-out's.
-		_auto_gear(speed, full * clampf(absf(throttle), 0.3, 1.0))
-	# Pull goes up as the gear comes down; the gear's own top speed caps it.
-	var box := gear_ratios()
-	var ratio: float = box[clampi(gear, 0, box.size() - 1)] if not box.is_empty() else 1.0
-	var pull: float = pow(1.0 / maxf(0.05, ratio), GEAR_TORQUE_EXP)
-	if not manual:
-		# The automatic brings half the low gears' extra pull to bear on the
-		# flat - enough to feel, not so much a loose load is snatched off the
-		# back - and all of it going uphill, where it is needed.
-		var uphill := forward.y * signf(throttle if absf(throttle) > 0.05 else 1.0)
-		# (Past a few degrees: pulling away squats the tail and lifts the
-		# nose a little, which is not a hill.)
-		var climb := clampf((uphill - 0.08) / 0.22, 0.0, 1.0)
-		# Light runabouts keep the gentle start (a loose load stays aboard).
-		var flat := minf(lerpf(1.0, pull, 0.5), 1.3) if mass > 1000.0 else 1.0
-		pull = lerpf(flat, pull, climb)
-	# An overdrive always pulls less: that is the price of its speed.
-	if ratio > 1.0:
-		pull = minf(pull, pow(1.0 / ratio, GEAR_TORQUE_EXP))
+	var gp := _gear_pull(forward, speed, throttle, full, manual)
+	var ratio: float = gp.x
+	var pull: float = gp.y
 	var skid := input_brake and not standing and absf(speed) > 2.5
 	if skid != _skidding:
 		_skidding = skid
@@ -1868,6 +1960,186 @@ func _still() -> bool:
 		if not item.sleeping and (item.linear_velocity.length() > 0.08 or item.angular_velocity.length() > 0.2):
 			return false
 	return not unloading()
+
+## The gear it is in and what the engine pulls with there: x is the gear's
+## share of top speed, y the multiplier on engine force. Shared by the wheeled
+## and the hover drive.
+func _gear_pull(forward: Vector3, speed: float, throttle: float, full: float, manual: bool) -> Vector2:
+	if not manual:
+		# It shifts for the speed being asked for, not flat-out's.
+		_auto_gear(speed, full * clampf(absf(throttle), 0.3, 1.0))
+	# Pull goes up as the gear comes down; the gear's own top speed caps it.
+	var box := gear_ratios()
+	var ratio: float = box[clampi(gear, 0, box.size() - 1)] if not box.is_empty() else 1.0
+	var pull: float = pow(1.0 / maxf(0.05, ratio), GEAR_TORQUE_EXP)
+	if not manual:
+		# The automatic brings half the low gears' extra pull to bear on the
+		# flat - enough to feel, not so much a loose load is snatched off the
+		# back - and all of it going uphill, where it is needed.
+		var uphill := forward.y * signf(throttle if absf(throttle) > 0.05 else 1.0)
+		# (Past a few degrees: pulling away squats the tail and lifts the
+		# nose a little, which is not a hill.)
+		var climb := clampf((uphill - 0.08) / 0.22, 0.0, 1.0)
+		# Light runabouts keep the gentle start (a loose load stays aboard).
+		var flat := minf(lerpf(1.0, pull, 0.5), 1.3) if mass > 1000.0 else 1.0
+		pull = lerpf(flat, pull, climb)
+	# An overdrive always pulls less: that is the price of its speed.
+	if ratio > 1.0:
+		pull = minf(pull, pow(1.0 / ratio, GEAR_TORQUE_EXP))
+	return Vector2(ratio, pull)
+
+# --- Hover ---------------------------------------------------------------------------
+
+func _thruster_count() -> int:
+	return wheel_offsets.size() if hover_mode else wheel_bodies.size()
+
+## Glowing pads where the wheels would be; the wheel models are hidden.
+func _build_hover_pads() -> void:
+	_hover_grip = grip_scale()
+	for w in _wheels:
+		w.visible = false
+	var radius := clampf(wheel_radius * 0.7, 0.2, 0.55)
+	for o in wheel_offsets:
+		var disc := CylinderMesh.new()
+		disc.top_radius = radius
+		disc.bottom_radius = radius
+		disc.height = 0.06
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.06, 0.08, 0.1)
+		mat.emission_enabled = true
+		mat.emission = hover_glow
+		mat.emission_energy_multiplier = 1.0
+		disc.material = mat
+		var pad := MeshInstance3D.new()
+		pad.mesh = disc
+		pad.position = (o as Vector3) + Vector3(0, -0.03, 0)
+		pad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(pad)
+		_hover_mats.append(mat)
+
+## The hover counterpart of _drive_wheels: thrusters hold the chassis up, and
+## the drive, brake, drift and steering are forces on the chassis itself.
+func _hover_drive() -> void:
+	# Frozen (outriggers, a crane's hook, a guest's copy) or glued to a
+	# carrier: nothing to push.
+	if freeze or carried_on != null:
+		return
+	var delta := get_physics_process_delta_time()
+	_hover_time += delta
+	var xf := global_transform
+	var forward := -xf.basis.z
+	var up := xf.basis.y
+	var com := xf * center_of_mass
+	var n := maxi(1, wheel_offsets.size())
+
+	# --- The cushion: a spring and damper under every thruster. Sized so the
+	# sprung weight sits exactly at hover_height; a slow bob keeps it alive.
+	var h := maxf(0.2, hover_height)
+	var rest := h + sin(_hover_time * 2.1) * 0.03
+	var g := maxf(0.1, get_gravity().length())
+	var sprung := maxf(mass, float(spec.get("spring_mass", mass)))
+	var share := sprung * g / float(n)
+	var k_eff := HOVER_PROGRESSION * share / h
+	var damp := 2.0 * hover_damping * sqrt(k_eff * sprung / float(n))
+	var space := get_world_3d().direct_space_state
+	var mask := Layers.WORLD | Layers.MACHINE
+	var normal_sum := Vector3.ZERO
+	var glow_min := bike_glow_min if bike else HOVER_GLOW_MIN
+	_grounded = 0
+
+	if _hover_air_time.size() != n:
+		_hover_air_time.resize(n)   # new entries start at 0.0
+	for i in n:
+		var at := xf * (wheel_offsets[i] as Vector3)
+		var q := PhysicsRayQueryParameters3D.create(at, at + Vector3.DOWN * h * HOVER_REACH, mask, [get_rid()])
+		var hit := space.intersect_ray(q)
+		var glow := 0.15
+		if not hit.is_empty():
+			_hover_air_time[i] = 0.0
+			var nrm: Vector3 = hit.normal
+			var dist := at.distance_to(hit.position as Vector3)
+			# Push mostly straight up, leaning a little with the slope.
+			var dir := nrm.lerp(Vector3.UP, 0.7).normalized()
+			var point_vel := linear_velocity + angular_velocity.cross(at - com)
+			var squeeze := maxf(0.0, 1.0 + (rest - dist) / h)
+			# A thruster pushes; it never pulls the vehicle down.
+			var f := maxf(0.0, share * pow(squeeze, HOVER_PROGRESSION) - damp * point_vel.dot(dir))
+			apply_force(dir * f, at - global_position)
+			normal_sum += nrm
+			_grounded += 1
+			var held := _hover_mats[i].emission_energy_multiplier
+			var t := clampf((_hover_air_time[i] - HOVER_GLOW_HOLD) / 0.1, 0.0, 1.0)  # 0.3 s fade
+			#glow = lerpf(held, 0.15, t)
+			glow = 0.6 + 2.4 * clampf(f / (share * 2.0), 0.0, 1.0)
+		else:
+			_hover_air_time[i] += delta
+			if _hover_air_time[i] < HOVER_GLOW_HOLD and i < _hover_mats.size():
+				# Ground just lost: keep whatever the pad was showing.
+				glow = _hover_mats[i].emission_energy_multiplier
+		if i < _hover_mats.size():
+			_hover_mats[i].emission_energy_multiplier = glow	
+
+	# Air (no cushion under it) means little grip or drive, so it can be
+	# steered a little but not driven off a cliff edge.
+	var contact := float(_grounded) / float(n)
+	var traction := lerpf(0.2, 1.0, contact)
+	var ground_n := (normal_sum / float(_grounded)).normalized() if _grounded > 0 else Vector3.UP
+	var flat_fwd := (forward - ground_n * forward.dot(ground_n)).normalized()
+	var flat_right := flat_fwd.cross(ground_n)
+	var flat_vel := linear_velocity - ground_n * linear_velocity.dot(ground_n)
+	var speed := linear_velocity.dot(forward)
+
+	# --- Throttle and brake, through the same gearbox as the wheeled vehicles.
+	var standing := parked() or planted
+	var throttle := 0.0 if (standing or flooded()) else input_throttle
+	var bonus := 1.0 + speed_bonus()
+	var full := max_speed * speed_scale() * bonus
+	var manual := manual_gearbox()
+	var gp := _gear_pull(forward, speed, throttle, full, manual)
+	var ratio: float = gp.x
+	var pull: float = gp.y
+	var skid := input_brake and not standing and absf(speed) > 2.5
+	_skidding = skid
+	if standing or input_brake:
+		var spd := flat_vel.length()
+		if spd > 0.01:
+			# Never more than it takes to stop it in one step: no jitter at rest.
+			var decel := hover_brake_decel * (bike_brake_boost if bike else 1.0) * (0.4 if skid else 1.0) * traction
+			var f_brake := minf(mass * decel, mass * spd / delta)
+			apply_central_force(-flat_vel / spd * f_brake)
+	elif absf(throttle) > 0.05:
+		var top: float = full * ratio if throttle > 0.0 else max_speed * 0.5
+		if throttle < 0.0 and manual:
+			pull = pow(1.0 / maxf(0.05, gears[0] if not gears.is_empty() else 1.0), GEAR_TORQUE_EXP)
+		# Thrust fades out as it nears the speed asked for, like the wheel motors did.
+		var band := BIKE_SPEED_BAND if bike else HOVER_SPEED_BAND
+		var push := clampf((throttle * top - speed) / band, -1.0, 1.0)
+		apply_central_force(flat_fwd * engine_force_max * engine_scale() * pull * bonus * push * traction)
+	elif not (is_trailer and towed_by != null):
+		# Coasting: nothing grips, so it glides, and slows on drag alone.
+		apply_central_force(-flat_vel * mass * hover_coast_drag * traction)
+
+	# --- Sideways grip: an air cushion slides, so this is what makes it
+	# corner. Locking the brake lets go of most of it and the tail swings out.
+	var side := flat_vel.dot(flat_right)
+	var grip := (bike_side_grip if bike else hover_side_grip) * _hover_grip * traction * (HOVER_SKID_GRIP if skid else 1.0)
+	var f_side := minf(absf(side) * mass * grip, mass * absf(side) / delta)
+	apply_central_force(-flat_right * signf(side) * f_side)
+
+	# --- Steering: yaw rate follows the stick, easing off with speed. (A
+	# trailer is not steered: it swings freely on the hitch.)
+	if not is_trailer:
+		var steer_in := 0.0 if standing else input_steer
+		var rate := hover_turn_factor * (bike_turn_boost if bike else 1.0)
+		var soften := STEER_SOFTEN * (bike_speed_soften if bike else 1.0)
+		var response := bike_turn_response if bike else HOVER_TURN_RESPONSE
+		var turn := steer_in * max_steer_angle * rate * STEER_MULT / (1.0 + absf(speed) * soften)
+		var yaw := angular_velocity.dot(up)
+		angular_velocity += up * (turn - yaw) * clampf(delta * response, 0.0, 1.0) * traction
+
+	# --- In the air the stabilisers level it off, nose-in landings are rare.
+	if contact < 0.5:
+		angular_velocity += up.cross(Vector3.UP) * HOVER_AIR_LEVEL * delta
 
 func _clamp_motion() -> void:
 	var ceiling := max_speed * speed_scale() * top_ratio() * 1.25 * (1.0 + Terrain.BRIDGE_SPEED_BONUS)
